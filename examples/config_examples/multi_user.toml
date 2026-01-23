@@ -1,0 +1,60 @@
+# Multi-User Shared Installation Example
+#
+# Use case: Shared server where multiple users access Searchat
+# Each user has their own Claude conversations but shares the search instance
+#
+# Setup:
+# 1. Place this file at: /etc/searchat/settings.toml
+# 2. Set SEARCHAT_DATA_DIR to shared location
+# 3. Users override with personal paths via environment variables
+
+[paths]
+# Shared data directory (ensure proper permissions)
+search_directory = "/var/lib/searchat"
+
+# Template paths - users override with environment variables
+claude_directory_windows = "C:/Users/{username}/.claude"
+claude_directory_wsl = "\\\\wsl$\\Ubuntu\\home\\{username}\\.claude"
+
+# Auto-detect each user's environment
+auto_detect_environment = true
+
+[indexing]
+# Larger batch size for server deployment
+batch_size = 2000
+
+# Auto-index enabled
+auto_index = true
+
+# More frequent updates in shared environment
+index_interval_minutes = 30
+
+# More workers for better performance
+max_workers = 8
+
+[search]
+default_mode = "hybrid"
+max_results = 100
+snippet_length = 200
+
+[embedding]
+model = "all-MiniLM-L6-v2"
+batch_size = 64  # Larger batch for better throughput
+cache_embeddings = true
+
+[ui]
+theme = "auto"
+font_family = "Segoe UI"
+font_size = 11
+highlight_color = "#FFEB3B"
+
+[performance]
+# Higher limits for shared server
+memory_limit_mb = 8000
+query_cache_size = 500
+enable_profiling = false
+
+# User-specific overrides via environment:
+#
+# export SEARCHAT_WINDOWS_PROJECTS_DIR=/home/alice/.claude
+# export SEARCHAT_PORT=8001  # Different port per user

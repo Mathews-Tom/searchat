@@ -1,0 +1,98 @@
+# User data
+.searchat/
+.claude-search/
+.claude-search-*/
+*.parquet
+*.faiss
+
+# Archived/deprecated docs
+archived/
+
+# Environment
+.env
+.env.local
+*.secret
+
+# User config files (personal settings should not be committed)
+config/settings.toml
+.claude/settings.local.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+ui_output.log
+ui_debug.log
+
+# Test
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+
+# Development/debug files
+nul
+failed_query.sql
+
+# Jupyter
+.ipynb_checkpoints
+*.ipynb
+
+# Documentation
+docs/_build/
+site/
+
+# Package managers
+Pipfile.lock
+poetry.lock

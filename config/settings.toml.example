@@ -1,0 +1,42 @@
+# Claude Search Configuration Example
+# Copy this file to settings.toml and customize for your environment
+# Most settings can be overridden via environment variables (see .env.example)
+
+[paths]
+# Windows native .claude directory (accessible at C:\Users\{username}\.claude from Windows)
+claude_directory_windows = "C:/Users/{username}/.claude"
+# WSL native .claude directory (lives at /home/syd/.claude inside WSL, accessed from Windows via network path)
+# NOTE: This is NOT /mnt/c/Users/Syd/.claude (which would be the Windows .claude accessed FROM WSL)
+claude_directory_wsl = "\\\\wsl$\\Ubuntu\\home\\syd\\.claude"
+# ISOLATION: Using separate search directory to prevent conflicts when running multiple
+# application variations (cs, cs1, cs2) concurrently. Shared directories would cause
+# FAISS index corruption and parquet file contention during simultaneous writes.
+search_directory = "C:/Users/{username}/.claude-search-cs"
+auto_detect_environment = true
+
+[indexing]
+batch_size = 1000
+auto_index = true
+index_interval_minutes = 60
+max_workers = 4
+
+[search]
+default_mode = "hybrid"
+max_results = 100
+snippet_length = 200
+
+[embedding]
+model = "all-MiniLM-L6-v2"
+batch_size = 32
+cache_embeddings = true
+
+[ui]
+theme = "auto"
+font_family = "Segoe UI"
+font_size = 11
+highlight_color = "#FFEB3B"
+
+[performance]
+memory_limit_mb = 3000
+query_cache_size = 100
+enable_profiling = false

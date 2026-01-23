@@ -1,0 +1,7 @@
+#!/usr/bin/env python
+"""Searchat CLI - semantic search for AI coding agents"""
+
+from searchat.cli import main
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,67 @@
+# Isolated Variants Configuration Example
+#
+# Use case: Running multiple searchat variants concurrently
+# Each variant has its own data directory to prevent FAISS index conflicts
+#
+# This is the actual configuration pattern used in the searchat directory
+# to prevent corruption when testing multiple implementations simultaneously
+
+[paths]
+# CRITICAL: Each variant MUST use a different search directory
+#
+# This prevents:
+# - FAISS index file locking conflicts
+# - Parquet file concurrent write corruption
+# - Cache invalidation issues
+
+search_directory = "C:/Users/{username}/.searchat"
+
+# All variants can share the same source Claude directories
+claude_directory_windows = "C:/Users/{username}/.claude"
+claude_directory_wsl = "\\\\wsl$\\Ubuntu\\home\\syd\\.claude"
+
+auto_detect_environment = true
+
+[indexing]
+batch_size = 1000
+auto_index = true
+index_interval_minutes = 60
+max_workers = 4
+
+[search]
+default_mode = "hybrid"
+max_results = 100
+snippet_length = 200
+
+[embedding]
+model = "all-MiniLM-L6-v2"
+batch_size = 32
+cache_embeddings = true
+
+[ui]
+theme = "auto"
+font_family = "Segoe UI"
+font_size = 11
+highlight_color = "#FFEB3B"
+
+[performance]
+memory_limit_mb = 3000
+query_cache_size = 100
+enable_profiling = false
+
+# Environment variable overrides:
+#
+#   SEARCHAT_DATA_DIR=C:/Users/Syd/.searchat
+#   SEARCHAT_PORT=8000
+
+# Directory structure:
+# ~/.searchat/
+# ├── config/
+# │   ├── settings.toml
+# │   └── .env
+# ├── data/
+# │   ├── conversations.parquet
+# │   ├── faiss.index
+# │   └── embeddings_cache/
+# └── logs/
+#     └── searchat.log

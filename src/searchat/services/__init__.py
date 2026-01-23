@@ -1,0 +1,8 @@
+"""External integrations and utilities."""
+from searchat.services.backup import BackupManager
+from searchat.services.platform_utils import PlatformManager
+
+__all__ = [
+    "BackupManager",
+    "PlatformManager",
+]
