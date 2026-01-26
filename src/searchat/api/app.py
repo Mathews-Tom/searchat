@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import time
 from pathlib import Path
 from typing import List
 from datetime import datetime
@@ -126,6 +127,7 @@ def on_new_conversations(file_paths: List[str]) -> None:
 @app.on_event("startup")
 async def startup_event():
     """Initialize services and start the file watcher on server startup."""
+    started = time.perf_counter()
     # IMPORTANT: Initialize services FIRST (loads config)
     initialize_services()
 
@@ -136,6 +138,10 @@ async def startup_event():
     config = get_config()
     setup_logging(config.logging)
     logger = get_logger(__name__)
+
+    if os.getenv("SEARCHAT_PROFILE_STARTUP") == "1":
+        elapsed_ms = (time.perf_counter() - started) * 1000.0
+        logger.info("Startup: initialize_services + schedule warmup %.1fms", elapsed_ms)
 
     # Start file watcher in background (do not block startup).
     asyncio.create_task(_start_watcher_background(config))

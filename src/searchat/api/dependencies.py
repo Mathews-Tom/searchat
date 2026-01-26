@@ -7,6 +7,9 @@ import time. Heavy resources are initialized lazily and/or in background warmup.
 from __future__ import annotations
 
 import asyncio
+import logging
+import os
+import time
 from threading import Lock
 from typing import Optional
 from pathlib import Path
@@ -14,6 +17,9 @@ from pathlib import Path
 from searchat.services import BackupManager, PlatformManager
 from searchat.config import Config, PathResolver
 from searchat.api.readiness import get_readiness
+
+
+logger = logging.getLogger(__name__)
 
 
 # Global singletons (initialized on startup)
@@ -58,8 +64,6 @@ def initialize_services():
         from searchat.api.duckdb_store import DuckDBStore
 
         _duckdb_store = DuckDBStore(_search_dir, memory_limit_mb=_config.performance.memory_limit_mb)
-        readiness.set_component("duckdb", "ready")
-        readiness.set_component("parquet", "ready")
         readiness.set_component("services", "ready")
     except Exception as e:
         readiness.set_component("services", "error", error=str(e))
@@ -90,14 +94,38 @@ def start_background_warmup() -> None:
 
 async def _warmup_all() -> None:
     """Warm up heavy components in the background."""
+    await asyncio.to_thread(_warmup_duckdb_parquet)
     # Warm search engine object first (cheap)
     await asyncio.to_thread(_ensure_search_engine)
     # Then warm semantic components (FAISS, metadata, embedder)
     await asyncio.to_thread(_warmup_semantic_components)
 
 
+def _warmup_duckdb_parquet() -> None:
+    readiness = get_readiness()
+    started = time.perf_counter()
+    try:
+        readiness.set_component("duckdb", "loading")
+        readiness.set_component("parquet", "loading")
+
+        store = get_duckdb_store()
+        store.validate_parquet_scan()
+
+        readiness.set_component("duckdb", "ready")
+        readiness.set_component("parquet", "ready")
+    except Exception as e:
+        msg = str(e)
+        readiness.set_component("duckdb", "error", error=msg)
+        readiness.set_component("parquet", "error", error=msg)
+    finally:
+        if os.getenv("SEARCHAT_PROFILE_WARMUP") == "1":
+            elapsed_ms = (time.perf_counter() - started) * 1000.0
+            logger.info("Warmup: duckdb/parquet %.1fms", elapsed_ms)
+
+
 def _warmup_semantic_components() -> None:
     readiness = get_readiness()
+    started = time.perf_counter()
     try:
         readiness.set_component("metadata", "loading")
         readiness.set_component("faiss", "loading")
@@ -115,6 +143,10 @@ def _warmup_semantic_components() -> None:
         readiness.set_component("metadata", "error", error=msg)
         readiness.set_component("faiss", "error", error=msg)
         readiness.set_component("embedder", "error", error=msg)
+    finally:
+        if os.getenv("SEARCHAT_PROFILE_WARMUP") == "1":
+            elapsed_ms = (time.perf_counter() - started) * 1000.0
+            logger.info("Warmup: semantic components %.1fms", elapsed_ms)
 
 
 def get_or_create_search_engine():
