@@ -45,6 +45,8 @@ def test_duckdb_store_list_conversations_builds_where_and_params(tmp_path: Path)
         project_id="p1",
         date_from=date_from,
         date_to=date_to,
+        limit=10,
+        offset=5,
     )
 
     assert rows[0]["conversation_id"] == "c1"
@@ -53,7 +55,11 @@ def test_duckdb_store_list_conversations_builds_where_and_params(tmp_path: Path)
     assert "project_id = ?" in query
     assert "updated_at >= ?" in query
     assert "updated_at < ?" in query
-    assert params[1:] == ["p1", date_from, date_to]
+    assert params[1:] == ["p1", date_from, date_to, 10, 5]
+
+    assert "LIMIT ?" in query
+    assert "OFFSET ?" in query
+    assert params[-2:] == [10, 5]
 
 
 def test_duckdb_store_get_statistics_handles_none_row(tmp_path: Path) -> None:
@@ -71,3 +77,18 @@ def test_duckdb_store_get_statistics_handles_none_row(tmp_path: Path) -> None:
     assert stats.total_conversations == 0
     assert stats.total_messages == 0
     assert stats.total_projects == 0
+
+
+def test_duckdb_store_validate_parquet_scan_runs_select(tmp_path: Path) -> None:
+    from searchat.api.duckdb_store import DuckDBStore
+
+    store = DuckDBStore(tmp_path)
+
+    con = MagicMock()
+    con.execute.return_value = con
+    con.fetchone.return_value = (1,)
+    store._connect = MagicMock(return_value=con)  # type: ignore[method-assign]
+    store._conversation_parquets = MagicMock(return_value=[])  # type: ignore[method-assign]
+
+    store.validate_parquet_scan()
+    con.execute.assert_called()

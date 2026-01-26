@@ -2,6 +2,7 @@
 import asyncio
 import json
 import logging
+import time
 from pathlib import Path
 from typing import List, Optional
 from datetime import datetime, timedelta
@@ -35,9 +36,12 @@ async def get_all_conversations(
     project: Optional[str] = Query(None, description="Filter by project"),
     date: Optional[str] = Query(None, description="Date filter: today, week, month, or custom"),
     date_from: Optional[str] = Query(None, description="Custom date from (YYYY-MM-DD)"),
-    date_to: Optional[str] = Query(None, description="Custom date to (YYYY-MM-DD)")
+    date_to: Optional[str] = Query(None, description="Custom date to (YYYY-MM-DD)"),
+    limit: Optional[int] = Query(None, ge=1, le=5000, description="Max results to return"),
+    offset: int = Query(0, ge=0, description="Offset for pagination"),
 ):
     """Get all conversations with sorting and filtering."""
+    started = time.perf_counter()
     try:
         store = deps.get_duckdb_store()
 
@@ -64,11 +68,19 @@ async def get_all_conversations(
                 date_from_dt = now - timedelta(days=30)
                 date_to_dt = now
 
+        total = store.count_conversations(
+            project_id=project,
+            date_from=date_from_dt,
+            date_to=date_to_dt,
+        )
+
         rows = store.list_conversations(
             sort_by=sort_by,
             project_id=project,
             date_from=date_from_dt,
             date_to=date_to_dt,
+            limit=limit,
+            offset=offset,
         )
 
         response_results = []
@@ -94,8 +106,8 @@ async def get_all_conversations(
 
         return {
             "results": response_results,
-            "total": len(response_results),
-            "search_time_ms": 0
+            "total": total,
+            "search_time_ms": int((time.perf_counter() - started) * 1000.0),
         }
 
     except Exception as e:

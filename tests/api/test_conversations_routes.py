@@ -56,7 +56,15 @@ def mock_duckdb_store():
         },
     ]
 
-    def _list_conversations(*, sort_by="length", project_id=None, date_from=None, date_to=None):
+    def _list_conversations(
+        *,
+        sort_by="length",
+        project_id=None,
+        date_from=None,
+        date_to=None,
+        limit=None,
+        offset=0,
+    ):
         rows = [r for r in mock._data if r["message_count"] > 0]
         if project_id:
             rows = [r for r in rows if r["project_id"] == project_id]
@@ -74,7 +82,22 @@ def mock_duckdb_store():
         elif sort_by == "title":
             rows.sort(key=lambda r: r["title"])
 
+        if offset:
+            rows = rows[int(offset):]
+        if limit is not None:
+            rows = rows[: int(limit)]
+
         return rows
+
+    def _count_conversations(*, project_id=None, date_from=None, date_to=None):
+        rows = [r for r in mock._data if r["message_count"] > 0]
+        if project_id:
+            rows = [r for r in rows if r["project_id"] == project_id]
+        if date_from:
+            rows = [r for r in rows if r["updated_at"] >= date_from]
+        if date_to:
+            rows = [r for r in rows if r["updated_at"] < date_to]
+        return len(rows)
 
     def _get_meta(conversation_id: str):
         for r in mock._data:
@@ -91,6 +114,7 @@ def mock_duckdb_store():
         return None
 
     mock.list_conversations.side_effect = _list_conversations
+    mock.count_conversations.side_effect = _count_conversations
     mock.get_conversation_meta.side_effect = _get_meta
     return mock
 
@@ -311,6 +335,17 @@ class TestGetAllConversationsEndpoint:
 
             assert data["total"] == 0
             assert len(data["results"]) == 0
+
+    def test_get_all_conversations_pagination_limit_offset(self, client, mock_duckdb_store):
+        with patch('searchat.api.routers.conversations.deps.get_duckdb_store', return_value=mock_duckdb_store):
+            response = client.get("/api/conversations/all?sort_by=length&limit=1&offset=1")
+
+            assert response.status_code == 200
+            data = response.json()
+
+            assert data["total"] == 2
+            assert len(data["results"]) == 1
+            assert data["results"][0]["conversation_id"] == "conv-2"
 
     def test_get_all_conversations_filter_by_date_today(self, client, mock_duckdb_store):
         """Test filtering conversations from today."""

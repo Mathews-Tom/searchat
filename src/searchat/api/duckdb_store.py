@@ -69,6 +69,8 @@ class DuckDBStore:
         project_id: str | None = None,
         date_from: datetime | None = None,
         date_to: datetime | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> list[dict]:
         parquets = self._conversation_parquets()
         if not parquets:
@@ -114,6 +116,11 @@ class DuckDBStore:
             WHERE {where_clause}
             ORDER BY {order_by}
             """
+
+            if limit is not None:
+                query += "\nLIMIT ?\nOFFSET ?"
+                params.append(int(limit))
+                params.append(int(offset))
             rows = con.execute(query, params).fetchall()
             columns = [
                 "conversation_id",
@@ -126,6 +133,67 @@ class DuckDBStore:
                 "full_text",
             ]
             return [dict(zip(columns, row)) for row in rows]
+        finally:
+            con.close()
+
+    def count_conversations(
+        self,
+        *,
+        project_id: str | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+    ) -> int:
+        parquets = self._conversation_parquets()
+        if not parquets:
+            return 0
+
+        conditions = ["message_count > 0"]
+        params: list[object] = [str(self._conversations_dir / "*.parquet")]
+
+        if project_id:
+            conditions.append("project_id = ?")
+            params.append(project_id)
+
+        if date_from:
+            conditions.append("updated_at >= ?")
+            params.append(date_from)
+
+        if date_to:
+            conditions.append("updated_at < ?")
+            params.append(date_to)
+
+        where_clause = " AND ".join(conditions)
+
+        con = self._connect()
+        try:
+            query = f"""
+            SELECT COUNT(*)::BIGINT
+            FROM parquet_scan(?)
+            WHERE {where_clause}
+            """
+            row = con.execute(query, params).fetchone()
+            if row is None:
+                return 0
+            return int(row[0])
+        finally:
+            con.close()
+
+    def validate_parquet_scan(self) -> None:
+        """Validate DuckDB can connect and scan parquet files.
+
+        If no conversation parquets exist yet, this validates the DuckDB runtime
+        only (connection + simple query).
+        """
+        con = self._connect()
+        try:
+            con.execute("SELECT 1").fetchone()
+
+            parquets = self._conversation_parquets()
+            if parquets:
+                con.execute(
+                    "SELECT 1 FROM parquet_scan(?) LIMIT 1",
+                    [str(self._conversations_dir / "*.parquet")],
+                ).fetchone()
         finally:
             con.close()
 
