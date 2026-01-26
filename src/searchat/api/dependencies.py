@@ -58,6 +58,8 @@ def initialize_services():
         from searchat.api.duckdb_store import DuckDBStore
 
         _duckdb_store = DuckDBStore(_search_dir, memory_limit_mb=_config.performance.memory_limit_mb)
+        readiness.set_component("duckdb", "ready")
+        readiness.set_component("parquet", "ready")
         readiness.set_component("services", "ready")
     except Exception as e:
         readiness.set_component("services", "error", error=str(e))
@@ -67,6 +69,9 @@ def initialize_services():
 def start_background_warmup() -> None:
     """Kick off background warmup (non-blocking, idempotent)."""
     global _warmup_task
+
+    if _config is None or _search_dir is None:
+        return
 
     readiness = get_readiness()
     readiness.mark_warmup_started()
@@ -85,8 +90,56 @@ def start_background_warmup() -> None:
 
 async def _warmup_all() -> None:
     """Warm up heavy components in the background."""
-    # Warm search engine first (most user-visible feature)
+    # Warm search engine object first (cheap)
     await asyncio.to_thread(_ensure_search_engine)
+    # Then warm semantic components (FAISS, metadata, embedder)
+    await asyncio.to_thread(_warmup_semantic_components)
+
+
+def _warmup_semantic_components() -> None:
+    readiness = get_readiness()
+    try:
+        readiness.set_component("metadata", "loading")
+        readiness.set_component("faiss", "loading")
+        readiness.set_component("embedder", "loading")
+
+        engine = _ensure_search_engine()
+        engine.ensure_semantic_ready()
+
+        readiness.set_component("metadata", "ready")
+        readiness.set_component("faiss", "ready")
+        readiness.set_component("embedder", "ready")
+    except Exception as e:
+        # Mark all as error; semantic/hybrid should fail fast.
+        msg = str(e)
+        readiness.set_component("metadata", "error", error=msg)
+        readiness.set_component("faiss", "error", error=msg)
+        readiness.set_component("embedder", "error", error=msg)
+
+
+def get_or_create_search_engine():
+    """Get search engine, creating it if needed (cheap)."""
+    return _ensure_search_engine()
+
+
+def invalidate_search_index() -> None:
+    """Clear caches and mark semantic components stale after indexing."""
+    global projects_cache, stats_cache
+
+    projects_cache = None
+    stats_cache = None
+
+    engine = _search_engine
+    if engine is not None:
+        engine.refresh_index()
+
+    readiness = get_readiness()
+    # Mark semantic components as not ready; warmup will rebuild.
+    readiness.set_component("metadata", "idle")
+    readiness.set_component("faiss", "idle")
+    readiness.set_component("embedder", "idle")
+
+    start_background_warmup()
 
 
 def get_config() -> Config:
@@ -110,7 +163,7 @@ def get_duckdb_store():
     return _duckdb_store
 
 
-def get_search_engine() -> SearchEngine:
+def get_search_engine():
     """Get search engine singleton."""
     if _config is None or _search_dir is None:
         raise RuntimeError("Services not initialized. Call initialize_services() first.")
@@ -120,7 +173,7 @@ def get_search_engine() -> SearchEngine:
     return engine
 
 
-def get_indexer() -> ConversationIndexer:
+def get_indexer():
     """Get indexer singleton."""
     if _config is None or _search_dir is None:
         raise RuntimeError("Services not initialized. Call initialize_services() first.")
@@ -145,12 +198,12 @@ def get_platform_manager() -> PlatformManager:
     return _platform_manager
 
 
-def get_watcher() -> Optional[ConversationWatcher]:
+def get_watcher():
     """Get watcher singleton (may be None if not started)."""
     return _watcher
 
 
-def set_watcher(watcher: Optional[ConversationWatcher]):
+def set_watcher(watcher):
     """Set watcher singleton."""
     global _watcher
     _watcher = watcher

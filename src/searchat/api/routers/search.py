@@ -9,7 +9,7 @@ from searchat.models import SearchMode, SearchFilters
 from searchat.api.models import SearchResultResponse
 import searchat.api.dependencies as deps
 
-from searchat.api.dependencies import get_search_engine, trigger_search_engine_warmup
+from searchat.api.dependencies import get_search_engine, get_or_create_search_engine, trigger_search_engine_warmup
 from searchat.api.readiness import get_readiness, warming_payload, error_payload
 
 
@@ -29,16 +29,6 @@ async def search(
 ):
     """Search conversations with filters and sorting."""
     try:
-        readiness = get_readiness().snapshot()
-        engine_state = readiness.components.get("search_engine")
-        if engine_state == "error":
-            return JSONResponse(status_code=500, content=error_payload())
-        if engine_state != "ready":
-            trigger_search_engine_warmup()
-            return JSONResponse(status_code=503, content=warming_payload())
-
-        search_engine = get_search_engine()
-
         # Convert mode string to SearchMode enum
         mode_map = {
             "hybrid": SearchMode.HYBRID,
@@ -46,6 +36,24 @@ async def search(
             "keyword": SearchMode.KEYWORD
         }
         search_mode = mode_map.get(mode, SearchMode.HYBRID)
+
+        # Treat wildcard as keyword-only browsing.
+        if q.strip() == "*":
+            search_mode = SearchMode.KEYWORD
+
+        # Keyword search should work without semantic warmup.
+        if search_mode == SearchMode.KEYWORD:
+            search_engine = get_or_create_search_engine()
+        else:
+            readiness = get_readiness().snapshot()
+            for key in ("metadata", "faiss", "embedder"):
+                if readiness.components.get(key) == "error":
+                    return JSONResponse(status_code=500, content=error_payload())
+            if any(readiness.components.get(key) != "ready" for key in ("metadata", "faiss", "embedder")):
+                trigger_search_engine_warmup()
+                return JSONResponse(status_code=503, content=warming_payload())
+
+            search_engine = get_search_engine()
 
         # Build filters
         filters = SearchFilters()

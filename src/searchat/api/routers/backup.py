@@ -6,8 +6,7 @@ from fastapi import APIRouter, HTTPException
 
 from searchat.api.dependencies import (
     get_backup_manager,
-    get_search_engine,
-    projects_cache,
+    invalidate_search_index,
 )
 
 
@@ -54,11 +53,8 @@ async def list_backups():
 @router.post("/restore")
 async def restore_backup(backup_name: str):
     """Restore from a backup."""
-    global projects_cache
-
     try:
         backup_manager = get_backup_manager()
-        search_engine = get_search_engine()
 
         backup_path = backup_manager.backup_dir / backup_name
 
@@ -72,11 +68,7 @@ async def restore_backup(backup_name: str):
             create_pre_restore_backup=True
         )
 
-        # Reload search engine to pick up restored data
-        search_engine._initialize()
-
-        # Clear projects cache
-        projects_cache = None
+        invalidate_search_index()
 
         result = {
             "success": True,

@@ -106,10 +106,7 @@ def on_new_conversations(file_paths: List[str]) -> None:
         stats = indexer.index_append_only(file_paths, progress)
 
         if stats.new_conversations > 0:
-            # Reload search engine to pick up new data
-            search_engine._initialize()
-            deps.projects_cache = None  # Clear cache
-            deps.stats_cache = None
+            deps.invalidate_search_index()
 
             watcher_stats["indexed_count"] += stats.new_conversations
             watcher_stats["last_update"] = datetime.now().isoformat()

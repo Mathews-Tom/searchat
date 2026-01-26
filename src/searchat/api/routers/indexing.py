@@ -13,11 +13,9 @@ import searchat.api.dependencies as deps
 from searchat.api.dependencies import (
     get_config,
     get_indexer,
-    get_search_engine,
     indexing_state,
+    invalidate_search_index,
 )
-from searchat.api.dependencies import trigger_search_engine_warmup
-from searchat.api.readiness import get_readiness
 
 
 router = APIRouter()
@@ -114,18 +112,7 @@ async def index_missing():
             progress,
         )
 
-        # Reload search engine to pick up new data (if already initialized)
-        readiness = get_readiness().snapshot()
-        if readiness.components.get("search_engine") == "ready":
-            search_engine = get_search_engine()
-            search_engine._initialize()
-        else:
-            # Search engine is warming/not initialized yet; start warmup so new data is picked up later.
-            trigger_search_engine_warmup()
-
-        # Clear caches
-        deps.projects_cache = None
-        deps.stats_cache = None
+        invalidate_search_index()
 
         elapsed_time = time.time() - start_time
         failed_count = stats.skipped_conversations

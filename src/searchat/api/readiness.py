@@ -33,7 +33,12 @@ class Readiness:
         self._warmup_started_at: str | None = None
         self._components: dict[str, ComponentState] = {
             "services": "idle",
+            "duckdb": "idle",
+            "parquet": "idle",
             "search_engine": "idle",
+            "faiss": "idle",
+            "metadata": "idle",
+            "embedder": "idle",
             "indexer": "idle",
         }
         self._watcher: WatcherState = "disabled"
