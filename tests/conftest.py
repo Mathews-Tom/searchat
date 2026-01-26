@@ -83,6 +83,18 @@ mock_faiss_module.write_index = MagicMock()
 sys.modules['faiss'] = mock_faiss_module
 
 
+# Mock DuckDB to avoid native extension dependency during testing
+mock_duckdb_module = MagicMock()
+mock_duckdb_con = MagicMock()
+mock_duckdb_con.execute.return_value = mock_duckdb_con
+mock_duckdb_con.fetchall.return_value = []
+mock_duckdb_con.fetchone.return_value = None
+mock_duckdb_con.close.return_value = None
+mock_duckdb_module.connect.return_value = mock_duckdb_con
+
+sys.modules['duckdb'] = mock_duckdb_module
+
+
 # ============================================================================
 # PYTEST FIXTURES
 # ============================================================================

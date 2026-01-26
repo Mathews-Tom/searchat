@@ -1,5 +1,8 @@
 """FastAPI application initialization and configuration."""
+
+import asyncio
 import os
+import time
 from pathlib import Path
 from typing import List
 from datetime import datetime
@@ -9,20 +12,22 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from searchat.core import ConversationWatcher
+from searchat.core.watcher import ConversationWatcher
 from searchat.core.logging_config import setup_logging, get_logger
 from searchat.core.progress import LoggingProgressAdapter
 from searchat.api.dependencies import (
     initialize_services,
+    start_background_warmup,
     get_config,
     get_indexer,
     get_search_engine,
     get_watcher,
     set_watcher,
-    projects_cache,
     watcher_stats,
     indexing_state,
 )
+import searchat.api.dependencies as deps
+from searchat.api.readiness import get_readiness
 from searchat.api.routers import (
     search_router,
     conversations_router,
@@ -30,6 +35,7 @@ from searchat.api.routers import (
     indexing_router,
     backup_router,
     admin_router,
+    status_router,
 )
 from searchat.config.constants import (
     DEFAULT_HOST,
@@ -74,6 +80,7 @@ app.include_router(stats_router, prefix="/api", tags=["statistics"])
 app.include_router(indexing_router, prefix="/api", tags=["indexing"])
 app.include_router(backup_router, prefix="/api/backup", tags=["backup"])
 app.include_router(admin_router, prefix="/api", tags=["admin"])
+app.include_router(status_router, prefix="/api", tags=["status"])
 
 
 def on_new_conversations(file_paths: List[str]) -> None:
@@ -100,9 +107,7 @@ def on_new_conversations(file_paths: List[str]) -> None:
         stats = indexer.index_append_only(file_paths, progress)
 
         if stats.new_conversations > 0:
-            # Reload search engine to pick up new data
-            search_engine._initialize()
-            projects_cache = None  # Clear cache
+            deps.invalidate_search_index()
 
             watcher_stats["indexed_count"] += stats.new_conversations
             watcher_stats["last_update"] = datetime.now().isoformat()
@@ -122,32 +127,53 @@ def on_new_conversations(file_paths: List[str]) -> None:
 @app.on_event("startup")
 async def startup_event():
     """Initialize services and start the file watcher on server startup."""
+    started = time.perf_counter()
     # IMPORTANT: Initialize services FIRST (loads config)
     initialize_services()
+
+    # Start warmup in background (non-blocking)
+    start_background_warmup()
 
     # THEN get config and setup logging
     config = get_config()
     setup_logging(config.logging)
     logger = get_logger(__name__)
 
-    # Start file watcher
-    indexer = get_indexer()
+    if os.getenv("SEARCHAT_PROFILE_STARTUP") == "1":
+        elapsed_ms = (time.perf_counter() - started) * 1000.0
+        logger.info("Startup: initialize_services + schedule warmup %.1fms", elapsed_ms)
 
-    watcher = ConversationWatcher(
-        config=config,
-        on_update=on_new_conversations,
-        batch_delay_seconds=5.0,
-        debounce_seconds=2.0,
-    )
+    # Start file watcher in background (do not block startup).
+    asyncio.create_task(_start_watcher_background(config))
 
-    # Initialize with already-indexed files
-    indexed_paths = indexer.get_indexed_file_paths()
-    watcher.set_indexed_files(indexed_paths)
 
-    watcher.start()
-    set_watcher(watcher)
+async def _start_watcher_background(config):
+    readiness = get_readiness()
+    readiness.set_watcher("starting")
 
-    logger.info(f"Live watcher started, monitoring {len(watcher.get_watched_directories())} directories")
+    logger = get_logger(__name__)
+    try:
+        indexer = get_indexer()
+        watcher = ConversationWatcher(
+            config=config,
+            on_update=on_new_conversations,
+            batch_delay_seconds=5.0,
+            debounce_seconds=2.0,
+        )
+
+        indexed_paths = await asyncio.to_thread(indexer.get_indexed_file_paths)
+        watcher.set_indexed_files(indexed_paths)
+
+        watcher.start()
+        set_watcher(watcher)
+
+        readiness.set_watcher("running")
+        logger.info(
+            f"Live watcher started, monitoring {len(watcher.get_watched_directories())} directories"
+        )
+    except Exception as e:
+        readiness.set_watcher("error", error=str(e))
+        logger.error(f"Failed to start watcher: {e}")
 
 
 @app.on_event("shutdown")
@@ -176,6 +202,15 @@ def main():
     """Run the server with configurable host and port."""
     import uvicorn
     import socket
+    import warnings
+
+    # Python 3.12 can emit a noisy multiprocessing.resource_tracker warning on
+    # shutdown with some native deps (e.g., torch/sentence-transformers).
+    warnings.filterwarnings(
+        "ignore",
+        message=r"resource_tracker: There appear to be .* leaked semaphore objects to clean up at shutdown",
+        category=UserWarning,
+    )
 
     # Get host from environment or use default
     host = os.getenv(ENV_HOST, DEFAULT_HOST)

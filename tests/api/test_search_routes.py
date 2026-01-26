@@ -15,6 +15,17 @@ def client():
     return TestClient(app)
 
 
+@pytest.fixture(autouse=True)
+def semantic_components_ready():
+    """Make semantic components appear warmed for API route unit tests."""
+    readiness = Mock()
+    readiness.snapshot.return_value = Mock(
+        components={"metadata": "ready", "faiss": "ready", "embedder": "ready"}
+    )
+    with patch('searchat.api.routers.search.get_readiness', return_value=readiness):
+        yield
+
+
 @pytest.fixture
 def mock_search_engine():
     """Mock SearchEngine for testing."""
@@ -43,12 +54,13 @@ def mock_search_engine():
         mode_used="hybrid"
     )
 
-    # Mock conversations_df for projects endpoint
-    import pandas as pd
-    mock.conversations_df = pd.DataFrame({
-        'project_id': ['project-a', 'project-b', 'project-c']
-    })
+    return mock
 
+
+@pytest.fixture
+def mock_duckdb_store():
+    mock = Mock()
+    mock.list_projects.return_value = ["project-a", "project-b", "project-c"]
     return mock
 
 
@@ -105,7 +117,7 @@ class TestSearchEndpoint:
 
     def test_search_mode_keyword(self, client, mock_search_engine):
         """Test search with keyword mode - exact text matching."""
-        with patch('searchat.api.routers.search.get_search_engine', return_value=mock_search_engine):
+        with patch('searchat.api.routers.search.get_or_create_search_engine', return_value=mock_search_engine):
             # Keyword mode should handle specific terms
             response = client.get("/api/search?q=def binary_search&mode=keyword")
 
@@ -456,7 +468,7 @@ class TestSearchEndpoint:
             mode_used="keyword"
         )
 
-        with patch('searchat.api.routers.search.get_search_engine', return_value=mock_search_engine):
+        with patch('searchat.api.routers.search.get_or_create_search_engine', return_value=mock_search_engine):
             # Search with partial word "apologiz" (missing 'e' or 'ing')
             response = client.get("/api/search?q=apologiz&mode=keyword")
 
@@ -548,7 +560,7 @@ class TestSearchEndpoint:
             mode_used="keyword"
         )
 
-        with patch('searchat.api.routers.search.get_search_engine', return_value=mock_search_engine):
+        with patch('searchat.api.routers.search.get_or_create_search_engine', return_value=mock_search_engine):
             # Search with lowercase partial word should match uppercase full word
             response = client.get("/api/search?q=datab&mode=keyword")
 
@@ -574,10 +586,10 @@ class TestSearchEndpoint:
 class TestProjectsEndpoint:
     """Tests for /api/projects endpoint."""
 
-    def test_get_projects(self, client, mock_search_engine):
+    def test_get_projects(self, client, mock_duckdb_store):
         """Test getting list of projects."""
-        with patch('searchat.api.routers.search.get_search_engine', return_value=mock_search_engine):
-            with patch('searchat.api.routers.search.projects_cache', None):
+        with patch('searchat.api.routers.search.deps.get_duckdb_store', return_value=mock_duckdb_store):
+            with patch('searchat.api.routers.search.deps.projects_cache', None):
                 response = client.get("/api/projects")
 
                 assert response.status_code == 200
@@ -588,11 +600,10 @@ class TestProjectsEndpoint:
                 # Should be sorted
                 assert projects == ["project-a", "project-b", "project-c"]
 
-    def test_get_projects_uses_cache(self, client, mock_search_engine):
+    def test_get_projects_uses_cache(self, client, mock_duckdb_store):
         """Test that projects endpoint uses cache."""
-        with patch('searchat.api.routers.search.get_search_engine', return_value=mock_search_engine):
-            # Set cache
-            with patch('searchat.api.routers.search.projects_cache', ["cached-project"]):
+        with patch('searchat.api.routers.search.deps.get_duckdb_store', return_value=mock_duckdb_store):
+            with patch('searchat.api.routers.search.deps.projects_cache', ["cached-project"]):
                 response = client.get("/api/projects")
 
                 assert response.status_code == 200

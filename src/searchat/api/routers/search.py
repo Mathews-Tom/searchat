@@ -3,10 +3,14 @@ from typing import Optional, List
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Query, HTTPException
+from fastapi.responses import JSONResponse
 
 from searchat.models import SearchMode, SearchFilters
 from searchat.api.models import SearchResultResponse
-from searchat.api.dependencies import get_search_engine, projects_cache
+import searchat.api.dependencies as deps
+
+from searchat.api.dependencies import get_search_engine, get_or_create_search_engine, trigger_search_engine_warmup
+from searchat.api.readiness import get_readiness, warming_payload, error_payload
 
 
 router = APIRouter()
@@ -25,8 +29,6 @@ async def search(
 ):
     """Search conversations with filters and sorting."""
     try:
-        search_engine = get_search_engine()
-
         # Convert mode string to SearchMode enum
         mode_map = {
             "hybrid": SearchMode.HYBRID,
@@ -34,6 +36,24 @@ async def search(
             "keyword": SearchMode.KEYWORD
         }
         search_mode = mode_map.get(mode, SearchMode.HYBRID)
+
+        # Treat wildcard as keyword-only browsing.
+        if q.strip() == "*":
+            search_mode = SearchMode.KEYWORD
+
+        # Keyword search should work without semantic warmup.
+        if search_mode == SearchMode.KEYWORD:
+            search_engine = get_or_create_search_engine()
+        else:
+            readiness = get_readiness().snapshot()
+            for key in ("metadata", "faiss", "embedder"):
+                if readiness.components.get(key) == "error":
+                    return JSONResponse(status_code=500, content=error_payload())
+            if any(readiness.components.get(key) != "ready" for key in ("metadata", "faiss", "embedder")):
+                trigger_search_engine_warmup()
+                return JSONResponse(status_code=503, content=warming_payload())
+
+            search_engine = get_search_engine()
 
         # Build filters
         filters = SearchFilters()
@@ -104,11 +124,10 @@ async def search(
 
 
 @router.get("/projects")
-async def get_projects() -> List[str]:
+async def get_projects():
     """Get list of all projects in the index."""
-    global projects_cache
-    search_engine = get_search_engine()
+    store = deps.get_duckdb_store()
 
-    if projects_cache is None:
-        projects_cache = sorted(search_engine.conversations_df['project_id'].unique().tolist())
-    return projects_cache
+    if deps.projects_cache is None:
+        deps.projects_cache = store.list_projects()
+    return deps.projects_cache

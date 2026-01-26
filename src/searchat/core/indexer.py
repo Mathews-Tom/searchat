@@ -9,7 +9,6 @@ import numpy as np
 import faiss
 import pyarrow as pa
 import pyarrow.parquet as pq
-from sentence_transformers import SentenceTransformer
 
 from searchat.core.logging_config import get_logger
 from searchat.core.progress import ProgressCallback, NullProgressAdapter
@@ -43,25 +42,45 @@ class ConversationIndexer:
         self.data_dir = search_dir / "data"
         self.conversations_dir = self.data_dir / "conversations"
         self.indices_dir = self.data_dir / "indices"
+        self.indexed_paths_path = self.indices_dir / "indexed_paths.parquet"
 
         if config is None:
             config = Config.load()
         self.config = config
 
-        # Check for GPU availability and warn if not using it
-        from searchat.gpu_check import check_and_warn_gpu
-        check_and_warn_gpu()
-
-        # Initialize embedder with GPU if available
-        device = config.embedding.get_device()
-        logger.info(f"Initializing embedding model on device: {device}")
-        self.embedder = SentenceTransformer(config.embedding.model, device=device)
+        # Embedder is initialized lazily (first indexing operation).
+        self._embedder = None
 
         self.batch_size = config.embedding.batch_size
         self.chunk_size = 1500
         self.chunk_overlap = 200
 
         self._ensure_directories()
+
+    def _write_indexed_paths(self, paths: set[str]) -> None:
+        """Persist the set of indexed source file paths.
+
+        This avoids scanning all conversation parquets on every watcher start.
+        """
+        table = pa.Table.from_pydict({"file_path": sorted(paths)})
+        pq.write_table(table, self.indexed_paths_path)
+
+    def _get_embedder(self):
+        """Create and cache the embedding model on first use."""
+        if self._embedder is not None:
+            return self._embedder
+
+        # Check for GPU availability and warn if not using it
+        from searchat.gpu_check import check_and_warn_gpu
+
+        check_and_warn_gpu()
+
+        from sentence_transformers import SentenceTransformer
+
+        device = self.config.embedding.get_device()
+        logger.info(f"Initializing embedding model on device: {device}")
+        self._embedder = SentenceTransformer(self.config.embedding.model, device=device)
+        return self._embedder
     
     def _ensure_directories(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
@@ -76,6 +95,19 @@ class ConversationIndexer:
         
         if len(text) <= chunk_size:
             return [text]
+
+        # Fast path for long unstructured text (no sentence boundaries): fixed-size chunks.
+        if not re.search(r"[.!?]", text):
+            overlap = max(0, min(overlap, chunk_size - 1))
+            chunks: List[str] = []
+            start = 0
+            while start < len(text):
+                end = min(start + chunk_size, len(text))
+                chunks.append(text[start:end])
+                if end >= len(text):
+                    break
+                start = max(0, end - overlap)
+            return chunks
         
         # Split by sentences (simple approach using common punctuation)
         sentences = re.split(r'(?<=[.!?])\s+', text)
@@ -336,6 +368,9 @@ class ConversationIndexer:
 
         self._write_index_metadata(len(all_records), len(embeddings_array))
 
+        # Persist indexed source paths for fast watcher startup.
+        self._write_indexed_paths({r.file_path for r in all_records})
+
         # Update final stats
         progress.update_stats(
             conversations=len(all_records),
@@ -389,7 +424,8 @@ class ConversationIndexer:
         all_embeddings = []
         for i in range(0, len(texts), self.batch_size):
             batch = texts[i:i + self.batch_size]
-            batch_embeddings = self.embedder.encode(
+            embedder = self._get_embedder()
+            batch_embeddings = embedder.encode(
                 batch,
                 batch_size=self.batch_size,
                 show_progress_bar=False,
@@ -412,15 +448,22 @@ class ConversationIndexer:
         file_hash = hashlib.sha256(json_path.read_bytes()).hexdigest()
         
         conversation_id = json_path.stem
+        def _extract_content(entry):
+            raw = entry.get('message', {})
+            raw_content = raw.get('content', raw.get('text', ''))
+            if isinstance(raw_content, str):
+                return raw_content
+            if isinstance(raw_content, list):
+                return '\n\n'.join(
+                    block.get('text', '')
+                    for block in raw_content
+                    if block.get('type') == 'text'
+                )
+            return ''
+
         title = 'Untitled'
         for entry in lines:
-            content = entry.get('message', {}).get('content', '')
-            if isinstance(content, str):
-                text = content.strip()
-            elif isinstance(content, list):
-                text = ' '.join(block.get('text', '') for block in content if block.get('type') == 'text').strip()
-            else:
-                text = ''
+            text = _extract_content(entry).strip()
             if text:
                 title = text[:100]
                 break
@@ -434,13 +477,7 @@ class ConversationIndexer:
                 continue
             
             role = msg_type
-            raw_content = entry.get('message', {}).get('content', '')
-            if isinstance(raw_content, str):
-                content = raw_content
-            elif isinstance(raw_content, list):
-                content = '\n\n'.join(block.get('text', '') for block in raw_content if block.get('type') == 'text')
-            else:
-                content = ''
+            content = _extract_content(entry)
             
             code_blocks = re.findall(r'```(?:\w+)?\n(.*?)```', content, re.DOTALL)
             has_code = len(code_blocks) > 0
@@ -701,12 +738,19 @@ class ConversationIndexer:
         Returns:
             Set of file path strings that are already in the index
         """
-        indexed_paths = set()
+        if self.indexed_paths_path.exists():
+            table = pq.read_table(self.indexed_paths_path, columns=["file_path"])
+            return set(table.column("file_path").to_pylist())
+
+        indexed_paths: set[str] = set()
 
         for parquet_file in self.conversations_dir.glob("*.parquet"):
-            table = pq.read_table(parquet_file, columns=['file_path'])
-            df = table.to_pandas()
-            indexed_paths.update(df['file_path'].tolist())
+            table = pq.read_table(parquet_file, columns=["file_path"])
+            indexed_paths.update(table.column("file_path").to_pylist())
+
+        # Backfill the fast path if possible.
+        if indexed_paths:
+            self._write_indexed_paths(indexed_paths)
 
         return indexed_paths
 
@@ -778,6 +822,7 @@ class ConversationIndexer:
         new_embeddings = []
         new_metadata = []
         new_conversation_records: Dict[str, List[ConversationRecord]] = {}
+        new_indexed_paths: set[str] = set()
         processed_count = 0
 
         for idx, file_path in enumerate(new_files, 1):
@@ -802,6 +847,8 @@ class ConversationIndexer:
                 # Skip conversations with no messages
                 if record.message_count == 0:
                     continue
+
+                new_indexed_paths.add(record.file_path)
 
                 if project_id not in new_conversation_records:
                     new_conversation_records[project_id] = []
@@ -898,6 +945,9 @@ class ConversationIndexer:
             embeddings=len(new_embeddings)
         )
         progress.finish()
+
+        if new_indexed_paths:
+            self._write_indexed_paths(existing_paths | new_indexed_paths)
 
         elapsed = time.time() - start_time
 

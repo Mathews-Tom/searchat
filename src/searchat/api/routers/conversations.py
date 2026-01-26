@@ -2,12 +2,12 @@
 import asyncio
 import json
 import logging
+import time
 from pathlib import Path
 from typing import List, Optional
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Query, HTTPException
-from fastapi.responses import HTMLResponse
 
 from searchat.api.models import (
     SearchResultResponse,
@@ -15,7 +15,9 @@ from searchat.api.models import (
     ConversationResponse,
     ResumeRequest,
 )
-from searchat.api.dependencies import get_search_engine, get_platform_manager
+import searchat.api.dependencies as deps
+
+from searchat.api.dependencies import get_platform_manager
 
 
 router = APIRouter()
@@ -34,76 +36,78 @@ async def get_all_conversations(
     project: Optional[str] = Query(None, description="Filter by project"),
     date: Optional[str] = Query(None, description="Date filter: today, week, month, or custom"),
     date_from: Optional[str] = Query(None, description="Custom date from (YYYY-MM-DD)"),
-    date_to: Optional[str] = Query(None, description="Custom date to (YYYY-MM-DD)")
+    date_to: Optional[str] = Query(None, description="Custom date to (YYYY-MM-DD)"),
+    limit: Optional[int] = Query(None, ge=1, le=5000, description="Max results to return"),
+    offset: int = Query(0, ge=0, description="Offset for pagination"),
 ):
     """Get all conversations with sorting and filtering."""
+    started = time.perf_counter()
     try:
-        search_engine = get_search_engine()
-        df = search_engine.conversations_df.copy()
-
-        # Filter out conversations with 0 messages
-        df = df[df['message_count'] > 0]
-
-        # Filter by project if specified
-        if project:
-            df = df[df['project_id'] == project]
+        store = deps.get_duckdb_store()
 
         # Handle date filtering
+        date_from_dt = None
+        date_to_dt = None
         if date == "custom" and (date_from or date_to):
             # Custom date range
             if date_from:
                 date_from_dt = datetime.fromisoformat(date_from)
-                df = df[df['updated_at'] >= date_from_dt]
             if date_to:
                 # Add 1 day to include the entire end date
                 date_to_dt = datetime.fromisoformat(date_to) + timedelta(days=1)
-                df = df[df['updated_at'] < date_to_dt]
         elif date:
             # Preset date ranges
             now = datetime.now()
             if date == "today":
                 date_from_dt = now.replace(hour=0, minute=0, second=0, microsecond=0)
-                df = df[df['updated_at'] >= date_from_dt]
+                date_to_dt = now
             elif date == "week":
                 date_from_dt = now - timedelta(days=7)
-                df = df[df['updated_at'] >= date_from_dt]
+                date_to_dt = now
             elif date == "month":
                 date_from_dt = now - timedelta(days=30)
-                df = df[df['updated_at'] >= date_from_dt]
+                date_to_dt = now
 
-        # Sort based on parameter
-        if sort_by == "length":
-            df = df.sort_values('message_count', ascending=False)
-        elif sort_by == "date_newest":
-            df = df.sort_values('updated_at', ascending=False)
-        elif sort_by == "date_oldest":
-            df = df.sort_values('updated_at', ascending=True)
-        elif sort_by == "title":
-            df = df.sort_values('title', ascending=True)
+        total = store.count_conversations(
+            project_id=project,
+            date_from=date_from_dt,
+            date_to=date_to_dt,
+        )
 
-        # Convert to response format (vectorized)
-        response_results = [
-            SearchResultResponse(
-                conversation_id=row['conversation_id'],
-                project_id=row['project_id'],
-                title=row['title'],
-                created_at=row['created_at'].isoformat(),
-                updated_at=row['updated_at'].isoformat(),
-                message_count=row['message_count'],
-                file_path=row['file_path'],
-                snippet=row['full_text'][:200] + ("..." if len(row['full_text']) > 200 else ""),
-                score=0.0,  # No relevance score for "all" view
-                message_start_index=None,
-                message_end_index=None,
-                source="WSL" if "/home/" in row['file_path'] or "wsl" in row['file_path'].lower() else "WIN"
+        rows = store.list_conversations(
+            sort_by=sort_by,
+            project_id=project,
+            date_from=date_from_dt,
+            date_to=date_to_dt,
+            limit=limit,
+            offset=offset,
+        )
+
+        response_results = []
+        for row in rows:
+            file_path = row["file_path"]
+            full_text = row.get("full_text") or ""
+            response_results.append(
+                SearchResultResponse(
+                    conversation_id=row["conversation_id"],
+                    project_id=row["project_id"],
+                    title=row["title"],
+                    created_at=row["created_at"].isoformat(),
+                    updated_at=row["updated_at"].isoformat(),
+                    message_count=row["message_count"],
+                    file_path=file_path,
+                    snippet=full_text[:200] + ("..." if len(full_text) > 200 else ""),
+                    score=0.0,
+                    message_start_index=None,
+                    message_end_index=None,
+                    source="WSL" if "/home/" in file_path or "wsl" in file_path.lower() else "WIN",
+                )
             )
-            for row in df.to_dict('records')
-        ]
 
         return {
             "results": response_results,
-            "total": len(response_results),
-            "search_time_ms": 0
+            "total": total,
+            "search_time_ms": int((time.perf_counter() - started) * 1000.0),
         }
 
     except Exception as e:
@@ -111,19 +115,15 @@ async def get_all_conversations(
 
 
 @router.get("/conversation/{conversation_id}")
-async def get_conversation(conversation_id: str) -> ConversationResponse:
+async def get_conversation(conversation_id: str):
     """Get a specific conversation with all messages."""
     try:
-        search_engine = get_search_engine()
-
-        # Find conversation in dataframe (O(1) index lookup)
-        conv_df = search_engine.conversations_df
-        try:
-            conv = conv_df.loc[conversation_id]
-        except KeyError:
+        store = deps.get_duckdb_store()
+        conv = store.get_conversation_meta(conversation_id)
+        if conv is None:
             logger.warning(f"Conversation not found in index: {conversation_id}")
             raise HTTPException(status_code=404, detail="Conversation not found in index")
-        file_path = conv['file_path']
+        file_path = conv["file_path"]
 
         # Check if file exists
         if not Path(file_path).exists():
@@ -176,9 +176,9 @@ async def get_conversation(conversation_id: str) -> ConversationResponse:
 
         return ConversationResponse(
             conversation_id=conversation_id,
-            title=conv['title'],
-            project_id=conv['project_id'],
-            file_path=conv['file_path'],
+            title=conv["title"],
+            project_id=conv["project_id"],
+            file_path=conv["file_path"],
             message_count=len(messages),
             messages=messages
         )
@@ -194,17 +194,14 @@ async def get_conversation(conversation_id: str) -> ConversationResponse:
 async def resume_session(request: ResumeRequest):
     """Resume a conversation session in its original tool (Claude Code or Vibe)."""
     try:
-        search_engine = get_search_engine()
+        store = deps.get_duckdb_store()
         platform_manager = get_platform_manager()
 
-        # Find conversation in dataframe (O(1) index lookup)
-        conv_df = search_engine.conversations_df
-        try:
-            conv = conv_df.loc[request.conversation_id]
-        except KeyError:
+        conv = store.get_conversation_meta(request.conversation_id)
+        if conv is None:
             raise HTTPException(status_code=404, detail="Conversation not found")
-        file_path = conv['file_path']
-        session_id = conv['conversation_id']
+        file_path = conv["file_path"]
+        session_id = conv["conversation_id"]
 
         # Extract working directory from conversation file
         cwd = None

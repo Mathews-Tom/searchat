@@ -8,12 +8,13 @@ from fastapi import APIRouter, HTTPException
 from searchat.core.logging_config import get_logger
 from searchat.core.progress import LoggingProgressAdapter
 from searchat.config import PathResolver
+import searchat.api.dependencies as deps
+
 from searchat.api.dependencies import (
     get_config,
     get_indexer,
-    get_search_engine,
-    projects_cache,
     indexing_state,
+    invalidate_search_index,
 )
 
 
@@ -55,7 +56,6 @@ async def index_missing():
         start_time = time.time()
         config = get_config()
         indexer = get_indexer()
-        search_engine = get_search_engine()
 
         # Get all conversation files
         all_files = []
@@ -112,11 +112,7 @@ async def index_missing():
             progress,
         )
 
-        # Reload search engine to pick up new data
-        search_engine._initialize()
-
-        # Clear projects cache
-        projects_cache = None
+        invalidate_search_index()
 
         elapsed_time = time.time() - start_time
         failed_count = stats.skipped_conversations

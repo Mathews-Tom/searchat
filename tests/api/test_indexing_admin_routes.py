@@ -31,18 +31,11 @@ def mock_indexer():
     mock_stats = Mock()
     mock_stats.new_conversations = 5
     mock_stats.total_conversations = 10
+    mock_stats.skipped_conversations = 0
 
     mock.index_append_only.return_value = mock_stats
     mock.get_indexed_file_paths.return_value = set(["/indexed/conv1.jsonl", "/indexed/conv2.jsonl"])
 
-    return mock
-
-
-@pytest.fixture
-def mock_search_engine():
-    """Mock SearchEngine."""
-    mock = Mock()
-    mock._initialize = Mock()
     return mock
 
 
@@ -77,7 +70,7 @@ class TestReindexEndpoint:
 class TestIndexMissingEndpoint:
     """Tests for POST /api/index_missing endpoint."""
 
-    def test_index_missing_success(self, client, mock_config, mock_indexer, mock_search_engine, tmp_path):
+    def test_index_missing_success(self, client, mock_config, mock_indexer, tmp_path):
         """Test indexing missing conversations successfully."""
         # Create temporary conversation files
         claude_dir = tmp_path / "claude"
@@ -92,28 +85,25 @@ class TestIndexMissingEndpoint:
 
         with patch('searchat.api.routers.indexing.get_config', return_value=mock_config):
             with patch('searchat.api.routers.indexing.get_indexer', return_value=mock_indexer):
-                with patch('searchat.api.routers.indexing.get_search_engine', return_value=mock_search_engine):
+                with patch('searchat.api.routers.indexing.invalidate_search_index') as invalidate:
                     with patch('searchat.api.routers.indexing.PathResolver.resolve_claude_dirs', return_value=[claude_dir]):
                         with patch('searchat.api.routers.indexing.PathResolver.resolve_vibe_dirs', return_value=[vibe_dir]):
-                            with patch('searchat.api.routers.indexing.projects_cache', None):
-                                with patch('searchat.api.routers.indexing.indexing_state', {"in_progress": False}):
-                                    response = client.post("/api/index_missing")
+                            with patch('searchat.api.routers.indexing.indexing_state', {"in_progress": False}):
+                                response = client.post("/api/index_missing")
 
-                                    assert response.status_code == 200
-                                    data = response.json()
+                                assert response.status_code == 200
+                                data = response.json()
 
-                                    assert data["success"] is True
-                                    assert data["new_conversations"] == 5
-                                    assert data["total_files"] == 4  # 3 JSONL + 1 JSON
-                                    assert data["already_indexed"] == 2
-                                    assert "time_seconds" in data
+                                assert data["success"] is True
+                                assert data["new_conversations"] == 5
+                                assert data["total_files"] == 4  # 3 JSONL + 1 JSON
+                                assert data["already_indexed"] == 2
+                                assert "time_seconds" in data
 
-                                    # Verify indexing was called
-                                    mock_indexer.index_append_only.assert_called_once()
-                                    # Verify search engine was reloaded
-                                    mock_search_engine._initialize.assert_called_once()
+                                mock_indexer.index_append_only.assert_called_once()
+                                invalidate.assert_called_once()
 
-    def test_index_missing_all_indexed(self, client, mock_config, mock_indexer, mock_search_engine, tmp_path):
+    def test_index_missing_all_indexed(self, client, mock_config, mock_indexer, tmp_path):
         """Test when all conversations are already indexed."""
         claude_dir = tmp_path / "claude"
         claude_dir.mkdir()
@@ -124,22 +114,20 @@ class TestIndexMissingEndpoint:
 
         with patch('searchat.api.routers.indexing.get_config', return_value=mock_config):
             with patch('searchat.api.routers.indexing.get_indexer', return_value=mock_indexer):
-                with patch('searchat.api.routers.indexing.get_search_engine', return_value=mock_search_engine):
-                    with patch('searchat.api.routers.indexing.PathResolver.resolve_claude_dirs', return_value=[claude_dir]):
-                        with patch('searchat.api.routers.indexing.PathResolver.resolve_vibe_dirs', return_value=[]):
-                            response = client.post("/api/index_missing")
+                with patch('searchat.api.routers.indexing.PathResolver.resolve_claude_dirs', return_value=[claude_dir]):
+                    with patch('searchat.api.routers.indexing.PathResolver.resolve_vibe_dirs', return_value=[]):
+                        response = client.post("/api/index_missing")
 
-                            assert response.status_code == 200
-                            data = response.json()
+                        assert response.status_code == 200
+                        data = response.json()
 
-                            assert data["success"] is True
-                            assert data["new_conversations"] == 0
-                            assert "already indexed" in data["message"].lower()
+                        assert data["success"] is True
+                        assert data["new_conversations"] == 0
+                        assert "already indexed" in data["message"].lower()
 
-                            # Should not call index_append_only
-                            mock_indexer.index_append_only.assert_not_called()
+                        mock_indexer.index_append_only.assert_not_called()
 
-    def test_index_missing_sets_indexing_state(self, client, mock_config, mock_indexer, mock_search_engine, tmp_path):
+    def test_index_missing_sets_indexing_state(self, client, mock_config, mock_indexer, tmp_path):
         """Test that indexing state is properly managed."""
         claude_dir = tmp_path / "claude"
         claude_dir.mkdir()
@@ -149,18 +137,16 @@ class TestIndexMissingEndpoint:
 
         with patch('searchat.api.routers.indexing.get_config', return_value=mock_config):
             with patch('searchat.api.routers.indexing.get_indexer', return_value=mock_indexer):
-                with patch('searchat.api.routers.indexing.get_search_engine', return_value=mock_search_engine):
-                    with patch('searchat.api.routers.indexing.PathResolver.resolve_claude_dirs', return_value=[claude_dir]):
-                        with patch('searchat.api.routers.indexing.PathResolver.resolve_vibe_dirs', return_value=[]):
-                            with patch('searchat.api.routers.indexing.projects_cache', None):
-                                with patch('searchat.api.routers.indexing.indexing_state', indexing_state):
-                                    response = client.post("/api/index_missing")
+                with patch('searchat.api.routers.indexing.PathResolver.resolve_claude_dirs', return_value=[claude_dir]):
+                    with patch('searchat.api.routers.indexing.PathResolver.resolve_vibe_dirs', return_value=[]):
+                        with patch('searchat.api.routers.indexing.indexing_state', indexing_state):
+                            response = client.post("/api/index_missing")
 
-                                    # State should be reset after completion
-                                    assert indexing_state["in_progress"] is False
-                                    assert indexing_state["operation"] is None
+                            # State should be reset after completion
+                            assert indexing_state["in_progress"] is False
+                            assert indexing_state["operation"] is None
 
-    def test_index_missing_error_handling(self, client, mock_config, mock_indexer, mock_search_engine, tmp_path):
+    def test_index_missing_error_handling(self, client, mock_config, mock_indexer, tmp_path):
         """Test error handling when indexing fails."""
         # Create a file so it's not filtered out as already indexed
         test_file = tmp_path / "test.jsonl"
@@ -171,14 +157,13 @@ class TestIndexMissingEndpoint:
 
         with patch('searchat.api.routers.indexing.get_config', return_value=mock_config):
             with patch('searchat.api.routers.indexing.get_indexer', return_value=mock_indexer):
-                with patch('searchat.api.routers.indexing.get_search_engine', return_value=mock_search_engine):
-                    with patch('searchat.api.routers.indexing.PathResolver.resolve_claude_dirs', return_value=[tmp_path]):
-                        with patch('searchat.api.routers.indexing.PathResolver.resolve_vibe_dirs', return_value=[]):
-                            with patch('searchat.api.routers.indexing.indexing_state', {"in_progress": False}):
-                                response = client.post("/api/index_missing")
+                with patch('searchat.api.routers.indexing.PathResolver.resolve_claude_dirs', return_value=[tmp_path]):
+                    with patch('searchat.api.routers.indexing.PathResolver.resolve_vibe_dirs', return_value=[]):
+                        with patch('searchat.api.routers.indexing.indexing_state', {"in_progress": False}):
+                            response = client.post("/api/index_missing")
 
-                                assert response.status_code == 500
-                                assert "Indexing error" in response.json()["detail"]
+                            assert response.status_code == 500
+                            assert "Indexing error" in response.json()["detail"]
 
 
 # ============================================================================
@@ -230,7 +215,8 @@ class TestShutdownEndpoint:
 
         with patch('searchat.api.routers.admin.get_watcher', return_value=mock_watcher):
             with patch('searchat.api.routers.admin.indexing_state', indexing_state):
-                response = client.post("/api/shutdown")
+                with patch('searchat.api.routers.admin.os.kill'):
+                    response = client.post("/api/shutdown")
 
                 assert response.status_code == 200
                 data = response.json()
@@ -270,7 +256,8 @@ class TestShutdownEndpoint:
 
         with patch('searchat.api.routers.admin.get_watcher', return_value=mock_watcher):
             with patch('searchat.api.routers.admin.indexing_state', indexing_state):
-                response = client.post("/api/shutdown?force=true")
+                with patch('searchat.api.routers.admin.os.kill'):
+                    response = client.post("/api/shutdown?force=true")
 
                 assert response.status_code == 200
                 data = response.json()
@@ -287,7 +274,8 @@ class TestShutdownEndpoint:
             with patch('searchat.api.routers.admin.indexing_state', indexing_state):
                 # Just check the request is successful
                 # The actual shutdown happens in background task
-                response = client.post("/api/shutdown")
+                with patch('searchat.api.routers.admin.os.kill'):
+                    response = client.post("/api/shutdown")
 
                 assert response.status_code == 200
                 assert response.json()["success"] is True
