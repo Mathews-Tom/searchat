@@ -9,6 +9,10 @@ Usage:
     python tests/test_terminal_launch.py
 """
 
+import pytest
+
+pytest.skip("Manual terminal-launch script (not a pytest suite)", allow_module_level=True)
+
 import sys
 import os
 from pathlib import Path

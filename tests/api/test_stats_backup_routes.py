@@ -16,43 +16,19 @@ def client():
 
 
 @pytest.fixture
-def mock_search_engine():
-    """Mock SearchEngine with sample data."""
-    import pandas as pd
-    import numpy as np
+def mock_duckdb_store_stats():
+    """Mock DuckDBStore for stats endpoint."""
+    from searchat.api.duckdb_store import IndexStatistics
 
     mock = Mock()
-
-    now = datetime.now()
-    df = pd.DataFrame([
-        {
-            'conversation_id': 'conv-1',
-            'project_id': 'project-a',
-            'message_count': 10,
-            'created_at': datetime(2025, 1, 1),
-            'updated_at': datetime(2025, 1, 15)
-        },
-        {
-            'conversation_id': 'conv-2',
-            'project_id': 'project-b',
-            'message_count': 5,
-            'created_at': datetime(2025, 1, 10),
-            'updated_at': datetime(2025, 1, 20)
-        },
-        {
-            'conversation_id': 'conv-3',
-            'project_id': 'project-a',
-            'message_count': 15,
-            'created_at': datetime(2025, 1, 5),
-            'updated_at': datetime(2025, 1, 18)
-        }
-    ])
-
-    # Set conversation_id as index (matching production behavior)
-    mock.conversations_df = df.set_index('conversation_id', drop=False)
-
-    mock._initialize = Mock()
-
+    mock.get_statistics.return_value = IndexStatistics(
+        total_conversations=3,
+        total_messages=30,
+        avg_messages=10.0,
+        total_projects=2,
+        earliest_date="2025-01-01T00:00:00",
+        latest_date="2025-01-20T00:00:00",
+    )
     return mock
 
 
@@ -87,10 +63,11 @@ def mock_backup_manager():
 class TestStatisticsEndpoint:
     """Tests for GET /api/statistics endpoint."""
 
-    def test_get_statistics_success(self, client, mock_search_engine):
+    def test_get_statistics_success(self, client, mock_duckdb_store_stats):
         """Test getting index statistics."""
-        with patch('searchat.api.routers.stats.get_search_engine', return_value=mock_search_engine):
-            response = client.get("/api/statistics")
+        with patch('searchat.api.routers.stats.deps.get_duckdb_store', return_value=mock_duckdb_store_stats):
+            with patch('searchat.api.routers.stats.deps.stats_cache', None):
+                response = client.get("/api/statistics")
 
             assert response.status_code == 200
             data = response.json()
@@ -112,20 +89,22 @@ class TestStatisticsEndpoint:
 
     def test_get_statistics_single_conversation(self, client):
         """Test statistics with single conversation."""
-        import pandas as pd
+        from searchat.api.duckdb_store import IndexStatistics
 
-        mock_engine = Mock()
-        now = datetime.now()
-        mock_engine.conversations_df = pd.DataFrame([{
-            'conversation_id': 'conv-1',
-            'project_id': 'test-project',
-            'message_count': 10,
-            'created_at': now,
-            'updated_at': now
-        }])
+        mock_store = Mock()
+        now = datetime.now().isoformat()
+        mock_store.get_statistics.return_value = IndexStatistics(
+            total_conversations=1,
+            total_messages=10,
+            avg_messages=10.0,
+            total_projects=1,
+            earliest_date=now,
+            latest_date=now,
+        )
 
-        with patch('searchat.api.routers.stats.get_search_engine', return_value=mock_engine):
-            response = client.get("/api/statistics")
+        with patch('searchat.api.routers.stats.deps.get_duckdb_store', return_value=mock_store):
+            with patch('searchat.api.routers.stats.deps.stats_cache', None):
+                response = client.get("/api/statistics")
 
             assert response.status_code == 200
             data = response.json()
@@ -224,7 +203,7 @@ class TestListBackupsEndpoint:
 class TestRestoreBackupEndpoint:
     """Tests for POST /api/backup/restore endpoint."""
 
-    def test_restore_backup_success(self, client, mock_backup_manager, mock_search_engine, tmp_path):
+    def test_restore_backup_success(self, client, mock_backup_manager, tmp_path):
         """Test restoring from a backup."""
         # Create backup directory
         backup_dir = tmp_path / "backup_20250120_100000"
@@ -234,34 +213,30 @@ class TestRestoreBackupEndpoint:
         mock_backup_manager.restore_from_backup.return_value = None
 
         with patch('searchat.api.routers.backup.get_backup_manager', return_value=mock_backup_manager):
-            with patch('searchat.api.routers.backup.get_search_engine', return_value=mock_search_engine):
-                with patch('searchat.api.routers.backup.projects_cache', None):
-                    response = client.post("/api/backup/restore?backup_name=backup_20250120_100000")
+            with patch('searchat.api.routers.backup.invalidate_search_index') as invalidate:
+                response = client.post("/api/backup/restore?backup_name=backup_20250120_100000")
 
-                    assert response.status_code == 200
-                    data = response.json()
+                assert response.status_code == 200
+                data = response.json()
 
-                    assert data["success"] is True
-                    assert data["restored_from"] == "backup_20250120_100000"
-                    assert "Successfully restored" in data["message"]
+                assert data["success"] is True
+                assert data["restored_from"] == "backup_20250120_100000"
+                assert "Successfully restored" in data["message"]
 
-                    # Verify restore was called
-                    mock_backup_manager.restore_from_backup.assert_called_once()
-                    # Verify search engine was reloaded
-                    mock_search_engine._initialize.assert_called_once()
+                mock_backup_manager.restore_from_backup.assert_called_once()
+                invalidate.assert_called_once()
 
-    def test_restore_backup_not_found(self, client, mock_backup_manager, mock_search_engine, tmp_path):
+    def test_restore_backup_not_found(self, client, mock_backup_manager, tmp_path):
         """Test error when backup doesn't exist."""
         mock_backup_manager.backup_dir = tmp_path
 
         with patch('searchat.api.routers.backup.get_backup_manager', return_value=mock_backup_manager):
-            with patch('searchat.api.routers.backup.get_search_engine', return_value=mock_search_engine):
-                response = client.post("/api/backup/restore?backup_name=nonexistent")
+            response = client.post("/api/backup/restore?backup_name=nonexistent")
 
-                assert response.status_code == 404
-                assert "not found" in response.json()["detail"]
+            assert response.status_code == 404
+            assert "not found" in response.json()["detail"]
 
-    def test_restore_backup_with_pre_restore_backup(self, client, mock_backup_manager, mock_search_engine, tmp_path):
+    def test_restore_backup_with_pre_restore_backup(self, client, mock_backup_manager, tmp_path):
         """Test restore creates pre-restore backup."""
         backup_dir = tmp_path / "backup_20250120_100000"
         backup_dir.mkdir()
@@ -274,15 +249,14 @@ class TestRestoreBackupEndpoint:
         mock_backup_manager.restore_from_backup.return_value = pre_restore_meta
 
         with patch('searchat.api.routers.backup.get_backup_manager', return_value=mock_backup_manager):
-            with patch('searchat.api.routers.backup.get_search_engine', return_value=mock_search_engine):
-                with patch('searchat.api.routers.backup.projects_cache', None):
-                    response = client.post("/api/backup/restore?backup_name=backup_20250120_100000")
+            with patch('searchat.api.routers.backup.invalidate_search_index'):
+                response = client.post("/api/backup/restore?backup_name=backup_20250120_100000")
 
-                    assert response.status_code == 200
-                    data = response.json()
+                assert response.status_code == 200
+                data = response.json()
 
-                    assert "pre_restore_backup" in data
-                    assert data["pre_restore_backup"]["backup_path"] == "/backups/pre_restore"
+                assert "pre_restore_backup" in data
+                assert data["pre_restore_backup"]["backup_path"] == "/backups/pre_restore"
 
 
 @pytest.mark.unit
