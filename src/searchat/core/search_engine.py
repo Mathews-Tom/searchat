@@ -5,6 +5,7 @@ import time
 import hashlib
 from collections import defaultdict, OrderedDict
 from pathlib import Path
+from threading import Lock
 from typing import Any, List, Optional, Dict, Tuple, TYPE_CHECKING, cast
 import duckdb
 import faiss
@@ -31,6 +32,8 @@ class SearchEngine:
         self.faiss_index: Optional[faiss.Index] = None
         self.embedder: SentenceTransformer | None = None
         self.query_parser = QueryParser()
+
+        self._init_lock = Lock()
         
         if config is None:
             config = Config.load()
@@ -61,29 +64,50 @@ class SearchEngine:
             "indexed_at",
         ]
         
-        self._initialize()
+        # Keyword search only depends on conversation parquets.
+        self._validate_keyword_files()
     
-    def _initialize(self) -> None:
-        self._validate_index_metadata()
-        
-        if not self.metadata_path.exists():
-            raise FileNotFoundError(f"Metadata parquet not found at {self.metadata_path}. Run indexer first.")
+    def ensure_semantic_ready(self) -> None:
+        """Ensure semantic components (metadata, FAISS, embedder) are loaded."""
+        with self._init_lock:
+            self._validate_keyword_files()
+            self._validate_index_metadata()
 
-        if not self.index_path.exists():
-            raise FileNotFoundError(f"FAISS index not found at {self.index_path}. Run indexer first.")
+            if not self.metadata_path.exists():
+                raise FileNotFoundError(
+                    f"Metadata parquet not found at {self.metadata_path}. Run indexer first."
+                )
 
+            if not self.index_path.exists():
+                raise FileNotFoundError(
+                    f"FAISS index not found at {self.index_path}. Run indexer first."
+                )
+
+            if self.faiss_index is None:
+                self.faiss_index = faiss.read_index(str(self.index_path))
+
+            if self.embedder is None:
+                device = self.config.embedding.get_device()
+                from sentence_transformers import SentenceTransformer
+
+                self.embedder = SentenceTransformer(self.config.embedding.model, device=device)
+
+
+    def refresh_index(self) -> None:
+        """Clear caches and mark index-backed components stale.
+
+        This is used after append-only indexing or restore operations.
+        """
+        with self._init_lock:
+            self.result_cache.clear()
+            # Reload FAISS on next semantic search.
+            self.faiss_index = None
+            # Keep embedder loaded (heavy), model mismatch is already blocked by the indexer.
+
+
+    def _validate_keyword_files(self) -> None:
         if not self.conversations_dir.exists() or not any(self.conversations_dir.glob("*.parquet")):
             raise FileNotFoundError(f"No conversation parquet files found in {self.conversations_dir}")
-
-        self.faiss_index = faiss.read_index(str(self.index_path))
-
-        # Initialize embedder with GPU if available
-        device = self.config.embedding.get_device()
-        from sentence_transformers import SentenceTransformer
-
-        self.embedder = SentenceTransformer(self.config.embedding.model, device=device)
-
-        # IMPORTANT: do not load parquet into memory at init. Use DuckDB-on-demand.
 
     def _connect(self):
         con = duckdb.connect(database=":memory:")
@@ -377,6 +401,7 @@ class SearchEngine:
         return search_results
     
     def _semantic_search(self, query: str, filters: Optional[SearchFilters]) -> List[SearchResult]:
+        self.ensure_semantic_ready()
         embedder = self.embedder
         faiss_index = self.faiss_index
         if embedder is None or faiss_index is None:
