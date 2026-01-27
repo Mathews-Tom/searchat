@@ -8,15 +8,18 @@ Semantic search for AI coding agent conversations. Find past solutions by meanin
 |-------|----------|--------|
 | Claude Code | `~/.claude/projects/**/*.jsonl` | JSONL |
 | Mistral Vibe | `~/.vibe/logs/session/*.json` | JSON |
+| OpenCode | `~/.local/share/opencode/storage/session/*/*.json` | JSON |
 
 ## Features
 
 - **Hybrid Search** — BM25 keyword + FAISS semantic vectors
-- **Multi-Agent** — Search across Claude Code and Mistral Vibe sessions
+- **Multi-Agent** — Search across Claude Code, Mistral Vibe, and OpenCode sessions
+- **Tool Filters** — Filter results by Claude Code, Mistral Vibe, or OpenCode
 - **Live Indexing** — Auto-indexes new/modified files (5min debounce for in-progress)
 - **Append-Only** — Never deletes existing data, safe for long-term use
 - **Self-Search** — Agents can search their own history via API
 - **Safe Shutdown** — Detects ongoing indexing, prevents data corruption
+- **Backups** — Create and restore backups from the UI or API
 - **Cross-Platform** — Windows, WSL, Linux, macOS
 - **Local-First** — All data stays on your machine
 
@@ -77,8 +80,9 @@ searchat-web
 
 Features:
 - Search modes: hybrid/semantic/keyword
-- Filter by project, date range
+- Filter by project, date range, tool
 - View full conversations
+- Create and restore backups (left sidebar)
 - Add missing conversations button (safe append)
 - Stop server button (checks for ongoing indexing)
 - Helpful tips sidebars (search tips + API integration guide)
@@ -95,6 +99,9 @@ searchat  # interactive mode
 ```bash
 # Search
 curl "http://localhost:8000/api/search?q=authentication&mode=hybrid&limit=10"
+
+# Search with tool filter (claude, vibe, opencode)
+curl "http://localhost:8000/api/search?q=authentication&mode=hybrid&tool=opencode&limit=10"
 
 # Get conversation
 curl "http://localhost:8000/api/conversation/{conversation_id}"
@@ -116,6 +123,18 @@ curl -X POST "http://localhost:8000/api/shutdown"
 
 # Force shutdown (override safety check)
 curl -X POST "http://localhost:8000/api/shutdown?force=true"
+
+# Create backup
+curl -X POST "http://localhost:8000/api/backup/create"
+
+# List backups
+curl "http://localhost:8000/api/backup/list"
+
+# Restore backup
+curl -X POST "http://localhost:8000/api/backup/restore" -H "Content-Type: application/json" -d '{"name": "backup_YYYYMMDD_HHMMSS"}'
+
+# Delete backup
+curl -X DELETE "http://localhost:8000/api/backup/delete/backup_YYYYMMDD_HHMMSS"
 ```
 
 ### Utilities
@@ -222,6 +241,7 @@ export SEARCHAT_PORT=8000
 export SEARCHAT_EMBEDDING_MODEL=all-MiniLM-L6-v2
 export SEARCHAT_REINDEX_ON_MODIFICATION=true
 export SEARCHAT_MODIFICATION_DEBOUNCE_MINUTES=5
+export SEARCHAT_OPENCODE_DATA_DIR=~/.local/share/opencode
 ```
 
 ## Requirements
