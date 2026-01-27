@@ -76,6 +76,17 @@ async def index_missing():
             except Exception as e:
                 logger.warning(f"Error scanning {vibe_dir}: {e}")
 
+        # OpenCode sessions (.json)
+        for opencode_dir in PathResolver.resolve_opencode_dirs(config):
+            storage_session_dir = opencode_dir / "storage" / "session"
+            if not storage_session_dir.exists():
+                continue
+            try:
+                session_files = list(storage_session_dir.glob("*/*.json"))
+                all_files.extend([str(f) for f in session_files])
+            except Exception as e:
+                logger.warning(f"Error scanning {storage_session_dir}: {e}")
+
         # Get already indexed files
         indexed_paths = indexer.get_indexed_file_paths()
 

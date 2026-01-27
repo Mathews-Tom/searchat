@@ -17,6 +17,7 @@ class SearchResultResponse(BaseModel):
     message_start_index: Optional[int] = None
     message_end_index: Optional[int] = None
     source: str  # WIN or WSL
+    tool: str
 
 
 class ConversationMessage(BaseModel):
@@ -31,8 +32,10 @@ class ConversationResponse(BaseModel):
     conversation_id: str
     title: str
     project_id: str
+    project_path: Optional[str] = None
     file_path: str
     message_count: int
+    tool: str
     messages: List[ConversationMessage]
 
 

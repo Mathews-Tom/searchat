@@ -24,6 +24,7 @@ async def search(
     date: Optional[str] = Query(None, description="Date filter: today, week, month, or custom"),
     date_from: Optional[str] = Query(None, description="Custom date from (YYYY-MM-DD)"),
     date_to: Optional[str] = Query(None, description="Custom date to (YYYY-MM-DD)"),
+    tool: Optional[str] = Query(None, description="Filter by tool: claude, vibe, opencode"),
     sort_by: str = Query("relevance", description="Sort by: relevance, date_newest, date_oldest, messages"),
     limit: int = Query(100, description="Max results to return (1-100)", ge=1, le=100)
 ):
@@ -59,6 +60,12 @@ async def search(
         filters = SearchFilters()
         if project:
             filters.project_ids = [project]
+
+        if tool:
+            tool_value = tool.lower()
+            if tool_value not in ("claude", "vibe", "opencode"):
+                raise HTTPException(status_code=400, detail="Invalid tool filter")
+            filters.tool = tool_value
 
         # Handle date filtering
         if date == "custom" and (date_from or date_to):
@@ -97,7 +104,18 @@ async def search(
         # Convert results to response format
         response_results = []
         for r in sorted_results[:limit]:
-            source = "WSL" if "/home/" in r.file_path or "wsl" in r.file_path.lower() else "WIN"
+            file_path_lower = r.file_path.lower()
+            if r.file_path.endswith('.jsonl'):
+                tool_name = "claude"
+            elif "/.local/share/opencode/" in file_path_lower:
+                tool_name = "opencode"
+            else:
+                tool_name = "vibe"
+
+            if "/home/" in file_path_lower or "wsl" in file_path_lower:
+                source = "WSL"
+            else:
+                source = "WIN"
             response_results.append(SearchResultResponse(
                 conversation_id=r.conversation_id,
                 project_id=r.project_id,
@@ -110,7 +128,8 @@ async def search(
                 score=r.score,
                 message_start_index=r.message_start_index,
                 message_end_index=r.message_end_index,
-                source=source
+                source=source,
+                tool=tool_name,
             ))
 
         return {
