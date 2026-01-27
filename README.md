@@ -4,11 +4,11 @@ Semantic search for AI coding agent conversations. Find past solutions by meanin
 
 ## Supported Agents
 
-| Agent | Location | Format |
-|-------|----------|--------|
-| Claude Code | `~/.claude/projects/**/*.jsonl` | JSONL |
-| Mistral Vibe | `~/.vibe/logs/session/*.json` | JSON |
-| OpenCode | `~/.local/share/opencode/storage/session/*/*.json` | JSON |
+| Agent        | Location                                           | Format |
+| ------------ | -------------------------------------------------- | ------ |
+| Claude Code  | `~/.claude/projects/**/*.jsonl`                    | JSONL  |
+| Mistral Vibe | `~/.vibe/logs/session/*.json`                      | JSON   |
+| OpenCode     | `~/.local/share/opencode/storage/session/*/*.json` | JSON   |
 
 ## Features
 
@@ -45,28 +45,31 @@ The setup script indexes all conversations from Claude Code and Mistral Vibe. On
 
 Add to `~/.claude/CLAUDE.md`:
 
-```markdown
+````markdown
 ## Conversation History Search
 
 Search past Claude Code conversations via local API (requires server running).
 
 **Search:**
-\`\`\`bash
+
+```bash
 curl -s "http://localhost:8000/api/search?q=QUERY&limit=5" | jq '.results[] | {id: .conversation_id, title, snippet}'
-\`\`\`
+```
 
 **Get full conversation:**
-\`\`\`bash
+
+```bash
 curl -s "http://localhost:8000/api/conversation/CONVERSATION_ID" | jq '.messages[] | {role, content: .content[:500]}'
-\`\`\`
+```
 
 **When to use:**
+
 - User asks "did we discuss X before" or "find that conversation about Y"
 - Looking for previous solutions to similar problems
 - Checking how something was implemented in past sessions
 
 **Start server:** `searchat-web` from the searchat directory
-```
+````
 
 See `CLAUDE.example.md` for the full template.
 
@@ -79,6 +82,7 @@ searchat-web
 ```
 
 Features:
+
 - Search modes: hybrid/semantic/keyword
 - Filter by project, date range, tool
 - View full conversations
@@ -167,12 +171,14 @@ for r in results.results[:5]:
 ## Architecture
 
 **Code Organization:**
+
 - `src/searchat/api/` - FastAPI app with 6 modular routers (15 endpoints)
 - `src/searchat/core/` - Business logic (indexer, search_engine, watcher)
 - `src/searchat/web/` - Modular frontend (HTML + CSS modules + ES6 JS)
 - `tests/api/` - Comprehensive API tests (62 tests)
 
 **Data Flow:**
+
 ```
 ~/.claude/projects/**/*.jsonl     (source conversations)
         │
@@ -187,11 +193,13 @@ for r in results.results[:5]:
 ```
 
 **Search Flow:**
+
 1. Query → BM25 keyword search + FAISS semantic search
 2. Results merged via Reciprocal Rank Fusion
 3. Hybrid ranking returns best of both approaches
 
 **Live Watching:**
+
 - `watchdog` monitors conversation directories
 - New files → indexed immediately
 - Modified files → re-indexed after 5min debounce (configurable)
@@ -199,6 +207,7 @@ for r in results.results[:5]:
 - Never deletes existing data
 
 **Documentation:**
+
 - `docs/architecture.md` - System design and components
 - `docs/api-reference.md` - Complete API endpoint documentation
 - `docs/terminal-launching.md` - Platform-specific terminal launching
@@ -252,15 +261,15 @@ export SEARCHAT_OPENCODE_DATA_DIR=~/.local/share/opencode
 
 ### Dependencies
 
-| Package | Purpose |
-|---------|---------|
+| Package               | Purpose                       |
+| --------------------- | ----------------------------- |
 | sentence-transformers | Embeddings (all-MiniLM-L6-v2) |
-| faiss-cpu | Vector similarity search |
-| pyarrow | Parquet storage |
-| duckdb | SQL queries on parquet |
-| fastapi + uvicorn | Web API |
-| watchdog | File system monitoring |
-| rich | CLI formatting |
+| faiss-cpu             | Vector similarity search      |
+| pyarrow               | Parquet storage               |
+| duckdb                | SQL queries on parquet        |
+| fastapi + uvicorn     | Web API                       |
+| watchdog              | File system monitoring        |
+| rich                  | CLI formatting                |
 
 ## Safety
 
@@ -283,40 +292,45 @@ curl -X POST "http://localhost:8000/api/shutdown?force=true"
 ```
 
 Protects against:
+
 - Data loss from deleted/moved source files
 - Corrupted Parquet/FAISS files during indexing
 - Inconsistent metadata from interrupted operations
 
 ## Performance
 
-| Metric | Value |
-|--------|-------|
-| Search latency | <100ms (hybrid), <50ms (semantic), <30ms (keyword) |
-| Filtered queries | <20ms (DuckDB predicate pushdown) |
-| Index build | ~60s per 100K conversations |
-| Embedding | Batched (CPU: 0.1s/conv, GPU: 0.008s/conv) |
-| Memory | ~2-3GB |
-| Startup | <3s |
+| Metric           | Value                                              |
+| ---------------- | -------------------------------------------------- |
+| Search latency   | <100ms (hybrid), <50ms (semantic), <30ms (keyword) |
+| Filtered queries | <20ms (DuckDB predicate pushdown)                  |
+| Index build      | ~60s per 100K conversations                        |
+| Embedding        | Batched (CPU: 0.1s/conv, GPU: 0.008s/conv)         |
+| Memory           | ~2-3GB                                             |
+| Startup          | <3s                                                |
 
 ## Troubleshooting
 
 **Port in use:**
+
 ```bash
 SEARCHAT_PORT=8001 searchat-web
 ```
 
 **No conversations found:**
+
 ```bash
 ls ~/.claude/projects/  # Verify conversations exist
 ```
 
 **WSL not tracked:**
 Configure `claude_directory_wsl` in `~/.searchat/config/settings.toml`:
+
 ```toml
 claude_directory_wsl = "//wsl.localhost/Ubuntu/home/username/.claude/projects"
 ```
 
 **Missing conversations after setup:**
+
 ```bash
 python scripts/index-missing  # Index files not yet in search index
 ```
@@ -325,6 +339,7 @@ python scripts/index-missing  # Index files not yet in search index
 Run from Windows Python or move repo to WSL filesystem (`~/projects/`).
 
 **Import errors:**
+
 ```bash
 pip install -e . --force-reinstall
 ```
