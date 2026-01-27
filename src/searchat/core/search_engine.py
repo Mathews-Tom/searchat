@@ -6,7 +6,7 @@ import hashlib
 from collections import defaultdict, OrderedDict
 from pathlib import Path
 from threading import Lock
-from typing import Any, List, Optional, Dict, Tuple, TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 import duckdb
 import faiss
 import numpy as np
@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 class SearchEngine:
     def __init__(self, search_dir: Path, config: Config | None = None):
         self.search_dir = search_dir
-        self.faiss_index: Optional[faiss.Index] = None
+        self.faiss_index: faiss.Index | None = None
         self.embedder: SentenceTransformer | None = None
         self.query_parser = QueryParser()
 
@@ -153,7 +153,7 @@ class SearchEngine:
 
     def _where_from_filters(
         self,
-        filters: Optional[SearchFilters],
+        filters: SearchFilters | None,
         params: list[object],
         *,
         table_alias: str = "",
@@ -215,7 +215,7 @@ class SearchEngine:
                 "expected version 1. Rebuild index required."
             )
     
-    def _get_cache_key(self, query: str, mode: SearchMode, filters: Optional[SearchFilters]) -> str:
+    def _get_cache_key(self, query: str, mode: SearchMode, filters: SearchFilters | None) -> str:
         """Generate a cache key for the search query"""
         key_parts = [query, mode.value]
         if filters:
@@ -231,7 +231,7 @@ class SearchEngine:
         key_str = '|'.join(key_parts)
         return hashlib.md5(key_str.encode()).hexdigest()
     
-    def _get_from_cache(self, cache_key: str) -> Optional[SearchResults]:
+    def _get_from_cache(self, cache_key: str) -> SearchResults | None:
         """Get results from cache if valid"""
         if cache_key in self.result_cache:
             result, timestamp = self.result_cache[cache_key]
@@ -256,7 +256,7 @@ class SearchEngine:
         self, 
         query: str, 
         mode: SearchMode = SearchMode.HYBRID,
-        filters: Optional[SearchFilters] = None
+        filters: SearchFilters | None = None
     ) -> SearchResults:
         start_time = time.time()
 
@@ -298,7 +298,7 @@ class SearchEngine:
         except Exception as e:
             raise RuntimeError(f"Search failed: {e}") from e
     
-    def _keyword_search(self, query: str, filters: Optional[SearchFilters]) -> List[SearchResult]:
+    def _keyword_search(self, query: str, filters: SearchFilters | None) -> list[SearchResult]:
         parsed = self.query_parser.parse(query)
 
         # Treat '*' as "no text query" for filter-only browsing.
@@ -441,7 +441,7 @@ class SearchEngine:
 
         return search_results
     
-    def _semantic_search(self, query: str, filters: Optional[SearchFilters]) -> List[SearchResult]:
+    def _semantic_search(self, query: str, filters: SearchFilters | None) -> list[SearchResult]:
         self.ensure_faiss_loaded()
         self.ensure_embedder_loaded()
         embedder = self.embedder
@@ -551,11 +551,11 @@ class SearchEngine:
     
     def _merge_results(
         self, 
-        keyword: List[SearchResult], 
-        semantic: List[SearchResult]
-    ) -> List[SearchResult]:
-        scores: Dict[str, float] = defaultdict(float)
-        result_map: Dict[str, SearchResult] = {}
+        keyword: list[SearchResult], 
+        semantic: list[SearchResult]
+    ) -> list[SearchResult]:
+        scores: dict[str, float] = defaultdict(float)
+        result_map: dict[str, SearchResult] = {}
         
         # Normalize keyword scores
         if keyword:

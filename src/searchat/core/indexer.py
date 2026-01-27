@@ -5,7 +5,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 from dataclasses import asdict
-from typing import List, Dict
+
 import numpy as np
 import faiss
 import pyarrow as pa
@@ -90,7 +90,7 @@ class ConversationIndexer:
         self.conversations_dir.mkdir(exist_ok=True)
         self.indices_dir.mkdir(exist_ok=True)
     
-    def _chunk_text(self, text: str, chunk_size: int | None = None, overlap: int | None = None) -> List[str]:
+    def _chunk_text(self, text: str, chunk_size: int | None = None, overlap: int | None = None) -> list[str]:
         if chunk_size is None:
             chunk_size = self.chunk_size
         if overlap is None:
@@ -102,7 +102,7 @@ class ConversationIndexer:
         # Fast path for long unstructured text (no sentence boundaries): fixed-size chunks.
         if not re.search(r"[.!?]", text):
             overlap = max(0, min(overlap, chunk_size - 1))
-            chunks: List[str] = []
+            chunks: list[str] = []
             start = 0
             while start < len(text):
                 end = min(start + chunk_size, len(text))
@@ -165,7 +165,7 @@ class ConversationIndexer:
         
         return chunks
     
-    def _chunk_by_messages(self, messages: List[MessageRecord], title: str) -> List[Dict]:
+    def _chunk_by_messages(self, messages: list[MessageRecord], title: str) -> list[dict]:
         chunks_with_metadata = []
         current_chunk = f"{title}\n\n"
         current_messages = []
@@ -306,9 +306,9 @@ class ConversationIndexer:
         # Phase 2: Processing conversations
         progress.update_phase("Processing conversations")
 
-        all_records: List[ConversationRecord] = []
-        all_chunks_with_meta: List[Dict] = []
-        project_records_map: Dict[str, List[ConversationRecord]] = {}
+        all_records: list[ConversationRecord] = []
+        all_chunks_with_meta: list[dict] = []
+        project_records_map: dict[str, list[ConversationRecord]] = {}
 
         for idx, (json_file, project_id, agent_type) in enumerate(file_metadata, 1):
             display_name = f"{agent_type} | {json_file.name}"
@@ -351,7 +351,7 @@ class ConversationIndexer:
         embeddings_array = self._batch_encode_chunks(all_chunks_with_meta, progress)
 
         # Build metadata for FAISS index
-        metadata: List[Dict] = []
+        metadata: list[dict] = []
         for chunk_idx, (chunk_meta, embedding) in enumerate(zip(all_chunks_with_meta, embeddings_array)):
             record = chunk_meta['_record']
             metadata.append({
@@ -413,7 +413,7 @@ class ConversationIndexer:
 
     def _batch_encode_chunks(
         self,
-        chunks_with_meta: List[Dict],
+        chunks_with_meta: list[dict],
         progress: ProgressCallback | None = None,
     ) -> np.ndarray:
         """
@@ -483,8 +483,8 @@ class ConversationIndexer:
                 title = text[:100]
                 break
         
-        messages: List[MessageRecord] = []
-        full_text_parts: List[str] = []
+        messages: list[MessageRecord] = []
+        full_text_parts: list[str] = []
         
         for idx, entry in enumerate(lines):
             msg_type = entry.get('type')
@@ -593,8 +593,8 @@ class ConversationIndexer:
         updated_at = datetime.fromisoformat(end_time_str) if end_time_str else created_at
 
         # Parse messages
-        messages: List[MessageRecord] = []
-        full_text_parts: List[str] = []
+        messages: list[MessageRecord] = []
+        full_text_parts: list[str] = []
         title = 'Untitled Vibe Session'
 
         for msg in data.get('messages', []):
@@ -728,7 +728,7 @@ class ConversationIndexer:
             indexed_at=datetime.now()
         )
 
-    def _load_opencode_messages(self, data_root: Path, session_id: str) -> List[MessageRecord]:
+    def _load_opencode_messages(self, data_root: Path, session_id: str) -> list[MessageRecord]:
         messages_dir = data_root / "storage" / "message" / session_id
         if not messages_dir.exists():
             return []
@@ -754,7 +754,7 @@ class ConversationIndexer:
 
         raw_messages.sort(key=lambda item: (item[0] or datetime.min, item[1]))
 
-        messages: List[MessageRecord] = []
+        messages: list[MessageRecord] = []
         for sequence, (created_at, _name, role, content) in enumerate(raw_messages):
             code_blocks = re.findall(r'```(?:\w+)?\n(.*?)```', content, re.DOTALL)
             has_code = len(code_blocks) > 0
@@ -769,7 +769,7 @@ class ConversationIndexer:
 
         return messages
 
-    def _load_opencode_session_messages(self, session: dict, data_root: Path) -> List[MessageRecord]:
+    def _load_opencode_session_messages(self, session: dict, data_root: Path) -> list[MessageRecord]:
         session_messages = session.get("messages")
         if not isinstance(session_messages, list):
             return []
@@ -789,7 +789,7 @@ class ConversationIndexer:
 
         raw_messages.sort(key=lambda item: (item[0] or datetime.min, item[1]))
 
-        messages: List[MessageRecord] = []
+        messages: list[MessageRecord] = []
         for sequence, (created_at, _name, role, content) in enumerate(raw_messages):
             code_blocks = re.findall(r'```(?:\w+)?\n(.*?)```', content, re.DOTALL)
             has_code = len(code_blocks) > 0
@@ -897,7 +897,7 @@ class ConversationIndexer:
         except (OSError, ValueError, TypeError):
             return None
 
-    def _write_parquet_batch(self, records: List[ConversationRecord], project_id: str) -> None:
+    def _write_parquet_batch(self, records: list[ConversationRecord], project_id: str) -> None:
         output_path = self.conversations_dir / f"project_{project_id}.parquet"
         
         data = {
@@ -924,7 +924,7 @@ class ConversationIndexer:
         table = pa.Table.from_pydict(data, schema=CONVERSATION_SCHEMA)
         pq.write_table(table, output_path)
     
-    def _build_faiss_index(self, embeddings: np.ndarray, metadata: List[Dict]) -> None:
+    def _build_faiss_index(self, embeddings: np.ndarray, metadata: list[dict]) -> None:
         dimension = embeddings.shape[1]  # type: ignore[call-arg]
         n_vectors = embeddings.shape[0]  # type: ignore[call-arg]
         
@@ -966,7 +966,7 @@ class ConversationIndexer:
 
         return metadata_path.exists() or faiss_path.exists() or has_parquets
 
-    def _load_existing_metadata(self) -> Dict | None:
+    def _load_existing_metadata(self) -> dict | None:
         metadata_path = self.indices_dir / "index_metadata.json"
         if not metadata_path.exists():
             return None
@@ -999,7 +999,7 @@ class ConversationIndexer:
 
     def index_append_only(
         self,
-        file_paths: List[str],
+        file_paths: list[str],
         progress: ProgressCallback | None = None,
     ) -> UpdateStats:
         """
@@ -1064,7 +1064,7 @@ class ConversationIndexer:
 
         new_embeddings = []
         new_metadata = []
-        new_conversation_records: Dict[str, List[ConversationRecord]] = {}
+        new_conversation_records: dict[str, list[ConversationRecord]] = {}
         new_indexed_paths: set[str] = set()
         processed_count = 0
 

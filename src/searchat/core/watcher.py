@@ -12,8 +12,8 @@ Supported agents:
 import logging
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Set
 from queue import Queue, Empty
 
 from threading import Thread
@@ -35,7 +35,7 @@ class ConversationEventHandler(FileSystemEventHandler):
         super().__init__()
         self.pending_queue = pending_queue
         self.debounce_seconds = debounce_seconds
-        self._last_event_times: Dict[str, float] = {}
+        self._last_event_times: dict[str, float] = {}
         self._lock = threading.Lock()
 
     def _should_process(self, path: str) -> bool:
@@ -82,8 +82,8 @@ class ConversationWatcher:
 
     def __init__(
         self,
-        config: Optional[Config] = None,
-        on_update: Optional[Callable[[List[str]], None]] = None,
+        config: Config | None = None,
+        on_update: Callable[[list[str]], None] | None = None,
         batch_delay_seconds: float = 5.0,
         debounce_seconds: float = 2.0,
     ):
@@ -125,7 +125,7 @@ class ConversationWatcher:
         self._indexed_files: Set[str] = set()
 
         # Track last modification time for each file (for debouncing re-index)
-        self._last_modified_time: Dict[str, float] = {}
+        self._last_modified_time: dict[str, float] = {}
 
     def set_indexed_files(self, file_paths: Set[str]) -> None:
         """
@@ -193,7 +193,7 @@ class ConversationWatcher:
 
     def _process_pending_updates(self) -> None:
         """Background thread that batches and processes pending updates."""
-        pending_files: Dict[str, str] = {}  # path -> event_type
+        pending_files: dict[str, str] = {}  # path -> event_type
         last_event_time = 0.0
 
         while not self._stop_event.is_set():
@@ -214,7 +214,7 @@ class ConversationWatcher:
         if pending_files:
             self._process_batch(pending_files)
 
-    def _process_batch(self, pending_files: Dict[str, str]) -> None:
+    def _process_batch(self, pending_files: dict[str, str]) -> None:
         """Process a batch of pending file updates."""
         if not pending_files:
             return
@@ -262,6 +262,6 @@ class ConversationWatcher:
         """Check if watcher is currently running."""
         return self._running
 
-    def get_watched_directories(self) -> List[Path]:
+    def get_watched_directories(self) -> list[Path]:
         """Get list of directories being watched."""
         return self.watched_dirs.copy()
