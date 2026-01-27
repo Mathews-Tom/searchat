@@ -122,12 +122,12 @@ class ConversationWatcher:
         self._running = False
 
         # Track indexed files to detect truly new ones
-        self._indexed_files: Set[str] = set()
+        self._indexed_files: set[str] = set()
 
         # Track last modification time for each file (for debouncing re-index)
         self._last_modified_time: dict[str, float] = {}
 
-    def set_indexed_files(self, file_paths: Set[str]) -> None:
+    def set_indexed_files(self, file_paths: set[str]) -> None:
         """
         Set the list of already-indexed file paths.
 
