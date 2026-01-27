@@ -1677,22 +1677,26 @@ async def get_all_conversations(
                 raise HTTPException(status_code=400, detail="Invalid tool filter")
             tool = tool_value
 
-        total = store.count_conversations(
-            project_id=project,
-            date_from=date_from_dt,
-            date_to=date_to_dt,
-            tool=tool,
-        )
+        count_kwargs = {
+            "project_id": project,
+            "date_from": date_from_dt,
+            "date_to": date_to_dt,
+        }
+        if tool is not None:
+            count_kwargs["tool"] = tool
+        total = store.count_conversations(**count_kwargs)
 
-        rows = store.list_conversations(
-            sort_by=sort_by,
-            project_id=project,
-            date_from=date_from_dt,
-            date_to=date_to_dt,
-            tool=tool,
-            limit=limit,
-            offset=offset,
-        )
+        list_kwargs = {
+            "sort_by": sort_by,
+            "project_id": project,
+            "date_from": date_from_dt,
+            "date_to": date_to_dt,
+            "limit": limit,
+            "offset": offset,
+        }
+        if tool is not None:
+            list_kwargs["tool"] = tool
+        rows = store.list_conversations(**list_kwargs)
 
         response_results = []
         for row in rows:
