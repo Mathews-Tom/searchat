@@ -167,6 +167,15 @@ class SearchEngine:
                 conditions.append(f"{prefix}project_id IN ({placeholders})")
                 params.extend(filters.project_ids)
 
+            if filters.tool:
+                if filters.tool == "opencode":
+                    conditions.append(f"{prefix}project_id LIKE 'opencode-%'")
+                elif filters.tool == "vibe":
+                    conditions.append(f"{prefix}project_id LIKE 'vibe-%'")
+                elif filters.tool == "claude":
+                    conditions.append(f"{prefix}project_id NOT LIKE 'opencode-%'")
+                    conditions.append(f"{prefix}project_id NOT LIKE 'vibe-%'")
+
             if filters.date_from:
                 conditions.append(f"{prefix}updated_at >= ?")
                 params.append(filters.date_from)
@@ -445,7 +454,7 @@ class SearchEngine:
         k = 100
         # Use the stable Python binding signature: search(x, k) -> (D, I).
         # Some FAISS index wrappers don't expose the 4-arg C++ signature.
-        distances, labels = faiss_index.search(query_embedding.reshape(1, -1), k)
+        distances, labels = faiss_index.search(query_embedding.reshape(1, -1), k)  # type: ignore[call-arg,arg-type]
         
         valid_mask = labels[0] >= 0
         hits = []

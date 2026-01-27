@@ -4,6 +4,7 @@ import re
 import time
 from datetime import datetime
 from pathlib import Path
+from dataclasses import asdict
 from typing import List, Dict
 import numpy as np
 import faiss
@@ -32,12 +33,14 @@ class ConversationIndexer:
     Supported agents:
     - Claude Code: ~/.claude/projects/**/*.jsonl
     - Mistral Vibe: ~/.vibe/logs/session/*.json
+    - OpenCode: ~/.local/share/opencode/storage/session/*/*.json
     """
 
-    def __init__(self, search_dir: Path, config: Config = None):
+    def __init__(self, search_dir: Path, config: Config | None = None):
         self.path_resolver = PathResolver()
         self.claude_dirs = self.path_resolver.resolve_claude_dirs()
         self.vibe_dirs = self.path_resolver.resolve_vibe_dirs()
+        self.opencode_dirs = self.path_resolver.resolve_opencode_dirs()
         self.search_dir = search_dir
         self.data_dir = search_dir / "data"
         self.conversations_dir = self.data_dir / "conversations"
@@ -87,7 +90,7 @@ class ConversationIndexer:
         self.conversations_dir.mkdir(exist_ok=True)
         self.indices_dir.mkdir(exist_ok=True)
     
-    def _chunk_text(self, text: str, chunk_size: int = None, overlap: int = None) -> List[str]:
+    def _chunk_text(self, text: str, chunk_size: int | None = None, overlap: int | None = None) -> List[str]:
         if chunk_size is None:
             chunk_size = self.chunk_size
         if overlap is None:
@@ -219,7 +222,7 @@ class ConversationIndexer:
         progress: ProgressCallback | None = None,
     ) -> IndexStats:
         """
-        Build index from scratch by scanning all JSONL source files.
+        Build index from scratch by scanning all supported source files.
 
         SAFETY: If an existing index is detected, this requires force=True
         to prevent accidental data loss. The existing index will be completely
@@ -273,16 +276,17 @@ class ConversationIndexer:
         all_files = []
         file_metadata = []  # Store (file_path, project_id, agent_type)
 
+        claude_seen: set[Path] = set()
         for claude_dir in self.claude_dirs:
             if not claude_dir.exists():
                 continue
-            for project_dir in claude_dir.iterdir():
-                if not project_dir.is_dir():
+            for json_file in claude_dir.rglob("*.jsonl"):
+                if json_file in claude_seen:
                     continue
-                project_id = project_dir.name
-                for json_file in project_dir.glob("*.jsonl"):
-                    all_files.append(json_file)
-                    file_metadata.append((json_file, project_id, 'claude'))
+                claude_seen.add(json_file)
+                project_id = json_file.parent.name
+                all_files.append(json_file)
+                file_metadata.append((json_file, project_id, 'claude'))
 
         for vibe_dir in self.vibe_dirs:
             if not vibe_dir.exists():
@@ -290,6 +294,14 @@ class ConversationIndexer:
             for json_file in vibe_dir.glob("*.json"):
                 all_files.append(json_file)
                 file_metadata.append((json_file, "vibe-sessions", 'vibe'))
+
+        for opencode_dir in self.opencode_dirs:
+            storage_session_dir = opencode_dir / "storage" / "session"
+            if not storage_session_dir.exists():
+                continue
+            for session_file in storage_session_dir.glob("*/*.json"):
+                all_files.append(session_file)
+                file_metadata.append((session_file, "opencode", 'opencode'))
 
         # Phase 2: Processing conversations
         progress.update_phase("Processing conversations")
@@ -299,12 +311,15 @@ class ConversationIndexer:
         project_records_map: Dict[str, List[ConversationRecord]] = {}
 
         for idx, (json_file, project_id, agent_type) in enumerate(file_metadata, 1):
-            progress.update_file_progress(idx, len(file_metadata), json_file.name)
+            display_name = f"{agent_type} | {json_file.name}"
+            progress.update_file_progress(idx, len(file_metadata), display_name)
 
             try:
                 # Process based on agent type
                 if agent_type == 'claude':
                     record = self._process_conversation(json_file, project_id, 0)
+                elif agent_type == 'opencode':
+                    record = self._process_opencode_session(json_file, 0)
                 else:
                     record = self._process_vibe_session(json_file, 0)
 
@@ -314,9 +329,10 @@ class ConversationIndexer:
 
                 all_records.append(record)
 
-                if project_id not in project_records_map:
-                    project_records_map[project_id] = []
-                project_records_map[project_id].append(record)
+                project_key = record.project_id
+                if project_key not in project_records_map:
+                    project_records_map[project_key] = []
+                project_records_map[project_key].append(record)
 
                 # Collect chunks (will batch encode later)
                 chunks_with_meta = self._chunk_by_messages(record.messages, record.title)
@@ -327,9 +343,8 @@ class ConversationIndexer:
             except Exception as e:
                 if agent_type == 'claude':
                     raise RuntimeError(f"Failed to process {json_file}: {e}") from e
-                else:
-                    logger.warning(f"Failed to process Vibe session {json_file}: {e}")
-                    continue
+                logger.warning(f"Failed to process {agent_type} session {json_file}: {e}")
+                continue
 
         # Phase 3: Generate embeddings
         progress.update_phase("Generating embeddings")
@@ -530,6 +545,8 @@ class ConversationIndexer:
         if file_path.suffix == '.jsonl':
             return 'claude'
         elif file_path.suffix == '.json':
+            if "storage" in file_path.parts and "session" in file_path.parts:
+                return 'opencode'
             # Check if it's in a Vibe directory
             if '.vibe' in str(file_path):
                 return 'vibe'
@@ -537,6 +554,8 @@ class ConversationIndexer:
             try:
                 with open(file_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
+                if 'projectID' in data and 'sessionID' in data:
+                    return 'opencode'
                 if 'metadata' in data and 'messages' in data:
                     return 'vibe'
             except (json.JSONDecodeError, KeyError):
@@ -644,8 +663,239 @@ class ConversationIndexer:
             return self._process_vibe_session(file_path, embedding_id)
         elif agent_format == 'claude':
             return self._process_conversation(file_path, project_id, embedding_id)
+        elif agent_format == 'opencode':
+            return self._process_opencode_session(file_path, embedding_id)
         else:
             raise ValueError(f"Unknown conversation format: {file_path}")
+
+    def _process_opencode_session(self, session_path: Path, embedding_id: int) -> ConversationRecord:
+        """
+        Process an OpenCode session JSON file.
+
+        Args:
+            session_path: Path to OpenCode session JSON
+            embedding_id: Embedding ID for this conversation
+
+        Returns:
+            ConversationRecord with parsed session data
+        """
+        with open(session_path, 'r', encoding='utf-8') as f:
+            session = json.load(f)
+
+        file_hash = hashlib.sha256(session_path.read_bytes()).hexdigest()
+
+        session_id = session.get("id") or session.get("sessionID") or session_path.stem
+        project_id = session.get("projectID", "unknown")
+        title = session.get("title") or "Untitled OpenCode Session"
+
+        time_info = session.get("time", {})
+        created_at = self._timestamp_ms_to_datetime(time_info.get("created"))
+        updated_at = self._timestamp_ms_to_datetime(time_info.get("updated")) or created_at
+
+        data_root = self._resolve_opencode_data_root(session_path)
+        messages = self._load_opencode_messages(data_root, session_id)
+        if not messages:
+            for alt_root in self.opencode_dirs:
+                if alt_root == data_root:
+                    continue
+                messages = self._load_opencode_messages(alt_root, session_id)
+                if messages:
+                    break
+        if not messages:
+            messages = self._load_opencode_session_messages(session, data_root)
+
+        if title == "Untitled OpenCode Session":
+            for msg in messages:
+                if msg.content:
+                    title = msg.content[:100].replace("\n", " ").strip()
+                    break
+
+        full_text_parts = [msg.content for msg in messages if msg.content]
+        full_text = "\n\n".join(full_text_parts)
+
+        return ConversationRecord(
+            conversation_id=session_id,
+            project_id=f"opencode-{project_id}",
+            file_path=str(session_path),
+            title=title,
+            created_at=created_at or datetime.now(),
+            updated_at=updated_at or datetime.now(),
+            message_count=len(messages),
+            messages=messages,
+            full_text=full_text,
+            embedding_id=embedding_id,
+            file_hash=file_hash,
+            indexed_at=datetime.now()
+        )
+
+    def _load_opencode_messages(self, data_root: Path, session_id: str) -> List[MessageRecord]:
+        messages_dir = data_root / "storage" / "message" / session_id
+        if not messages_dir.exists():
+            return []
+
+        raw_messages = []
+        for message_file in messages_dir.glob("*.json"):
+            try:
+                with open(message_file, 'r', encoding='utf-8') as f:
+                    message = json.load(f)
+            except json.JSONDecodeError:
+                continue
+
+            role = message.get("role")
+            if role not in ("user", "assistant"):
+                continue
+
+            content = self._extract_opencode_message_text(data_root, message)
+            if not content:
+                continue
+
+            created_at = self._timestamp_ms_to_datetime(message.get("time", {}).get("created"))
+            raw_messages.append((created_at, message_file.name, role, content))
+
+        raw_messages.sort(key=lambda item: (item[0] or datetime.min, item[1]))
+
+        messages: List[MessageRecord] = []
+        for sequence, (created_at, _name, role, content) in enumerate(raw_messages):
+            code_blocks = re.findall(r'```(?:\w+)?\n(.*?)```', content, re.DOTALL)
+            has_code = len(code_blocks) > 0
+            messages.append(MessageRecord(
+                sequence=sequence,
+                role=role,
+                content=content,
+                timestamp=created_at or datetime.now(),
+                has_code=has_code,
+                code_blocks=code_blocks
+            ))
+
+        return messages
+
+    def _load_opencode_session_messages(self, session: dict, data_root: Path) -> List[MessageRecord]:
+        session_messages = session.get("messages")
+        if not isinstance(session_messages, list):
+            return []
+
+        raw_messages = []
+        for index, entry in enumerate(session_messages):
+            if not isinstance(entry, dict):
+                continue
+            role = entry.get("role") or entry.get("type")
+            if role not in ("user", "assistant"):
+                continue
+            content = self._extract_opencode_message_text(data_root, entry)
+            if not content:
+                continue
+            created_at = self._timestamp_ms_to_datetime(entry.get("time", {}).get("created"))
+            raw_messages.append((created_at, f"{index:06d}", role, content))
+
+        raw_messages.sort(key=lambda item: (item[0] or datetime.min, item[1]))
+
+        messages: List[MessageRecord] = []
+        for sequence, (created_at, _name, role, content) in enumerate(raw_messages):
+            code_blocks = re.findall(r'```(?:\w+)?\n(.*?)```', content, re.DOTALL)
+            has_code = len(code_blocks) > 0
+            messages.append(MessageRecord(
+                sequence=sequence,
+                role=role,
+                content=content,
+                timestamp=created_at or datetime.now(),
+                has_code=has_code,
+                code_blocks=code_blocks
+            ))
+
+        return messages
+
+    def _extract_opencode_message_text(self, data_root: Path, message: dict) -> str:
+        def _normalize_text(value: object) -> str:
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+            if isinstance(value, dict):
+                text = value.get("text") or value.get("content") or value.get("value")
+                if isinstance(text, str) and text.strip():
+                    return text.strip()
+            if isinstance(value, list):
+                parts = []
+                for block in value:
+                    if not isinstance(block, dict):
+                        continue
+                    text = block.get("text") or block.get("content") or block.get("value")
+                    if isinstance(text, str) and text.strip():
+                        parts.append(text.strip())
+                if parts:
+                    return "\n\n".join(parts)
+            return ""
+
+        content_text = _normalize_text(message.get("content"))
+        if content_text:
+            return content_text
+
+        text_text = _normalize_text(message.get("text"))
+        if text_text:
+            return text_text
+
+        message_text = _normalize_text(message.get("message"))
+        if message_text:
+            return message_text
+
+        message_id = message.get("id")
+        if isinstance(message_id, str):
+            parts_text = self._load_opencode_parts_text(data_root, message_id)
+            if parts_text:
+                return parts_text
+
+        summary = message.get("summary")
+        if isinstance(summary, dict):
+            body = summary.get("body")
+            if isinstance(body, str) and body.strip():
+                return body.strip()
+
+            title = summary.get("title")
+            if isinstance(title, str) and title.strip():
+                return title.strip()
+
+        return ""
+
+    def _load_opencode_parts_text(self, data_root: Path, message_id: str) -> str:
+        parts_dir = data_root / "storage" / "part" / message_id
+        if not parts_dir.exists():
+            return ""
+
+        parts = []
+        for part_file in sorted(parts_dir.glob("*.json")):
+            try:
+                with open(part_file, 'r', encoding='utf-8') as f:
+                    part = json.load(f)
+            except json.JSONDecodeError:
+                continue
+
+            text = part.get("text")
+            if isinstance(text, str) and text.strip():
+                parts.append(text.strip())
+                continue
+
+            state = part.get("state")
+            if isinstance(state, dict):
+                output = state.get("output")
+                if isinstance(output, str) and output.strip():
+                    parts.append(output.strip())
+
+        return "\n\n".join(parts)
+
+    def _resolve_opencode_data_root(self, session_path: Path) -> Path:
+        if "storage" in session_path.parts:
+            storage_index = session_path.parts.index("storage")
+            return Path(*session_path.parts[:storage_index])
+        if len(session_path.parents) >= 4:
+            return session_path.parents[3]
+        return session_path.parent
+
+    @staticmethod
+    def _timestamp_ms_to_datetime(value: int | None) -> datetime | None:
+        if value is None:
+            return None
+        try:
+            return datetime.fromtimestamp(value / 1000)
+        except (OSError, ValueError, TypeError):
+            return None
 
     def _write_parquet_batch(self, records: List[ConversationRecord], project_id: str) -> None:
         output_path = self.conversations_dir / f"project_{project_id}.parquet"
@@ -660,14 +910,7 @@ class ConversationIndexer:
             'message_count': [r.message_count for r in records],
             'messages': [
                 [
-                    {
-                        'sequence': m.sequence,
-                        'role': m.role,
-                        'content': m.content,
-                        'timestamp': m.timestamp,
-                        'has_code': m.has_code,
-                        'code_blocks': m.code_blocks
-                    }
+                    asdict(m)
                     for m in r.messages
                 ]
                 for r in records
@@ -682,22 +925,22 @@ class ConversationIndexer:
         pq.write_table(table, output_path)
     
     def _build_faiss_index(self, embeddings: np.ndarray, metadata: List[Dict]) -> None:
-        dimension = embeddings.shape[1]
-        n_vectors = embeddings.shape[0]
+        dimension = embeddings.shape[1]  # type: ignore[call-arg]
+        n_vectors = embeddings.shape[0]  # type: ignore[call-arg]
         
         if n_vectors < 100:
-            index = faiss.IndexFlatL2(dimension)
+            index = faiss.IndexFlatL2(dimension)  # type: ignore[call-arg]
         else:
-            quantizer = faiss.IndexFlatL2(dimension)
-            index = faiss.IndexIVFFlat(quantizer, dimension, min(100, n_vectors // 10))
-            index.train(embeddings)
+            quantizer = faiss.IndexFlatL2(dimension)  # type: ignore[call-arg]
+            index = faiss.IndexIVFFlat(quantizer, dimension, min(100, n_vectors // 10))  # type: ignore[call-arg]
+            index.train(embeddings)  # type: ignore[call-arg,arg-type]
         
-        index.add(embeddings)
+        index.add(embeddings)  # type: ignore[call-arg,arg-type]
         
-        faiss.write_index(index, str(self.indices_dir / "embeddings.faiss"))
+        faiss.write_index(index, str(self.indices_dir / "embeddings.faiss"))  # type: ignore[call-arg]
         
-        metadata_table = pa.Table.from_pylist(metadata, schema=METADATA_SCHEMA)
-        pq.write_table(metadata_table, self.indices_dir / "embeddings.metadata.parquet")
+        metadata_table = pa.Table.from_pylist(metadata, schema=METADATA_SCHEMA)  # type: ignore[call-arg]
+        pq.write_table(metadata_table, self.indices_dir / "embeddings.metadata.parquet")  # type: ignore[call-arg]
     
     def _write_index_metadata(self, total_conversations: int, total_chunks: int) -> None:
         metadata = {
@@ -723,7 +966,7 @@ class ConversationIndexer:
 
         return metadata_path.exists() or faiss_path.exists() or has_parquets
 
-    def _load_existing_metadata(self) -> Dict:
+    def _load_existing_metadata(self) -> Dict | None:
         metadata_path = self.indices_dir / "index_metadata.json"
         if not metadata_path.exists():
             return None
@@ -828,14 +1071,14 @@ class ConversationIndexer:
         for idx, file_path in enumerate(new_files, 1):
             json_path = Path(file_path)
 
-            progress.update_file_progress(idx, len(new_files), json_path.name)
-
             if not json_path.exists():
                 logger.warning(f"File not found, skipping: {file_path}")
                 continue
 
             # Detect format and get project_id
             agent_format = self._detect_agent_format(json_path)
+            display_name = f"{agent_format} | {json_path.name}"
+            progress.update_file_progress(idx, len(new_files), display_name)
             if agent_format == 'vibe':
                 project_id = "vibe-sessions"
             else:
@@ -850,9 +1093,10 @@ class ConversationIndexer:
 
                 new_indexed_paths.add(record.file_path)
 
-                if project_id not in new_conversation_records:
-                    new_conversation_records[project_id] = []
-                new_conversation_records[project_id].append(record)
+                project_key = record.project_id
+                if project_key not in new_conversation_records:
+                    new_conversation_records[project_key] = []
+                new_conversation_records[project_key].append(record)
 
                 chunks_with_meta = self._chunk_by_messages(record.messages, record.title)
 
@@ -935,8 +1179,10 @@ class ConversationIndexer:
 
         # Update index metadata
         existing_index_metadata = self._load_existing_metadata()
-        total_conversations = existing_index_metadata['total_conversations'] + processed_count
-        total_chunks = existing_index_metadata['total_chunks'] + len(new_embeddings)
+        if existing_index_metadata is None:
+            raise RuntimeError("Index metadata missing after append-only update")
+        total_conversations = existing_index_metadata["total_conversations"] + processed_count
+        total_chunks = existing_index_metadata["total_chunks"] + len(new_embeddings)
         self._write_index_metadata(total_conversations, total_chunks)
 
         progress.update_stats(

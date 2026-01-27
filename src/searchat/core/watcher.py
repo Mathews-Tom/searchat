@@ -6,6 +6,7 @@ Monitors for new/modified conversation files and triggers append-only indexing.
 Supported agents:
 - Claude Code: ~/.claude/projects/**/*.jsonl
 - Mistral Vibe: ~/.vibe/logs/session/*.json
+- OpenCode: ~/.local/share/opencode/storage/session/*/*.json
 """
 
 import logging
@@ -15,6 +16,7 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, Set
 from queue import Queue, Empty
 
+from threading import Thread
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler, FileCreatedEvent, FileModifiedEvent
 
@@ -53,14 +55,14 @@ class ConversationEventHandler(FileSystemEventHandler):
     def on_created(self, event):
         if event.is_directory:
             return
-        if self._should_process(event.src_path):
+        if self._should_process(str(event.src_path)):
             logger.info(f"New conversation detected: {event.src_path}")
             self.pending_queue.put(('created', event.src_path))
 
     def on_modified(self, event):
         if event.is_directory:
             return
-        if self._should_process(event.src_path):
+        if self._should_process(str(event.src_path)):
             logger.info(f"Conversation modified: {event.src_path}")
             self.pending_queue.put(('modified', event.src_path))
 
@@ -72,6 +74,7 @@ class ConversationWatcher:
     Supported agents:
     - Claude Code: ~/.claude/projects/
     - Mistral Vibe: ~/.vibe/logs/session/
+    - OpenCode: ~/.local/share/opencode/storage/session/
 
     Triggers append-only indexing when new or modified files are detected.
     Does NOT trigger on file deletions (preserves orphaned data).
@@ -100,17 +103,21 @@ class ConversationWatcher:
         self.path_resolver = PathResolver()
         self.claude_dirs = self.path_resolver.resolve_claude_dirs(config)
         self.vibe_dirs = self.path_resolver.resolve_vibe_dirs()
+        self.opencode_dirs = self.path_resolver.resolve_opencode_dirs(config)
 
         # Combine all watched directories
         self.watched_dirs = self.claude_dirs + self.vibe_dirs
+        for opencode_dir in self.opencode_dirs:
+            storage_session_dir = opencode_dir / "storage" / "session"
+            self.watched_dirs.append(storage_session_dir)
 
         self.on_update = on_update
         self.batch_delay_seconds = batch_delay_seconds
         self.debounce_seconds = debounce_seconds
 
-        self._pending_queue: Queue = Queue()
-        self._observer: Optional[Observer] = None
-        self._processor_thread: Optional[threading.Thread] = None
+        self._pending_queue = Queue()
+        self._observer = None
+        self._processor_thread = None
         self._stop_event = threading.Event()
         self._running = False
 
@@ -144,15 +151,19 @@ class ConversationWatcher:
             debounce_seconds=self.debounce_seconds
         )
 
+        observer = self._observer
+        if observer is None:
+            raise RuntimeError("Failed to initialize file watcher")
+
         for watch_dir in self.watched_dirs:
             if watch_dir.exists():
                 logger.info(f"Watching directory: {watch_dir}")
-                self._observer.schedule(handler, str(watch_dir), recursive=True)
+                observer.schedule(handler, str(watch_dir), recursive=True)
 
-        self._observer.start()
+        observer.start()
 
         # Start batch processor thread
-        self._processor_thread = threading.Thread(
+        self._processor_thread = Thread(
             target=self._process_pending_updates,
             daemon=True,
             name="ConversationWatcherProcessor"

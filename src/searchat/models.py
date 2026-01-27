@@ -45,6 +45,7 @@ class SearchFilters:
     date_to: Optional[datetime] = None
     min_messages: int = 0
     has_code: Optional[bool] = None
+    tool: str | None = None
 
 
 @dataclass

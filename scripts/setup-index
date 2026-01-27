@@ -2,8 +2,8 @@
 """
 Initial index setup for searchat.
 
-This script creates the initial search index by scanning all Claude Code
-and Mistral Vibe conversation files. It's safe to run on first setup and
+This script creates the initial search index by scanning all Claude Code,
+Mistral Vibe, and OpenCode conversation files. It's safe to run on first setup and
 provides interactive options for existing indexes.
 
 Usage:
@@ -101,6 +101,19 @@ def main():
                     continue
                 for jsonl_file in claude_dir.rglob("*.jsonl"):
                     all_files.append(str(jsonl_file))
+
+            for vibe_dir in PathResolver.resolve_vibe_dirs():
+                if not vibe_dir.exists():
+                    continue
+                for json_file in vibe_dir.glob("*.json"):
+                    all_files.append(str(json_file))
+
+            for opencode_dir in PathResolver.resolve_opencode_dirs(config):
+                storage_session_dir = opencode_dir / "storage" / "session"
+                if not storage_session_dir.exists():
+                    continue
+                for session_file in storage_session_dir.glob("*/*.json"):
+                    all_files.append(str(session_file))
 
             # Get already indexed files
             indexed_paths = indexer.get_indexed_file_paths()
