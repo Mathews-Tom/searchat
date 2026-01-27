@@ -2,6 +2,7 @@
 """FastAPI backend for Searchat"""
 
 import os
+import warnings
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
@@ -28,6 +29,12 @@ from searchat.config.constants import (
     ENV_HOST,
     ERROR_INVALID_PORT,
     ERROR_PORT_IN_USE,
+)
+
+warnings.filterwarnings(
+    "ignore",
+    message=r"resource_tracker: There appear to be .* leaked semaphore objects to clean up at shutdown",
+    category=UserWarning,
 )
 
 
@@ -2671,6 +2678,13 @@ def main():
     """Run the server with configurable host and port"""
     import uvicorn
     import socket
+    import warnings
+
+    warnings.filterwarnings(
+        "ignore",
+        message=r"resource_tracker: There appear to be .* leaked semaphore objects to clean up at shutdown",
+        category=UserWarning,
+    )
 
     # Get host from environment or use default
     host = os.getenv(ENV_HOST, DEFAULT_HOST)

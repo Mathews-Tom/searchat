@@ -4,9 +4,11 @@ import { initTheme, setTheme } from './modules/theme.js';
 import { restoreSearchState } from './modules/session.js';
 import { loadProjects } from './modules/api.js';
 import { search, toggleCustomDate, loadConversationView, showSearchView } from './modules/search.js';
+import { initChat } from './modules/chat.js';
 
 // Initialize theme on page load
 initTheme();
+initChat();
 
 // Make functions globally available for inline event handlers
 window.setTheme = setTheme;

@@ -16,6 +16,7 @@
     <link rel="stylesheet" href="/static/css/base.css">
     <link rel="stylesheet" href="/static/css/layout.css">
     <link rel="stylesheet" href="/static/css/components.css">
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
 
 </head>
 <body>
@@ -149,6 +150,39 @@
         <button onclick="showAllConversations()" style="background: #2196F3; margin-left: 10px;">Show All</button>
         <button onclick="indexMissing()" style="background: #4CAF50; margin-left: 10px;" title="Safely add conversations that aren't in the index yet">Add Missing Conversations</button>
         <button onclick="shutdownServer()" style="background: #f44336; margin-left: 10px;" title="Stop the search server">Stop Server</button>
+    </div>
+
+    <div class="chat-panel" id="chatPanel">
+        <div class="chat-header">
+            <div>
+                <h2>Chat with History</h2>
+                <p>Ask a question and get grounded answers with citations.</p>
+            </div>
+            <div class="chat-controls">
+                <label>Provider:
+                    <select id="chatProvider">
+                        <option value="ollama">Ollama (Local)</option>
+                        <option value="openai">OpenAI</option>
+                    </select>
+                </label>
+                <label>Model:
+                    <input type="text" id="chatModel" placeholder="optional" />
+                </label>
+            </div>
+        </div>
+        <div class="chat-body">
+            <textarea id="chatQuery" class="chat-textarea" placeholder="Ask about your chat history..."></textarea>
+            <div class="chat-actions">
+                <button id="chatSend">Ask</button>
+                <button id="chatStop" class="secondary">Stop</button>
+                <button id="chatClear" class="secondary">Clear</button>
+            </div>
+            <div class="chat-status-row">
+                <div id="chatSpinner" class="chat-spinner" aria-hidden="true"></div>
+                <div id="chatStatus" class="chat-status"></div>
+            </div>
+            <div id="chatAnswer" class="chat-answer"></div>
+        </div>
     </div>
 
     <div id="results"></div>
