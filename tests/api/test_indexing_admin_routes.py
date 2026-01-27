@@ -88,8 +88,9 @@ class TestIndexMissingEndpoint:
                 with patch('searchat.api.routers.indexing.invalidate_search_index') as invalidate:
                     with patch('searchat.api.routers.indexing.PathResolver.resolve_claude_dirs', return_value=[claude_dir]):
                         with patch('searchat.api.routers.indexing.PathResolver.resolve_vibe_dirs', return_value=[vibe_dir]):
-                            with patch('searchat.api.routers.indexing.indexing_state', {"in_progress": False}):
-                                response = client.post("/api/index_missing")
+                            with patch('searchat.api.routers.indexing.PathResolver.resolve_opencode_dirs', return_value=[]):
+                                with patch('searchat.api.routers.indexing.indexing_state', {"in_progress": False}):
+                                    response = client.post("/api/index_missing")
 
                                 assert response.status_code == 200
                                 data = response.json()
@@ -116,7 +117,8 @@ class TestIndexMissingEndpoint:
             with patch('searchat.api.routers.indexing.get_indexer', return_value=mock_indexer):
                 with patch('searchat.api.routers.indexing.PathResolver.resolve_claude_dirs', return_value=[claude_dir]):
                     with patch('searchat.api.routers.indexing.PathResolver.resolve_vibe_dirs', return_value=[]):
-                        response = client.post("/api/index_missing")
+                        with patch('searchat.api.routers.indexing.PathResolver.resolve_opencode_dirs', return_value=[]):
+                            response = client.post("/api/index_missing")
 
                         assert response.status_code == 200
                         data = response.json()
@@ -139,8 +141,9 @@ class TestIndexMissingEndpoint:
             with patch('searchat.api.routers.indexing.get_indexer', return_value=mock_indexer):
                 with patch('searchat.api.routers.indexing.PathResolver.resolve_claude_dirs', return_value=[claude_dir]):
                     with patch('searchat.api.routers.indexing.PathResolver.resolve_vibe_dirs', return_value=[]):
-                        with patch('searchat.api.routers.indexing.indexing_state', indexing_state):
-                            response = client.post("/api/index_missing")
+                        with patch('searchat.api.routers.indexing.PathResolver.resolve_opencode_dirs', return_value=[]):
+                            with patch('searchat.api.routers.indexing.indexing_state', indexing_state):
+                                response = client.post("/api/index_missing")
 
                             # State should be reset after completion
                             assert indexing_state["in_progress"] is False
@@ -159,8 +162,9 @@ class TestIndexMissingEndpoint:
             with patch('searchat.api.routers.indexing.get_indexer', return_value=mock_indexer):
                 with patch('searchat.api.routers.indexing.PathResolver.resolve_claude_dirs', return_value=[tmp_path]):
                     with patch('searchat.api.routers.indexing.PathResolver.resolve_vibe_dirs', return_value=[]):
-                        with patch('searchat.api.routers.indexing.indexing_state', {"in_progress": False}):
-                            response = client.post("/api/index_missing")
+                        with patch('searchat.api.routers.indexing.PathResolver.resolve_opencode_dirs', return_value=[]):
+                            with patch('searchat.api.routers.indexing.indexing_state', {"in_progress": False}):
+                                response = client.post("/api/index_missing")
 
                             assert response.status_code == 500
                             assert "Indexing error" in response.json()["detail"]
