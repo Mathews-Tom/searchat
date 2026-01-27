@@ -8,7 +8,7 @@ This module provides safe backup/restore operations to protect that data.
 import shutil
 import json
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Any
 from datetime import datetime
 import logging
 
@@ -34,7 +34,7 @@ class BackupMetadata:
         self.total_size_bytes = total_size_bytes
         self.backup_type = backup_type
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert metadata to dictionary."""
         return {
             "timestamp": self.timestamp,
@@ -47,7 +47,7 @@ class BackupMetadata:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "BackupMetadata":
+    def from_dict(cls, data: dict[str, Any]) -> "BackupMetadata":
         """Create metadata from dictionary."""
         return cls(
             timestamp=data["timestamp"],
@@ -64,7 +64,7 @@ class BackupManager:
 
     METADATA_FILE = "backup_metadata.json"
 
-    def __init__(self, data_dir: Path, backup_dir: Optional[Path] = None):
+    def __init__(self, data_dir: Path, backup_dir: Path | None = None):
         """
         Initialize backup manager.
 
@@ -97,7 +97,7 @@ class BackupManager:
 
     def create_backup(
         self,
-        backup_name: Optional[str] = None,
+        backup_name: str | None = None,
         backup_type: str = "manual"
     ) -> BackupMetadata:
         """
@@ -177,7 +177,7 @@ class BackupManager:
 
         return metadata
 
-    def list_backups(self) -> List[BackupMetadata]:
+    def list_backups(self) -> list[BackupMetadata]:
         """
         List all available backups.
 
@@ -268,7 +268,7 @@ class BackupManager:
         self,
         backup_path: Path,
         create_pre_restore_backup: bool = True
-    ) -> Optional[BackupMetadata]:
+    ) -> BackupMetadata | None:
         """
         Restore data from a backup.
 

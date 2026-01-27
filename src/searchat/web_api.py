@@ -4,7 +4,7 @@
 import os
 import warnings
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import Any
 from datetime import datetime, timedelta
 import json
 
@@ -42,8 +42,8 @@ warnings.filterwarnings(
 class SearchRequest(BaseModel):
     query: str
     mode: str = "hybrid"
-    project: Optional[str] = None
-    date_filter: Optional[str] = None
+    project: str | None = None
+    date_filter: str | None = None
 
 
 class SearchResultResponse(BaseModel):
@@ -56,8 +56,8 @@ class SearchResultResponse(BaseModel):
     file_path: str
     snippet: str
     score: float
-    message_start_index: Optional[int] = None
-    message_end_index: Optional[int] = None
+    message_start_index: int | None = None
+    message_end_index: int | None = None
     source: str  # WIN or WSL
     tool: str
 
@@ -72,11 +72,11 @@ class ConversationResponse(BaseModel):
     conversation_id: str
     title: str
     project_id: str
-    project_path: Optional[str] = None
+    project_path: str | None = None
     file_path: str
     message_count: int
     tool: str
-    messages: List[ConversationMessage]
+    messages: list[ConversationMessage]
 
 
 class ResumeRequest(BaseModel):
@@ -109,7 +109,7 @@ backup_manager = BackupManager(search_dir)
 projects_cache = None
 
 # Watcher state
-watcher: Optional[ConversationWatcher] = None
+watcher: ConversationWatcher | None = None
 watcher_stats = {"indexed_count": 0, "last_update": None}
 
 # Indexing state tracking
@@ -122,7 +122,7 @@ indexing_state = {
 }
 
 
-def on_new_conversations(file_paths: List[str]) -> None:
+def on_new_conversations(file_paths: list[str]) -> None:
     """Callback when watcher detects new conversation files."""
     global projects_cache, watcher_stats, indexing_state
     import logging
@@ -160,8 +160,8 @@ def on_new_conversations(file_paths: List[str]) -> None:
         indexing_state["operation"] = None
 
 
-def _extract_vibe_messages(data: dict) -> List[ConversationMessage]:
-    messages: List[ConversationMessage] = []
+def _extract_vibe_messages(data: dict) -> list[ConversationMessage]:
+    messages: list[ConversationMessage] = []
     for entry in data.get('messages', []):
         role = entry.get('role')
         if role not in ('user', 'assistant'):
@@ -193,7 +193,7 @@ def _load_opencode_parts_text(data_root: Path, message_id: str) -> str:
     if not parts_dir.exists():
         return ""
 
-    parts: List[str] = []
+    parts: list[str] = []
     for part_file in sorted(parts_dir.glob("*.json")):
         try:
             content = part_file.read_text(encoding="utf-8")
@@ -266,14 +266,14 @@ def _extract_opencode_message_text(data_root: Path, message: dict) -> str:
     return ""
 
 
-def _load_opencode_messages(session_file_path: str, session_id: str) -> List[ConversationMessage]:
+def _load_opencode_messages(session_file_path: str, session_id: str) -> list[ConversationMessage]:
     data_root = _resolve_opencode_data_root(session_file_path)
     candidate_roots = [data_root]
     for opencode_dir in PathResolver.resolve_opencode_dirs(config):
         if opencode_dir not in candidate_roots:
             candidate_roots.append(opencode_dir)
 
-    raw_messages: List[tuple[float | None, str, str, str]] = []
+    raw_messages: list[tuple[float | None, str, str, str]] = []
     for root in candidate_roots:
         messages_dir = root / "storage" / "message" / session_id
         if not messages_dir.exists():
@@ -330,7 +330,7 @@ def _load_opencode_messages(session_file_path: str, session_id: str) -> List[Con
 
     raw_messages.sort(key=lambda item: (item[0] or 0.0, item[1]))
 
-    messages: List[ConversationMessage] = []
+    messages: list[ConversationMessage] = []
     for created_ts, _name, text, role in raw_messages:
         timestamp = ""
         if created_ts is not None:
@@ -1529,11 +1529,11 @@ async def root():
 async def search(
     q: str = Query(..., description="Search query"),
     mode: str = Query("hybrid", description="Search mode: hybrid, semantic, or keyword"),
-    project: Optional[str] = Query(None, description="Filter by project"),
-    date: Optional[str] = Query(None, description="Date filter: today, week, month, or custom"),
-    date_from: Optional[str] = Query(None, description="Custom date from (YYYY-MM-DD)"),
-    date_to: Optional[str] = Query(None, description="Custom date to (YYYY-MM-DD)"),
-    tool: Optional[str] = Query(None, description="Filter by tool: claude, vibe, opencode"),
+    project: str | None = Query(None, description="Filter by project"),
+    date: str | None = Query(None, description="Date filter: today, week, month, or custom"),
+    date_from: str | None = Query(None, description="Custom date from (YYYY-MM-DD)"),
+    date_to: str | None = Query(None, description="Custom date to (YYYY-MM-DD)"),
+    tool: str | None = Query(None, description="Filter by tool: claude, vibe, opencode"),
     sort_by: str = Query("relevance", description="Sort by: relevance, date_newest, date_oldest, messages"),
     limit: int = Query(100, description="Max results to return (1-100)", ge=1, le=100)
 ):
@@ -1647,12 +1647,12 @@ async def get_projects():
 @app.get("/api/conversations/all")
 async def get_all_conversations(
     sort_by: str = Query("length", description="Sort by: length, date_newest, date_oldest, title"),
-    project: Optional[str] = Query(None, description="Filter by project"),
-    date: Optional[str] = Query(None, description="Date filter: today, week, month, or custom"),
-    date_from: Optional[str] = Query(None, description="Custom date from (YYYY-MM-DD)"),
-    date_to: Optional[str] = Query(None, description="Custom date to (YYYY-MM-DD)"),
-    tool: Optional[str] = Query(None, description="Filter by tool: claude, vibe, opencode"),
-    limit: Optional[int] = Query(None, ge=1, le=5000, description="Max results to return"),
+    project: str | None = Query(None, description="Filter by project"),
+    date: str | None = Query(None, description="Date filter: today, week, month, or custom"),
+    date_from: str | None = Query(None, description="Custom date from (YYYY-MM-DD)"),
+    date_to: str | None = Query(None, description="Custom date to (YYYY-MM-DD)"),
+    tool: str | None = Query(None, description="Filter by tool: claude, vibe, opencode"),
+    limit: int | None = Query(None, ge=1, le=5000, description="Max results to return"),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
 ):
     """Get all conversations with sorting"""
@@ -2130,7 +2130,7 @@ async def shutdown_server(background_tasks: BackgroundTasks, force: bool = False
 
 
 @app.post("/api/backup/create")
-async def create_backup(backup_name: Optional[str] = None):
+async def create_backup(backup_name: str | None = None):
     """Create a new backup of the index and data"""
     import logging
     logger = logging.getLogger(__name__)

@@ -15,7 +15,6 @@ import os
 import sys
 import platform
 from pathlib import Path
-from typing import List, Optional
 
 from .constants import (
     ENV_DATA_DIR,
@@ -161,7 +160,7 @@ class PathResolver:
         return Path(path)
 
     @staticmethod
-    def resolve_claude_dirs(config=None) -> List[Path]:
+    def resolve_claude_dirs(config=None) -> list[Path]:
         """
         Resolve all accessible Claude conversation directories.
 
@@ -260,7 +259,7 @@ class PathResolver:
         return path
 
     @staticmethod
-    def resolve_vibe_dirs() -> List[Path]:
+    def resolve_vibe_dirs() -> list[Path]:
         """
         Resolve Mistral Vibe session directories.
 
@@ -286,7 +285,7 @@ class PathResolver:
         return paths
 
     @staticmethod
-    def resolve_opencode_dirs(config=None) -> List[Path]:
+    def resolve_opencode_dirs(config=None) -> list[Path]:
         """
         Resolve OpenCode data directories.
 
@@ -295,7 +294,7 @@ class PathResolver:
         Returns:
             List of accessible OpenCode data directories
         """
-        paths: List[Path] = []
+        paths: list[Path] = []
 
         opencode_dir = os.getenv(ENV_OPENCODE_DATA_DIR)
         if opencode_dir:
