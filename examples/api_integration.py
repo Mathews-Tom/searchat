@@ -9,7 +9,7 @@ Usage:
 """
 
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import Any
 from searchat.search_engine import SearchEngine
 from searchat.models import SearchResult, SearchFilters
 from searchat.config import Config
@@ -32,7 +32,7 @@ class ConversationSearchAPI:
         self.config = Config.load(config_path)
         self.engine = SearchEngine(self.config)
 
-    def quick_search(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
+    def quick_search(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
         """
         Perform a quick search and return simplified results.
 
@@ -61,7 +61,7 @@ class ConversationSearchAPI:
         query: str,
         mode: str = "hybrid",
         limit: int = 10
-    ) -> List[SearchResult]:
+    ) -> list[SearchResult]:
         """
         Search with specific mode.
 
@@ -75,7 +75,7 @@ class ConversationSearchAPI:
         """
         return self.engine.search(query, mode=mode, max_results=limit)
 
-    def get_conversation_by_name(self, name: str) -> List[Dict[str, Any]]:
+    def get_conversation_by_name(self, name: str) -> list[dict[str, Any]]:
         """
         Find conversations by name (exact or partial match).
 
@@ -104,7 +104,7 @@ class ConversationSearchAPI:
         self,
         query: str,
         context_length: int = 500
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Search and return results with extended context.
 
@@ -172,7 +172,7 @@ class CustomSearchWorkflow:
     def __init__(self):
         self.api = ConversationSearchAPI()
 
-    def find_related_conversations(self, topic: str) -> Dict[str, Any]:
+    def find_related_conversations(self, topic: str) -> dict[str, Any]:
         """
         Find conversations related to a topic and provide analysis.
 
@@ -189,7 +189,7 @@ class CustomSearchWorkflow:
             "all_results": results,
         }
 
-    def compare_topics(self, topic1: str, topic2: str) -> Dict[str, Any]:
+    def compare_topics(self, topic1: str, topic2: str) -> dict[str, Any]:
         """Compare search results for two topics."""
         results1 = self.api.quick_search(topic1, limit=10)
         results2 = self.api.quick_search(topic2, limit=10)

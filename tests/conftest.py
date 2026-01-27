@@ -102,7 +102,7 @@ sys.modules['duckdb'] = mock_duckdb_module
 # NOW safe to import searchat modules (after mocking)
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, Any
+from typing import Any
 
 from searchat.core import ConversationIndexer, SearchEngine
 from searchat.services import BackupManager
@@ -250,7 +250,7 @@ def mock_embeddings():
 
 
 @pytest.fixture
-def sample_config(tmp_path) -> Dict[str, Any]:
+def sample_config(tmp_path) -> dict[str, Any]:
     """Sample configuration for testing."""
     return {
         "embedding": {
