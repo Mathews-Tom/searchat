@@ -24,3 +24,10 @@ class BackupCreateRequest(BaseModel):
 class BackupRestoreRequest(BaseModel):
     """Backup restore request."""
     backup_name: str
+
+
+class ChatRequest(BaseModel):
+    """Chat request parameters."""
+    query: str
+    model_provider: str = "ollama"
+    model_name: Optional[str] = None
