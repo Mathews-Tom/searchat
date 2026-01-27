@@ -45,11 +45,11 @@ The setup script indexes all conversations from Claude Code and Mistral Vibe. On
 
 Add to `~/.claude/CLAUDE.md`:
 
-````markdown
 ## Conversation History Search
 
 Search past Claude Code conversations via local API (requires server running).
 
+````markdown
 **Search:**
 
 ```bash
