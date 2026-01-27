@@ -119,6 +119,152 @@ def mock_duckdb_store():
     return mock
 
 
+def test_extract_vibe_messages_filters_roles_and_content():
+    from searchat.api.routers import conversations as conv
+
+    data = {
+        "messages": [
+            {"role": "user", "content": "Hello", "timestamp": "2025-01-01T00:00:00"},
+            {"role": "assistant", "text": "Hi"},
+            {"role": "system", "content": "skip"},
+            {"role": "user", "content": "   "},
+            {"role": "assistant", "content": 123},
+        ]
+    }
+
+    messages = conv._extract_vibe_messages(data)
+    assert [m.role for m in messages] == ["user", "assistant"]
+    assert [m.content for m in messages] == ["Hello", "Hi"]
+
+
+def test_load_opencode_parts_text_reads_text_and_state(tmp_path: Path):
+    from searchat.api.routers import conversations as conv
+
+    parts_dir = tmp_path / "storage" / "part" / "msg-1"
+    parts_dir.mkdir(parents=True)
+    (parts_dir / "000.json").write_text(json.dumps({"text": "alpha"}))
+    (parts_dir / "001.json").write_text(json.dumps({"state": {"output": "beta"}}))
+
+    assert conv._load_opencode_parts_text(tmp_path, "msg-1") == "alpha\n\nbeta"
+
+
+def test_extract_opencode_message_text_prefers_content_and_summary(tmp_path: Path):
+    from searchat.api.routers import conversations as conv
+
+    data_root = tmp_path
+    assert (
+        conv._extract_opencode_message_text(data_root, {"content": {"text": " content "}})
+        == "content"
+    )
+    assert (
+        conv._extract_opencode_message_text(data_root, {"content": [{"text": "a"}, {"content": "b"}]})
+        == "a\n\nb"
+    )
+
+    parts_dir = data_root / "storage" / "part" / "msg-2"
+    parts_dir.mkdir(parents=True)
+    (parts_dir / "000.json").write_text(json.dumps({"text": "from parts"}))
+    assert conv._extract_opencode_message_text(data_root, {"id": "msg-2"}) == "from parts"
+
+    assert (
+        conv._extract_opencode_message_text(data_root, {"summary": {"title": "Summary"}})
+        == "Summary"
+    )
+
+
+def test_resolve_opencode_data_root(tmp_path: Path):
+    from searchat.api.routers import conversations as conv
+
+    storage_path = tmp_path / "storage" / "session" / "proj" / "session.json"
+    storage_path.parent.mkdir(parents=True)
+
+    assert conv._resolve_opencode_data_root(str(storage_path)) == tmp_path
+
+    deep_path = tmp_path / "a" / "b" / "c" / "d" / "file.json"
+    deep_path.parent.mkdir(parents=True)
+    assert conv._resolve_opencode_data_root(str(deep_path)) == deep_path.parents[3]
+
+
+def test_load_opencode_and_vibe_project_paths(tmp_path: Path):
+    from searchat.api.routers import conversations as conv
+
+    session_path = tmp_path / "storage" / "session" / "proj" / "session.json"
+    session_path.parent.mkdir(parents=True)
+    session_path.write_text(json.dumps({"projectID": "proj-1"}))
+
+    project_path = tmp_path / "storage" / "project" / "proj-1.json"
+    project_path.parent.mkdir(parents=True)
+    project_path.write_text(json.dumps({"worktree": "/work/tree"}))
+
+    assert conv._load_opencode_project_path(str(session_path)) == "/work/tree"
+
+    vibe_path = tmp_path / "vibe.json"
+    vibe_path.write_text(
+        json.dumps({"metadata": {"environment": {"working_directory": "/vibe/project"}}})
+    )
+    assert conv._load_vibe_project_path(str(vibe_path)) == "/vibe/project"
+
+
+@pytest.mark.asyncio
+async def test_load_opencode_messages_from_storage(tmp_path: Path):
+    from searchat.api.routers import conversations as conv
+
+    session_id = "session-1"
+    session_path = tmp_path / "storage" / "session" / "proj" / "session.json"
+    session_path.parent.mkdir(parents=True)
+    session_path.write_text(json.dumps({"messages": []}))
+
+    messages_dir = tmp_path / "storage" / "message" / session_id
+    messages_dir.mkdir(parents=True)
+    (messages_dir / "000.json").write_text(
+        json.dumps(
+            {
+                "role": "user",
+                "content": "Hello",
+                "time": {"created": 1_700_000_000_000},
+            }
+        )
+    )
+
+    with patch("searchat.api.routers.conversations.deps.get_config", return_value=Mock()):
+        with patch("searchat.config.PathResolver.resolve_opencode_dirs", return_value=[]):
+            messages = await conv._load_opencode_messages(str(session_path), session_id)
+
+    assert len(messages) == 1
+    assert messages[0].role == "user"
+    assert messages[0].content == "Hello"
+    assert messages[0].timestamp
+
+
+@pytest.mark.asyncio
+async def test_load_opencode_messages_from_session_file(tmp_path: Path):
+    from searchat.api.routers import conversations as conv
+
+    session_id = "session-2"
+    session_path = tmp_path / "session.json"
+    session_path.write_text(
+        json.dumps(
+            {
+                "messages": [
+                    {
+                        "role": "assistant",
+                        "content": {"text": "From content"},
+                        "time": {"created": 1_700_000_000_500},
+                    },
+                    {"role": "user", "text": "Plain"},
+                ]
+            }
+        )
+    )
+
+    with patch("searchat.api.routers.conversations.deps.get_config", return_value=Mock()):
+        with patch("searchat.config.PathResolver.resolve_opencode_dirs", return_value=[]):
+            messages = await conv._load_opencode_messages(str(session_path), session_id)
+
+    assert [m.role for m in messages] == ["user", "assistant"]
+    assert [m.content for m in messages] == ["Plain", "From content"]
+
+
 @pytest.fixture
 def mock_platform_manager():
     """Mock PlatformManager for terminal operations."""
