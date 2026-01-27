@@ -1,6 +1,6 @@
 // Search Functionality
 
-import { saveSearchState } from './session.js';
+import { saveAllConversationsState, saveSearchState, restoreSearchState } from './session.js';
 
 let _searchNonce = 0;
 
@@ -14,10 +14,11 @@ export async function search() {
 
     const query = document.getElementById('search').value;
     const project = document.getElementById('project').value;
+    const tool = document.getElementById('tool').value;
     const date = document.getElementById('date').value;
 
     // Allow search if query OR any filter is set
-    if (!query && !project && !date) {
+    if (!query && !project && !tool && !date) {
         document.getElementById('results').innerHTML = '<div>Enter a search query or select a filter</div>';
         return;
     }
@@ -29,6 +30,7 @@ export async function search() {
         q: query || '*',  // Use wildcard if no query
         mode: document.getElementById('mode').value,
         project: document.getElementById('project').value,
+        tool: tool,
         date: document.getElementById('date').value,
         sort_by: document.getElementById('sortBy').value
     });
@@ -39,6 +41,15 @@ export async function search() {
         const dateTo = document.getElementById('dateTo').value;
         if (dateFrom) params.append('date_from', dateFrom);
         if (dateTo) params.append('date_to', dateTo);
+    }
+
+    const projectValue = document.getElementById('project').value;
+    if (!tool) {
+        if (projectValue.startsWith('opencode-')) {
+            params.append('tool', 'opencode');
+        } else if (projectValue.startsWith('vibe-')) {
+            params.append('tool', 'vibe');
+        }
     }
 
     const response = await fetch(`/api/search?${params}`);
@@ -88,9 +99,9 @@ export async function search() {
         // Get last segment of conversation ID
         const shortId = r.conversation_id.split('-').pop();
 
-        // Detect tool from file_path
-        const tool = r.file_path.endsWith('.jsonl') ? 'claude' : 'vibe';
-        const toolLabel = tool === 'claude' ? 'Claude Code' : 'Vibe';
+        // Detect tool from API field
+        let tool = r.tool || 'claude';
+        let toolLabel = tool === 'opencode' ? 'OpenCode' : (tool === 'vibe' ? 'Vibe' : 'Claude Code');
 
         div.innerHTML = `
             <div class="result-title">${r.title}</div>
@@ -120,12 +131,40 @@ export async function search() {
             saveSearchState();
             sessionStorage.setItem('lastScrollPosition', window.scrollY);
             sessionStorage.setItem('lastResultIndex', index);
-            window.location.href = `/conversation/${r.conversation_id}`;
+            sessionStorage.setItem('activeConversationId', r.conversation_id);
+            loadConversationView(r.conversation_id);
         };
         resultsDiv.appendChild(div);
     });
 
     saveSearchState();
+}
+
+export function showSearchView() {
+    const header = document.getElementById('conversationHeader');
+    const heroTitle = document.getElementById('heroTitle');
+    const heroSubtitle = document.getElementById('heroSubtitle');
+    const filters = document.getElementById('filters');
+    const resultsDiv = document.getElementById('results');
+
+    if (header) header.style.display = 'none';
+    if (heroTitle) heroTitle.style.display = 'block';
+    if (heroSubtitle) heroSubtitle.style.display = 'block';
+    if (filters) filters.style.display = 'block';
+
+    sessionStorage.removeItem('activeConversationId');
+
+    if (resultsDiv) {
+        resultsDiv.innerHTML = '';
+        const lastView = sessionStorage.getItem('lastView');
+        const hasSearchState = Boolean(sessionStorage.getItem('searchState'));
+        const hasAllState = Boolean(sessionStorage.getItem('allConversationsState'));
+        if (lastView || hasSearchState || hasAllState) {
+            resultsDiv.innerHTML = '<div class="loading">Restoring results...</div>';
+        } else {
+            resultsDiv.innerHTML = '<div>Enter a search query or select a filter</div>';
+        }
+    }
 }
 
 export function toggleCustomDate() {
@@ -177,6 +216,7 @@ export async function showAllConversations() {
 
     const sortBy = document.getElementById('sortBy').value;
     const project = document.getElementById('project').value;
+    const tool = document.getElementById('tool').value;
     const date = document.getElementById('date').value;
 
     // Map sort values to API parameters
@@ -188,6 +228,23 @@ export async function showAllConversations() {
     const params = new URLSearchParams({ sort_by: apiSortBy });
     if (project) {
         params.append('project', project);
+    }
+    if (tool) {
+        params.append('tool', tool);
+    } else if (project) {
+        if (project.startsWith('opencode-')) {
+            params.append('tool', 'opencode');
+        } else if (project.startsWith('vibe-')) {
+            params.append('tool', 'vibe');
+        }
+    }
+    if (params.has('project')) {
+        const projectValue = params.get('project') || '';
+        if (projectValue.startsWith('opencode-')) {
+            params.append('tool', 'opencode');
+        } else if (projectValue.startsWith('vibe-')) {
+            params.append('tool', 'vibe');
+        }
     }
     if (date) {
         params.append('date', date);
@@ -228,9 +285,9 @@ export async function showAllConversations() {
             div.id = `result-${index}`;
             const shortId = r.conversation_id.split('-').pop();
 
-            // Detect tool from file_path
-            const tool = r.file_path.endsWith('.jsonl') ? 'claude' : 'vibe';
-            const toolLabel = tool === 'claude' ? 'Claude Code' : 'Vibe';
+            // Detect tool from API field
+            let tool = r.tool || 'claude';
+            let toolLabel = tool === 'opencode' ? 'OpenCode' : (tool === 'vibe' ? 'Vibe' : 'Claude Code');
 
             div.innerHTML = `
                 <div class="result-title">${r.title}</div>
@@ -257,14 +314,150 @@ export async function showAllConversations() {
             });
 
             div.onclick = () => {
-                saveSearchState();
+                saveAllConversationsState();
                 sessionStorage.setItem('lastScrollPosition', window.scrollY);
                 sessionStorage.setItem('lastResultIndex', index);
-                window.location.href = `/conversation/${r.conversation_id}`;
+                sessionStorage.setItem('activeConversationId', r.conversation_id);
+                loadConversationView(r.conversation_id);
             };
             resultsDiv.appendChild(div);
         });
+        saveAllConversationsState();
     } catch (error) {
         resultsDiv.innerHTML = `<div style="color: #f44336;">Error: ${error.message}</div>`;
+    }
+}
+
+export async function loadConversationView(conversationId, pushState = true) {
+    if (!conversationId) {
+        const cachedId = sessionStorage.getItem('activeConversationId');
+        if (cachedId) {
+            conversationId = cachedId;
+        } else {
+            return;
+        }
+    }
+    const resultsDiv = document.getElementById('results');
+    const header = document.getElementById('conversationHeader');
+    const heroTitle = document.getElementById('heroTitle');
+    const heroSubtitle = document.getElementById('heroSubtitle');
+    const filters = document.getElementById('filters');
+
+    if (header) header.style.display = 'block';
+    if (heroTitle) heroTitle.style.display = 'none';
+    if (heroSubtitle) heroSubtitle.style.display = 'none';
+    if (filters) filters.style.display = 'none';
+
+    const backButton = document.querySelector('#conversationHeader .back-button');
+    if (backButton) {
+        backButton.onclick = async (event) => {
+            event.preventDefault();
+            history.pushState({}, '', '/');
+            showSearchView();
+            await restoreSearchState();
+        };
+    }
+
+    resultsDiv.innerHTML = '';
+    const debug = document.createElement('div');
+    debug.className = 'results-header';
+    debug.textContent = `Loading conversation ${conversationId}...`;
+    resultsDiv.appendChild(debug);
+
+    const loading = document.createElement('div');
+    loading.className = 'loading';
+    loading.textContent = 'Loading conversation...';
+    resultsDiv.appendChild(loading);
+
+    try {
+        if (pushState) {
+            history.pushState({ conversationId }, '', `/conversation/${conversationId}`);
+        }
+        const response = await fetch(`/api/conversation/${conversationId}`);
+        if (!response.ok) {
+            const payload = await response.json().catch(() => null);
+            const msg = payload && payload.detail ? payload.detail : 'Failed to load conversation';
+            resultsDiv.innerHTML = '';
+            const errorDiv = document.createElement('div');
+            errorDiv.style.color = '#f44336';
+            errorDiv.textContent = msg;
+            resultsDiv.appendChild(errorDiv);
+            return;
+        }
+
+        const data = await response.json();
+        debug.textContent = `Loaded ${conversationId} | messages: ${Array.isArray(data.messages) ? data.messages.length : 0}`;
+        const tool = data.tool || (data.file_path.endsWith('.jsonl') ? 'claude' : 'vibe');
+        const toolLabel = tool === 'opencode' ? 'OpenCode' : (tool === 'vibe' ? 'Vibe' : 'Claude Code');
+        const projectPath = data.project_path || '';
+        const headerMeta = projectPath
+            ? `Project: ${projectPath}`
+            : `Project: ${data.project_id || 'Unknown'}`;
+
+        resultsDiv.innerHTML = '';
+
+        const headerDiv = document.createElement('div');
+        headerDiv.className = 'header';
+
+        const badge = document.createElement('span');
+        badge.className = `tool-badge ${tool}`;
+        badge.textContent = toolLabel;
+
+        const title = document.createElement('h2');
+        title.textContent = data.title || 'No title available';
+
+        const meta = document.createElement('div');
+        meta.textContent = `${headerMeta} | Messages: ${data.message_count || 0}`;
+
+        const actions = document.createElement('div');
+        actions.className = 'result-actions';
+
+        const resumeBtn = document.createElement('button');
+        resumeBtn.className = 'resume-btn';
+        resumeBtn.dataset.conversationId = data.conversation_id;
+        resumeBtn.textContent = '⚡ Resume Session';
+        resumeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            resumeSession(data.conversation_id, resumeBtn);
+        });
+
+        actions.appendChild(resumeBtn);
+        headerDiv.appendChild(badge);
+        headerDiv.appendChild(title);
+        headerDiv.appendChild(meta);
+        headerDiv.appendChild(actions);
+        resultsDiv.appendChild(headerDiv);
+
+        if (data.messages && Array.isArray(data.messages) && data.messages.length > 0) {
+            data.messages.forEach((msg, i) => {
+                const msgDiv = document.createElement('div');
+                msgDiv.className = `message ${msg.role || 'unknown'}`;
+
+                const roleDiv = document.createElement('div');
+                roleDiv.className = 'role';
+                roleDiv.textContent = `${(msg.role || 'unknown').toUpperCase()} - Message ${i + 1}`;
+
+                const contentDiv = document.createElement('div');
+                contentDiv.className = 'content';
+                contentDiv.textContent = msg.content || '';
+
+                msgDiv.appendChild(roleDiv);
+                msgDiv.appendChild(contentDiv);
+                resultsDiv.appendChild(msgDiv);
+            });
+        } else {
+            const empty = document.createElement('div');
+            empty.className = 'message';
+            empty.textContent = 'No messages available';
+            resultsDiv.appendChild(empty);
+        }
+
+        sessionStorage.setItem('activeConversationId', conversationId);
+    } catch (error) {
+        resultsDiv.innerHTML = '';
+        const errorDiv = document.createElement('div');
+        errorDiv.style.color = '#f44336';
+        errorDiv.textContent = `Error: ${error.message}`;
+        resultsDiv.appendChild(errorDiv);
     }
 }

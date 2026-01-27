@@ -69,6 +69,7 @@ class DuckDBStore:
         project_id: str | None = None,
         date_from: datetime | None = None,
         date_to: datetime | None = None,
+        tool: str | None = None,
         limit: int | None = None,
         offset: int = 0,
     ) -> list[dict]:
@@ -89,6 +90,16 @@ class DuckDBStore:
         if project_id:
             conditions.append("project_id = ?")
             params.append(project_id)
+
+        if tool:
+            tool_value = tool.lower()
+            if tool_value == "opencode":
+                conditions.append("project_id LIKE 'opencode-%'")
+            elif tool_value == "vibe":
+                conditions.append("project_id LIKE 'vibe-%'")
+            elif tool_value == "claude":
+                conditions.append("project_id NOT LIKE 'opencode-%'")
+                conditions.append("project_id NOT LIKE 'vibe-%'")
 
         if date_from:
             conditions.append("updated_at >= ?")
@@ -142,6 +153,7 @@ class DuckDBStore:
         project_id: str | None = None,
         date_from: datetime | None = None,
         date_to: datetime | None = None,
+        tool: str | None = None,
     ) -> int:
         parquets = self._conversation_parquets()
         if not parquets:
@@ -153,6 +165,16 @@ class DuckDBStore:
         if project_id:
             conditions.append("project_id = ?")
             params.append(project_id)
+
+        if tool:
+            tool_value = tool.lower()
+            if tool_value == "opencode":
+                conditions.append("project_id LIKE 'opencode-%'")
+            elif tool_value == "vibe":
+                conditions.append("project_id LIKE 'vibe-%'")
+            elif tool_value == "claude":
+                conditions.append("project_id NOT LIKE 'opencode-%'")
+                conditions.append("project_id NOT LIKE 'vibe-%'")
 
         if date_from:
             conditions.append("updated_at >= ?")

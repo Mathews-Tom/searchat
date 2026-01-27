@@ -289,6 +289,61 @@
     color: var(--warning);
 }
 
+.tool-badge.opencode {
+    background: rgba(46, 204, 113, 0.15);
+    color: var(--success);
+}
+
+.header {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
+    border-radius: 10px;
+    padding: 18px 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.message {
+    background: var(--bg-elevated);
+    border-left: 3px solid var(--accent-primary);
+    padding: 12px 16px;
+    margin-bottom: 12px;
+    border-radius: 8px;
+}
+
+.message.user {
+    border-left-color: var(--accent-primary);
+}
+
+.message.assistant {
+    border-left-color: var(--success);
+}
+
+.message .role {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+}
+
+.message .content {
+    white-space: pre-wrap;
+    color: var(--text-primary);
+}
+
+.back-button {
+    display: inline-flex;
+    align-items: center;
+    font-weight: 600;
+    color: var(--accent-primary);
+    text-decoration: none;
+    margin-bottom: 8px;
+}
+
+.back-button:hover {
+    text-decoration: underline;
+}
+
 /* Loading State */
 .loading {
     text-align: center;

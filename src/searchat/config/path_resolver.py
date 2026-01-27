@@ -23,6 +23,8 @@ from .constants import (
     ENV_WSL_PROJECTS,
     ENV_ADDITIONAL_DIRS,
     CLAUDE_DIR_CANDIDATES,
+    ENV_OPENCODE_DATA_DIR,
+    OPENCODE_DIR_CANDIDATES,
 )
 
 
@@ -284,6 +286,41 @@ class PathResolver:
         return paths
 
     @staticmethod
+    def resolve_opencode_dirs(config=None) -> List[Path]:
+        """
+        Resolve OpenCode data directories.
+
+        OpenCode stores data at ~/.local/share/opencode by default.
+
+        Returns:
+            List of accessible OpenCode data directories
+        """
+        paths: List[Path] = []
+
+        opencode_dir = os.getenv(ENV_OPENCODE_DATA_DIR)
+        if opencode_dir:
+            expanded = PathResolver.expand_path_template(opencode_dir)
+            path = Path(expanded)
+            if path.exists():
+                paths.append(path)
+
+        if not paths:
+            for candidate in OPENCODE_DIR_CANDIDATES:
+                if candidate.exists():
+                    paths.append(candidate)
+
+        seen: set[str] = set()
+        unique_paths: List[Path] = []
+        for path in paths:
+            resolved = path.resolve() if path.exists() else path
+            path_str = str(resolved)
+            if path_str not in seen:
+                seen.add(path_str)
+                unique_paths.append(path)
+
+        return unique_paths
+
+    @staticmethod
     def resolve_all_agent_dirs(config=None) -> dict:
         """
         Resolve all supported AI coding agent directories.
@@ -298,4 +335,5 @@ class PathResolver:
         return {
             'claude': PathResolver.resolve_claude_dirs(config),
             'vibe': PathResolver.resolve_vibe_dirs(),
+            'opencode': PathResolver.resolve_opencode_dirs(config),
         }

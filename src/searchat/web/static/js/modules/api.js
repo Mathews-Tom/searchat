@@ -32,7 +32,13 @@ export async function loadProjects() {
     projects.forEach(p => {
         const option = document.createElement('option');
         option.value = p;
-        option.textContent = p;
+        if (p.startsWith('opencode-')) {
+            option.textContent = `OpenCode • ${p}`;
+        } else if (p.startsWith('vibe-')) {
+            option.textContent = `Vibe • ${p}`;
+        } else {
+            option.textContent = `Claude Code • ${p}`;
+        }
         select.appendChild(option);
     });
 

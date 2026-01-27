@@ -19,6 +19,7 @@ from searchat.core import SearchEngine, ConversationIndexer, ConversationWatcher
 from searchat.models import SearchMode, SearchFilters, SearchResult
 from searchat.config import Config, PathResolver
 from searchat.services import PlatformManager, BackupManager
+from searchat.api import dependencies as deps
 from searchat.config.constants import (
     DEFAULT_HOST,
     DEFAULT_PORT,
@@ -51,6 +52,7 @@ class SearchResultResponse(BaseModel):
     message_start_index: Optional[int] = None
     message_end_index: Optional[int] = None
     source: str  # WIN or WSL
+    tool: str
 
 
 class ConversationMessage(BaseModel):
@@ -63,8 +65,10 @@ class ConversationResponse(BaseModel):
     conversation_id: str
     title: str
     project_id: str
+    project_path: Optional[str] = None
     file_path: str
     message_count: int
+    tool: str
     messages: List[ConversationMessage]
 
 
@@ -131,7 +135,7 @@ def on_new_conversations(file_paths: List[str]) -> None:
 
         if stats.new_conversations > 0:
             # Reload search engine to pick up new data
-            search_engine._initialize()
+            search_engine.refresh_index()
             projects_cache = None  # Clear cache
 
             watcher_stats["indexed_count"] += stats.new_conversations
@@ -147,6 +151,233 @@ def on_new_conversations(file_paths: List[str]) -> None:
         # Mark indexing complete
         indexing_state["in_progress"] = False
         indexing_state["operation"] = None
+
+
+def _extract_vibe_messages(data: dict) -> List[ConversationMessage]:
+    messages: List[ConversationMessage] = []
+    for entry in data.get('messages', []):
+        role = entry.get('role')
+        if role not in ('user', 'assistant'):
+            continue
+        content = entry.get('content') or entry.get('text') or ''
+        if not isinstance(content, str) or not content.strip():
+            continue
+        timestamp = entry.get('timestamp', '')
+        messages.append(ConversationMessage(
+            role=role,
+            content=content,
+            timestamp=timestamp,
+        ))
+    return messages
+
+
+def _resolve_opencode_data_root(session_file_path: str) -> Path:
+    session_path = Path(session_file_path)
+    if "storage" in session_path.parts:
+        storage_index = session_path.parts.index("storage")
+        return Path(*session_path.parts[:storage_index])
+    if len(session_path.parents) >= 4:
+        return session_path.parents[3]
+    return session_path.parent
+
+
+def _load_opencode_parts_text(data_root: Path, message_id: str) -> str:
+    parts_dir = data_root / "storage" / "part" / message_id
+    if not parts_dir.exists():
+        return ""
+
+    parts: List[str] = []
+    for part_file in sorted(parts_dir.glob("*.json")):
+        try:
+            content = part_file.read_text(encoding="utf-8")
+            part = json.loads(content)
+        except (json.JSONDecodeError, UnicodeDecodeError, OSError):
+            continue
+
+        text = part.get("text")
+        if isinstance(text, str) and text.strip():
+            parts.append(text.strip())
+            continue
+
+        state = part.get("state")
+        if isinstance(state, dict):
+            output = state.get("output")
+            if isinstance(output, str) and output.strip():
+                parts.append(output.strip())
+
+    return "\n\n".join(parts)
+
+
+def _extract_opencode_message_text(data_root: Path, message: dict) -> str:
+    def _normalize_text(value: object) -> str:
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        if isinstance(value, dict):
+            text = value.get("text") or value.get("content") or value.get("value")
+            if isinstance(text, str) and text.strip():
+                return text.strip()
+        if isinstance(value, list):
+            parts = []
+            for block in value:
+                if not isinstance(block, dict):
+                    continue
+                text = block.get("text") or block.get("content") or block.get("value")
+                if isinstance(text, str) and text.strip():
+                    parts.append(text.strip())
+            if parts:
+                return "\n\n".join(parts)
+        return ""
+
+    content_text = _normalize_text(message.get("content"))
+    if content_text:
+        return content_text
+
+    text_text = _normalize_text(message.get("text"))
+    if text_text:
+        return text_text
+
+    message_text = _normalize_text(message.get("message"))
+    if message_text:
+        return message_text
+
+    message_id = message.get("id")
+    if isinstance(message_id, str):
+        parts_text = _load_opencode_parts_text(data_root, message_id)
+        if parts_text:
+            return parts_text
+
+    summary = message.get("summary")
+    if isinstance(summary, dict):
+        body = summary.get("body")
+        if isinstance(body, str) and body.strip():
+            return body.strip()
+
+        title = summary.get("title")
+        if isinstance(title, str) and title.strip():
+            return title.strip()
+
+    return ""
+
+
+def _load_opencode_messages(session_file_path: str, session_id: str) -> List[ConversationMessage]:
+    data_root = _resolve_opencode_data_root(session_file_path)
+    candidate_roots = [data_root]
+    for opencode_dir in PathResolver.resolve_opencode_dirs(config):
+        if opencode_dir not in candidate_roots:
+            candidate_roots.append(opencode_dir)
+
+    raw_messages: List[tuple[float | None, str, str, str]] = []
+    for root in candidate_roots:
+        messages_dir = root / "storage" / "message" / session_id
+        if not messages_dir.exists():
+            continue
+
+        for message_file in messages_dir.glob("*.json"):
+            try:
+                content = message_file.read_text(encoding="utf-8")
+                message = json.loads(content)
+            except (json.JSONDecodeError, UnicodeDecodeError, OSError):
+                continue
+
+            role = message.get("role") or message.get("type")
+            if role not in ("user", "assistant"):
+                continue
+
+            text = _extract_opencode_message_text(root, message)
+            if not text:
+                continue
+
+            created = message.get("time", {}).get("created")
+            created_ts = None
+            if isinstance(created, (int, float)):
+                created_ts = created / 1000
+            raw_messages.append((created_ts, message_file.name, text, role))
+
+        if raw_messages:
+            break
+
+    if not raw_messages:
+        try:
+            session_content = Path(session_file_path).read_text(encoding="utf-8")
+            session_data = json.loads(session_content)
+        except (json.JSONDecodeError, UnicodeDecodeError, OSError):
+            session_data = None
+
+        if isinstance(session_data, dict):
+            session_messages = session_data.get("messages")
+            if isinstance(session_messages, list):
+                for index, entry in enumerate(session_messages):
+                    if not isinstance(entry, dict):
+                        continue
+                    role = entry.get("role") or entry.get("type")
+                    if role not in ("user", "assistant"):
+                        continue
+                    text = _extract_opencode_message_text(data_root, entry)
+                    if not text:
+                        continue
+                    created = entry.get("time", {}).get("created")
+                    created_ts = None
+                    if isinstance(created, (int, float)):
+                        created_ts = created / 1000
+                    raw_messages.append((created_ts, f"{index:06d}", text, role))
+
+    raw_messages.sort(key=lambda item: (item[0] or 0.0, item[1]))
+
+    messages: List[ConversationMessage] = []
+    for created_ts, _name, text, role in raw_messages:
+        timestamp = ""
+        if created_ts is not None:
+            timestamp = datetime.fromtimestamp(created_ts).isoformat()
+        messages.append(ConversationMessage(
+            role=role,
+            content=text,
+            timestamp=timestamp,
+        ))
+
+    return messages
+
+
+def _load_opencode_project_path(session_file_path: str) -> str | None:
+    session_path = Path(session_file_path)
+    try:
+        content = session_path.read_text(encoding="utf-8")
+        data = json.loads(content)
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError):
+        return None
+
+    project_id = data.get("projectID")
+    if not isinstance(project_id, str):
+        return None
+
+    data_root = _resolve_opencode_data_root(session_file_path)
+    project_file = data_root / "storage" / "project" / f"{project_id}.json"
+    if not project_file.exists():
+        return None
+
+    try:
+        project_content = project_file.read_text(encoding="utf-8")
+        project_data = json.loads(project_content)
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError):
+        return None
+
+    worktree = project_data.get("worktree")
+    if isinstance(worktree, str) and worktree.strip():
+        return worktree
+    return None
+
+
+def _load_vibe_project_path(session_file_path: str) -> str | None:
+    session_path = Path(session_file_path)
+    try:
+        content = session_path.read_text(encoding="utf-8")
+        data = json.loads(content)
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError):
+        return None
+
+    working_dir = data.get('metadata', {}).get('environment', {}).get('working_directory')
+    if isinstance(working_dir, str) and working_dir.strip():
+        return working_dir
+    return None
 
 
 @app.on_event("startup")
@@ -1295,6 +1526,7 @@ async def search(
     date: Optional[str] = Query(None, description="Date filter: today, week, month, or custom"),
     date_from: Optional[str] = Query(None, description="Custom date from (YYYY-MM-DD)"),
     date_to: Optional[str] = Query(None, description="Custom date to (YYYY-MM-DD)"),
+    tool: Optional[str] = Query(None, description="Filter by tool: claude, vibe, opencode"),
     sort_by: str = Query("relevance", description="Sort by: relevance, date_newest, date_oldest, messages"),
     limit: int = Query(100, description="Max results to return (1-100)", ge=1, le=100)
 ):
@@ -1312,6 +1544,12 @@ async def search(
         filters = SearchFilters()
         if project:
             filters.project_ids = [project]
+
+        if tool:
+            tool_value = tool.lower()
+            if tool_value not in ("claude", "vibe", "opencode"):
+                raise HTTPException(status_code=400, detail="Invalid tool filter")
+            filters.tool = tool_value
         
         # Handle date filtering
         if date == "custom" and (date_from or date_to):
@@ -1350,7 +1588,19 @@ async def search(
         # Convert results to response format
         response_results = []
         for r in sorted_results[:limit]:
-            source = "WSL" if "/home/" in r.file_path or "wsl" in r.file_path.lower() else "WIN"
+            file_path_lower = r.file_path.lower()
+            if r.file_path.endswith('.jsonl'):
+                tool_name = "claude"
+            elif "/.local/share/opencode/" in file_path_lower:
+                tool_name = "opencode"
+            else:
+                tool_name = "vibe"
+
+            if "/home/" in file_path_lower or "wsl" in file_path_lower:
+                source = "WSL"
+            else:
+                source = "WIN"
+
             response_results.append(SearchResultResponse(
                 conversation_id=r.conversation_id,
                 project_id=r.project_id,
@@ -1363,7 +1613,8 @@ async def search(
                 score=r.score,
                 message_start_index=r.message_start_index,
                 message_end_index=r.message_end_index,
-                source=source
+                source=source,
+                tool=tool_name,
             ))
             
         return {
@@ -1381,54 +1632,111 @@ async def get_projects():
     """Get list of all projects"""
     global projects_cache
     if projects_cache is None:
-        projects_cache = sorted(search_engine.conversations_df['project_id'].unique().tolist())
+        store = deps.get_duckdb_store()
+        projects_cache = store.list_projects()
     return projects_cache
 
 
 @app.get("/api/conversations/all")
 async def get_all_conversations(
-    sort_by: str = Query("length", description="Sort by: length, date_newest, date_oldest, title")
+    sort_by: str = Query("length", description="Sort by: length, date_newest, date_oldest, title"),
+    project: Optional[str] = Query(None, description="Filter by project"),
+    date: Optional[str] = Query(None, description="Date filter: today, week, month, or custom"),
+    date_from: Optional[str] = Query(None, description="Custom date from (YYYY-MM-DD)"),
+    date_to: Optional[str] = Query(None, description="Custom date to (YYYY-MM-DD)"),
+    tool: Optional[str] = Query(None, description="Filter by tool: claude, vibe, opencode"),
+    limit: Optional[int] = Query(None, ge=1, le=5000, description="Max results to return"),
+    offset: int = Query(0, ge=0, description="Offset for pagination"),
 ):
     """Get all conversations with sorting"""
     try:
-        df = search_engine.conversations_df.copy()
+        store = deps.get_duckdb_store()
 
-        # Filter out conversations with 0 messages
-        df = df[df['message_count'] > 0]
+        date_from_dt = None
+        date_to_dt = None
+        if date == "custom" and (date_from or date_to):
+            if date_from:
+                date_from_dt = datetime.fromisoformat(date_from)
+            if date_to:
+                date_to_dt = datetime.fromisoformat(date_to) + timedelta(days=1)
+        elif date:
+            now = datetime.now()
+            if date == "today":
+                date_from_dt = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                date_to_dt = now
+            elif date == "week":
+                date_from_dt = now - timedelta(days=7)
+                date_to_dt = now
+            elif date == "month":
+                date_from_dt = now - timedelta(days=30)
+                date_to_dt = now
 
-        # Sort based on parameter
-        if sort_by == "length":
-            df = df.sort_values('message_count', ascending=False)
-        elif sort_by == "date_newest":
-            df = df.sort_values('updated_at', ascending=False)
-        elif sort_by == "date_oldest":
-            df = df.sort_values('updated_at', ascending=True)
-        elif sort_by == "title":
-            df = df.sort_values('title', ascending=True)
+        if tool:
+            tool_value = tool.lower()
+            if tool_value not in ("claude", "vibe", "opencode"):
+                raise HTTPException(status_code=400, detail="Invalid tool filter")
+            tool = tool_value
 
-        # Convert to response format (vectorized)
-        response_results = [
-            SearchResultResponse(
-                conversation_id=row['conversation_id'],
-                project_id=row['project_id'],
-                title=row['title'],
-                created_at=row['created_at'].isoformat(),
-                updated_at=row['updated_at'].isoformat(),
-                message_count=row['message_count'],
-                file_path=row['file_path'],
-                snippet=row['full_text'][:200] + ("..." if len(row['full_text']) > 200 else ""),
-                score=0.0,  # No relevance score for "all" view
-                message_start_index=None,
-                message_end_index=None,
-                source="WSL" if "/home/" in row['file_path'] or "wsl" in row['file_path'].lower() else "WIN"
+        count_kwargs = {
+            "project_id": project,
+            "date_from": date_from_dt,
+            "date_to": date_to_dt,
+        }
+        if tool is not None:
+            count_kwargs["tool"] = tool
+        total = store.count_conversations(**count_kwargs)
+
+        list_kwargs = {
+            "sort_by": sort_by,
+            "project_id": project,
+            "date_from": date_from_dt,
+            "date_to": date_to_dt,
+            "limit": limit,
+            "offset": offset,
+        }
+        if tool is not None:
+            list_kwargs["tool"] = tool
+        rows = store.list_conversations(**list_kwargs)
+
+        response_results = []
+        for row in rows:
+            file_path = row["file_path"]
+            file_path_lower = file_path.lower()
+            if file_path.endswith('.jsonl'):
+                tool_name = "claude"
+            elif "/.local/share/opencode/" in file_path_lower:
+                tool_name = "opencode"
+            else:
+                tool_name = "vibe"
+
+            if "/home/" in file_path_lower or "wsl" in file_path_lower:
+                source = "WSL"
+            else:
+                source = "WIN"
+
+            full_text = row.get("full_text") or ""
+            response_results.append(
+                SearchResultResponse(
+                    conversation_id=row["conversation_id"],
+                    project_id=row["project_id"],
+                    title=row["title"],
+                    created_at=row["created_at"].isoformat(),
+                    updated_at=row["updated_at"].isoformat(),
+                    message_count=row["message_count"],
+                    file_path=file_path,
+                    snippet=full_text[:200] + ("..." if len(full_text) > 200 else ""),
+                    score=0.0,
+                    message_start_index=None,
+                    message_end_index=None,
+                    source=source,
+                    tool=tool_name,
+                )
             )
-            for row in df.to_dict('records')
-        ]
 
         return {
             "results": response_results,
-            "total": len(response_results),
-            "search_time_ms": 0
+            "total": total,
+            "search_time_ms": 0,
         }
 
     except Exception as e:
@@ -1442,16 +1750,13 @@ async def get_conversation(conversation_id: str):
     logger = logging.getLogger(__name__)
 
     try:
-        # Find conversation in dataframe
-        conv_df = search_engine.conversations_df
-        conv_row = conv_df[conv_df['conversation_id'] == conversation_id]
-
-        if conv_row.empty:
+        store = deps.get_duckdb_store()
+        conv = store.get_conversation_meta(conversation_id)
+        if conv is None:
             logger.warning(f"Conversation not found in index: {conversation_id}")
             raise HTTPException(status_code=404, detail="Conversation not found in index")
 
-        conv = conv_row.iloc[0]
-        file_path = conv['file_path']
+        file_path = conv["file_path"]
 
         # Check if file exists
         if not Path(file_path).exists():
@@ -1461,53 +1766,93 @@ async def get_conversation(conversation_id: str):
                 detail=f"Conversation file not found. The file may have been moved or deleted: {file_path}"
             )
 
-        # Load messages from JSONL file
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                lines = [json.loads(line) for line in f]
-        except json.JSONDecodeError as e:
-            logger.error(f"Invalid JSON in conversation file {file_path}: {e}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to parse conversation file (invalid JSON at line {e.lineno})"
-            )
-        except UnicodeDecodeError as e:
-            logger.error(f"Encoding error reading {file_path}: {e}")
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to read conversation file (encoding error)"
-            )
-
         messages = []
-        for entry in lines:
-            if entry.get('type') in ('user', 'assistant'):
-                raw_content = entry.get('message', {}).get('content', '')
-                if isinstance(raw_content, str):
-                    content = raw_content
-                elif isinstance(raw_content, list):
-                    content = '\n\n'.join(
-                        block.get('text', '')
-                        for block in raw_content
-                        if block.get('type') == 'text'
-                    )
-                else:
-                    content = ''
+        if file_path.endswith('.jsonl'):
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    lines = [json.loads(line) for line in f]
+            except json.JSONDecodeError as e:
+                logger.error(f"Invalid JSON in conversation file {file_path}: {e}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to parse conversation file (invalid JSON at line {e.lineno})"
+                )
+            except UnicodeDecodeError as e:
+                logger.error(f"Encoding error reading {file_path}: {e}")
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to read conversation file (encoding error)"
+                )
 
-                if content:
-                    messages.append(ConversationMessage(
-                        role=entry.get('type'),
-                        content=content,
-                        timestamp=entry.get('timestamp', '')
-                    ))
+            for entry in lines:
+                if entry.get('type') in ('user', 'assistant'):
+                    raw_content = entry.get('message', {}).get('content', '')
+                    if isinstance(raw_content, str):
+                        content = raw_content
+                    elif isinstance(raw_content, list):
+                        content = '\n\n'.join(
+                            block.get('text', '')
+                            for block in raw_content
+                            if block.get('type') == 'text'
+                        )
+                    else:
+                        content = ''
+
+                    if content:
+                        messages.append(ConversationMessage(
+                            role=entry.get('type'),
+                            content=content,
+                            timestamp=entry.get('timestamp', '')
+                        ))
+        elif file_path.endswith('.json'):
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+            except json.JSONDecodeError as e:
+                logger.error(f"Invalid JSON in conversation file {file_path}: {e}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to parse conversation file (invalid JSON at line {e.lineno})"
+                )
+            except UnicodeDecodeError as e:
+                logger.error(f"Encoding error reading {file_path}: {e}")
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to read conversation file (encoding error)"
+                )
+
+            file_path_lower = file_path.lower()
+            is_opencode = "projectID" in data or "/.local/share/opencode/" in file_path_lower
+            if is_opencode:
+                session_id = data.get("id") or data.get("sessionID") or conversation_id
+                messages = _load_opencode_messages(file_path, session_id)
+            else:
+                messages = _extract_vibe_messages(data)
 
         logger.info(f"Successfully loaded conversation {conversation_id} with {len(messages)} messages")
+
+        file_path_lower = file_path.lower()
+        if file_path.endswith('.jsonl'):
+            tool_name = "claude"
+        elif "/.local/share/opencode/" in file_path_lower:
+            tool_name = "opencode"
+        else:
+            tool_name = "vibe"
+
+        project_path = None
+        if tool_name == "opencode":
+            project_path = _load_opencode_project_path(file_path)
+        elif tool_name == "vibe":
+            project_path = _load_vibe_project_path(file_path)
 
         return ConversationResponse(
             conversation_id=conversation_id,
             title=conv['title'],
             project_id=conv['project_id'],
+            project_path=project_path,
             file_path=conv['file_path'],
             message_count=len(messages),
+            tool=tool_name,
             messages=messages
         )
 
@@ -1521,15 +1866,16 @@ async def get_conversation(conversation_id: str):
 @app.get("/api/statistics")
 async def get_statistics():
     """Get search statistics"""
-    df = search_engine.conversations_df
+    store = deps.get_duckdb_store()
+    stats = store.get_statistics()
 
     return {
-        "total_conversations": len(df),
-        "total_messages": int(df['message_count'].sum()),
-        "avg_messages": float(df['message_count'].mean()),
-        "total_projects": int(df['project_id'].nunique()),
-        "earliest_date": df['created_at'].min().isoformat() if not df.empty else None,
-        "latest_date": df['updated_at'].max().isoformat() if not df.empty else None
+        "total_conversations": stats.total_conversations,
+        "total_messages": stats.total_messages,
+        "avg_messages": stats.avg_messages,
+        "total_projects": stats.total_projects,
+        "earliest_date": stats.earliest_date,
+        "latest_date": stats.latest_date,
     }
 
 
@@ -1541,16 +1887,13 @@ async def resume_session(request: ResumeRequest):
     logger = logging.getLogger(__name__)
 
     try:
-        # Find conversation in dataframe
-        conv_df = search_engine.conversations_df
-        conv_row = conv_df[conv_df['conversation_id'] == request.conversation_id]
-
-        if conv_row.empty:
+        store = deps.get_duckdb_store()
+        conv = store.get_conversation_meta(request.conversation_id)
+        if conv is None:
             raise HTTPException(status_code=404, detail="Conversation not found")
 
-        conv = conv_row.iloc[0]
-        file_path = conv['file_path']
-        session_id = conv['conversation_id']
+        file_path = conv["file_path"]
+        session_id = conv["conversation_id"]
 
         # Extract working directory from conversation file
         cwd = None
@@ -1566,12 +1909,17 @@ async def resume_session(request: ResumeRequest):
                         break
             command = f'claude --resume {session_id}'
         elif file_path.endswith('.json'):
-            # Vibe - read JSON metadata
-            tool = 'vibe'
+            # Vibe or OpenCode - read JSON metadata
             with open(file_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
+            if 'projectID' in data and 'sessionID' in data:
+                tool = 'opencode'
+                cwd = data.get('directory')
+                command = f'opencode --resume {session_id}'
+            else:
+                tool = 'vibe'
                 cwd = data.get('metadata', {}).get('environment', {}).get('working_directory', None)
-            command = f'vibe --resume {session_id}'
+                command = f'vibe --resume {session_id}'
         else:
             raise HTTPException(status_code=400, detail=f"Unknown conversation format: {file_path}")
 
@@ -1601,9 +1949,10 @@ async def resume_session(request: ResumeRequest):
     except FileNotFoundError as e:
         # Command not found (claude or vibe not installed)
         logger.error(f"Command not found: {e}")
+        tool_name = locals().get('tool', 'claude/vibe')
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to execute command. Make sure {tool if 'tool' in locals() else 'claude/vibe'} is installed and in PATH."
+            detail=f"Failed to execute command. Make sure {tool_name} is installed and in PATH."
         )
     except Exception as e:
         logger.error(f"Failed to resume session {request.conversation_id}: {e}", exc_info=True)
@@ -1651,6 +2000,17 @@ async def index_missing():
             except Exception as e:
                 logger.warning(f"Error scanning {vibe_dir}: {e}")
 
+        # OpenCode sessions (.json)
+        for opencode_dir in PathResolver.resolve_opencode_dirs(config):
+            storage_session_dir = opencode_dir / "storage" / "session"
+            if not storage_session_dir.exists():
+                continue
+            try:
+                session_files = list(storage_session_dir.glob("*/*.json"))
+                all_files.extend([str(f) for f in session_files])
+            except Exception as e:
+                logger.warning(f"Error scanning {storage_session_dir}: {e}")
+
         # Get already indexed files
         indexed_paths = indexer.get_indexed_file_paths()
 
@@ -1678,7 +2038,7 @@ async def index_missing():
         stats = indexer.index_append_only(new_files)
 
         # Reload search engine to pick up new data
-        search_engine._initialize()
+        search_engine.refresh_index()
 
         # Clear projects cache
         projects_cache = None
@@ -1819,7 +2179,7 @@ async def restore_backup(backup_name: str):
         )
 
         # Reload search engine to pick up restored data
-        search_engine._initialize()
+        search_engine.refresh_index()
 
         # Clear projects cache
         global projects_cache
@@ -2150,6 +2510,11 @@ async def conversation_page(conversation_id: str):
             background: rgba(255, 149, 0, 0.15);
             color: var(--warning);
         }}
+
+        .tool-badge.opencode {{
+            background: rgba(46, 204, 113, 0.15);
+            color: var(--success);
+        }}
     </style>
 </head>
 <body>
@@ -2210,15 +2575,18 @@ async def conversation_page(conversation_id: str):
                     throw new Error('Invalid response data');
                 }}
 
-                // Detect tool from file_path
-                const tool = data.file_path.endsWith('.jsonl') ? 'claude' : 'vibe';
-                const toolLabel = tool === 'claude' ? 'Claude Code' : 'Vibe';
+                const tool = data.tool || (data.file_path.endsWith('.jsonl') ? 'claude' : 'vibe');
+                const toolLabel = tool === 'opencode' ? 'OpenCode' : (tool === 'vibe' ? 'Vibe' : 'Claude Code');
+                const projectPath = data.project_path || '';
+                const headerMeta = projectPath
+                    ? `Project: ${{projectPath}}`
+                    : `Project: ${{data.project_id || 'Unknown'}}`;
 
                 div.innerHTML = `
                     <div class="header">
                         <span class="tool-badge ${{tool}}">${{toolLabel}}</span>
                         <h2>${{data.title || 'No title available'}}</h2>
-                        <div>Project: ${{data.project_id || 'Unknown'}} | Messages: ${{data.message_count || 0}}</div>
+                        <div>${{headerMeta}} | Messages: ${{data.message_count || 0}}</div>
                         <button class="resume-btn" id="resumeBtn" onclick="resumeSession('{conversation_id}', this)">
                             ⚡ Resume Session
                         </button>

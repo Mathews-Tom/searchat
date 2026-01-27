@@ -3,7 +3,7 @@
 import { initTheme, setTheme } from './modules/theme.js';
 import { restoreSearchState } from './modules/session.js';
 import { loadProjects } from './modules/api.js';
-import { search, toggleCustomDate } from './modules/search.js';
+import { search, toggleCustomDate, loadConversationView, showSearchView } from './modules/search.js';
 
 // Initialize theme on page load
 initTheme();
@@ -36,6 +36,14 @@ document.getElementById('search').addEventListener('keypress', (e) => {
 
 // On page load, restore state if available
 window.addEventListener('load', async () => {
+    const activeConversationId = sessionStorage.getItem('activeConversationId');
+    const match = window.location.pathname.match(/\/conversation\/([^/]+)/);
+    const conversationId = (match && match[1]) ? match[1] : activeConversationId;
+    if (conversationId) {
+        await loadConversationView(conversationId, false);
+        return;
+    }
+
     await loadProjects();
 
     // Check if we're returning from a conversation view
@@ -60,4 +68,17 @@ window.addEventListener('load', async () => {
             }
         }, 500);
     }
+
+    sessionStorage.removeItem('activeConversationId');
+});
+
+window.addEventListener('popstate', async () => {
+    const match = window.location.pathname.match(/\/conversation\/([^/]+)/);
+    if (match && match[1]) {
+        await loadConversationView(match[1], false);
+        return;
+    }
+
+    showSearchView();
+    await restoreSearchState();
 });
