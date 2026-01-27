@@ -92,3 +92,84 @@ def test_duckdb_store_validate_parquet_scan_runs_select(tmp_path: Path) -> None:
 
     store.validate_parquet_scan()
     con.execute.assert_called()
+
+
+def test_duckdb_store_list_projects_returns_rows(tmp_path: Path) -> None:
+    from searchat.api.duckdb_store import DuckDBStore
+
+    store = DuckDBStore(tmp_path)
+    store._conversation_parquets = MagicMock(return_value=[tmp_path / "data" / "conversations" / "a.parquet"])  # type: ignore[method-assign]
+
+    con = MagicMock()
+    con.execute.return_value = con
+    con.fetchall.return_value = [("proj-b",), ("proj-a",)]
+    store._connect = MagicMock(return_value=con)  # type: ignore[method-assign]
+
+    assert store.list_projects() == ["proj-b", "proj-a"]
+
+
+def test_duckdb_store_count_conversations_filters(tmp_path: Path) -> None:
+    from searchat.api.duckdb_store import DuckDBStore
+
+    store = DuckDBStore(tmp_path)
+    store._conversation_parquets = MagicMock(return_value=[tmp_path / "data" / "conversations" / "a.parquet"])  # type: ignore[method-assign]
+
+    con = MagicMock()
+    con.execute.return_value = con
+    con.fetchone.return_value = (3,)
+    store._connect = MagicMock(return_value=con)  # type: ignore[method-assign]
+
+    count = store.count_conversations(project_id="proj", tool="claude")
+    assert count == 3
+
+    query, _params = con.execute.call_args.args
+    assert "project_id = ?" in query
+    assert "project_id NOT LIKE 'opencode-%'" in query
+
+
+def test_duckdb_store_get_conversation_meta_returns_dict(tmp_path: Path) -> None:
+    from searchat.api.duckdb_store import DuckDBStore
+
+    store = DuckDBStore(tmp_path)
+    store._conversation_parquets = MagicMock(return_value=[tmp_path / "data" / "conversations" / "a.parquet"])  # type: ignore[method-assign]
+
+    con = MagicMock()
+    con.execute.return_value = con
+    con.fetchone.return_value = (
+        "c1",
+        "p1",
+        "Title",
+        "2025-01-01",
+        "2025-01-02",
+        3,
+        "/tmp/c1.jsonl",
+    )
+    store._connect = MagicMock(return_value=con)  # type: ignore[method-assign]
+
+    meta = store.get_conversation_meta("c1")
+    assert meta["conversation_id"] == "c1"
+    assert meta["file_path"] == "/tmp/c1.jsonl"
+
+
+def test_duckdb_store_get_statistics_converts_dates(tmp_path: Path) -> None:
+    from searchat.api.duckdb_store import DuckDBStore
+
+    store = DuckDBStore(tmp_path)
+    store._conversation_parquets = MagicMock(return_value=[tmp_path / "data" / "conversations" / "a.parquet"])  # type: ignore[method-assign]
+
+    con = MagicMock()
+    con.execute.return_value = con
+    con.fetchone.return_value = (
+        4,
+        20,
+        5.0,
+        2,
+        datetime(2025, 1, 1, tzinfo=timezone.utc),
+        "2025-02-01",
+    )
+    store._connect = MagicMock(return_value=con)  # type: ignore[method-assign]
+
+    stats = store.get_statistics()
+    assert stats.total_conversations == 4
+    assert stats.earliest_date.startswith("2025-01-01")
+    assert stats.latest_date == "2025-02-01"

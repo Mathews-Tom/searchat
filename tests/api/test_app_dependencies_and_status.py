@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+from fastapi.testclient import TestClient
 
 
 def _reset_readiness() -> None:
@@ -306,3 +307,83 @@ def test_app_main_scans_for_available_port_and_calls_uvicorn(monkeypatch: pytest
 
     api_app.main()
     fake_uvicorn.run.assert_called_once()
+
+
+def test_chat_rejects_invalid_provider() -> None:
+    from searchat.api.app import app
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/chat",
+        json={"query": "hi", "model_provider": "invalid"},
+    )
+
+    assert response.status_code == 400
+    assert "model_provider" in response.json()["detail"]
+
+
+def test_chat_returns_warming_until_ready(monkeypatch: pytest.MonkeyPatch) -> None:
+    from searchat.api.app import app
+    from searchat.api.readiness import get_readiness
+
+    readiness = get_readiness()
+    readiness.set_component("metadata", "loading")
+    readiness.set_component("faiss", "idle")
+    readiness.set_component("embedder", "idle")
+
+    warmup = MagicMock()
+    monkeypatch.setattr("searchat.api.routers.chat.trigger_search_engine_warmup", warmup)
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/chat",
+        json={"query": "hello", "model_provider": "openai"},
+    )
+
+    assert response.status_code == 503
+    warmup.assert_called_once()
+
+
+def test_chat_returns_error_payload_on_component_error() -> None:
+    from searchat.api.app import app
+    from searchat.api.readiness import get_readiness
+
+    readiness = get_readiness()
+    readiness.set_component("metadata", "error", error="boom")
+    readiness.set_component("faiss", "ready")
+    readiness.set_component("embedder", "ready")
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/chat",
+        json={"query": "hello", "model_provider": "openai"},
+    )
+
+    assert response.status_code == 500
+    assert response.json()["status"] == "error"
+
+
+def test_chat_streams_response_when_ready(monkeypatch: pytest.MonkeyPatch) -> None:
+    from searchat.api.app import app
+    from searchat.api.readiness import get_readiness
+
+    readiness = get_readiness()
+    readiness.set_component("metadata", "ready")
+    readiness.set_component("faiss", "ready")
+    readiness.set_component("embedder", "ready")
+
+    def _fake_stream():
+        yield "hello"
+        yield " world"
+
+    monkeypatch.setattr("searchat.api.routers.chat.get_config", lambda: object())
+    monkeypatch.setattr("searchat.api.routers.chat.generate_answer_stream", lambda **_kwargs: _fake_stream())
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/chat",
+        json={"query": "hello", "model_provider": "ollama"},
+    )
+
+    assert response.status_code == 200
+    assert response.text == "hello world"
