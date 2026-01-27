@@ -3,6 +3,7 @@
 import asyncio
 import os
 import time
+import warnings
 from pathlib import Path
 from typing import List
 from datetime import datetime
@@ -36,6 +37,7 @@ from searchat.api.routers import (
     backup_router,
     admin_router,
     status_router,
+    chat_router,
 )
 from searchat.config.constants import (
     DEFAULT_HOST,
@@ -45,6 +47,12 @@ from searchat.config.constants import (
     ENV_HOST,
     ERROR_INVALID_PORT,
     ERROR_PORT_IN_USE,
+)
+
+warnings.filterwarnings(
+    "ignore",
+    message=r"resource_tracker: There appear to be .* leaked semaphore objects to clean up at shutdown",
+    category=UserWarning,
 )
 
 
@@ -81,6 +89,7 @@ app.include_router(indexing_router, prefix="/api", tags=["indexing"])
 app.include_router(backup_router, prefix="/api/backup", tags=["backup"])
 app.include_router(admin_router, prefix="/api", tags=["admin"])
 app.include_router(status_router, prefix="/api", tags=["status"])
+app.include_router(chat_router, prefix="/api", tags=["chat"])
 
 
 def on_new_conversations(file_paths: List[str]) -> None:
@@ -145,6 +154,10 @@ async def startup_event():
 
     # Start file watcher in background (do not block startup).
     asyncio.create_task(_start_watcher_background(config))
+
+    if os.getenv("SEARCHAT_PROFILE_STARTUP") == "1":
+        elapsed_ms = (time.perf_counter() - started) * 1000.0
+        logger.info("Startup: total startup_event %.1fms", elapsed_ms)
 
 
 async def _start_watcher_background(config):

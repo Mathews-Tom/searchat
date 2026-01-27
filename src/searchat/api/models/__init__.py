@@ -4,6 +4,7 @@ from searchat.api.models.requests import (
     ResumeRequest,
     BackupCreateRequest,
     BackupRestoreRequest,
+    ChatRequest,
 )
 from searchat.api.models.responses import (
     SearchResultResponse,
@@ -21,6 +22,7 @@ __all__ = [
     "ResumeRequest",
     "BackupCreateRequest",
     "BackupRestoreRequest",
+    "ChatRequest",
     # Responses
     "SearchResultResponse",
     "ConversationMessage",

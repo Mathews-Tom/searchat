@@ -145,12 +145,14 @@ export function showSearchView() {
     const heroTitle = document.getElementById('heroTitle');
     const heroSubtitle = document.getElementById('heroSubtitle');
     const filters = document.getElementById('filters');
+    const chatPanel = document.getElementById('chatPanel');
     const resultsDiv = document.getElementById('results');
 
     if (header) header.style.display = 'none';
     if (heroTitle) heroTitle.style.display = 'block';
     if (heroSubtitle) heroSubtitle.style.display = 'block';
     if (filters) filters.style.display = 'block';
+    if (chatPanel) chatPanel.style.display = 'block';
 
     sessionStorage.removeItem('activeConversationId');
 
@@ -342,11 +344,13 @@ export async function loadConversationView(conversationId, pushState = true) {
     const heroTitle = document.getElementById('heroTitle');
     const heroSubtitle = document.getElementById('heroSubtitle');
     const filters = document.getElementById('filters');
+    const chatPanel = document.getElementById('chatPanel');
 
     if (header) header.style.display = 'block';
     if (heroTitle) heroTitle.style.display = 'none';
     if (heroSubtitle) heroSubtitle.style.display = 'none';
     if (filters) filters.style.display = 'none';
+    if (chatPanel) chatPanel.style.display = 'none';
 
     const backButton = document.querySelector('#conversationHeader .back-button');
     if (backButton) {

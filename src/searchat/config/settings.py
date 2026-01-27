@@ -9,6 +9,7 @@ Configuration precedence (highest to lowest):
 """
 
 import os
+from typing import overload
 from dataclasses import dataclass
 from pathlib import Path
 import tomli
@@ -71,6 +72,14 @@ def _load_env_files():
 _load_env_files()
 
 
+@overload
+def _get_env_str(key: str, default: str) -> str: ...
+
+
+@overload
+def _get_env_str(key: str, default: None = None) -> str | None: ...
+
+
 def _get_env_str(key: str, default: str | None = None) -> str | None:
     """Get string value from environment variable. Empty strings are treated as missing."""
     value = os.getenv(key)
@@ -112,15 +121,15 @@ class PathsConfig:
             claude_directory_windows=_get_env_str(
                 ENV_WINDOWS_PROJECTS,
                 data.get("claude_directory_windows", "C:/Users/{username}/.claude")
-            ),
+            ) or "C:/Users/{username}/.claude",
             claude_directory_wsl=_get_env_str(
                 ENV_WSL_PROJECTS,
                 data.get("claude_directory_wsl", "")
-            ),
+            ) or "",
             search_directory=_get_env_str(
                 ENV_DATA_DIR,
                 data.get("search_directory", str(DEFAULT_DATA_DIR))
-            ),
+            ) or str(DEFAULT_DATA_DIR),
             auto_detect_environment=_get_env_bool(
                 "SEARCHAT_AUTO_DETECT",
                 data.get("auto_detect_environment", True)
@@ -181,7 +190,7 @@ class SearchConfig:
             default_mode=_get_env_str(
                 "SEARCHAT_DEFAULT_MODE",
                 data.get("default_mode", DEFAULT_SEARCH_MODE)
-            ),
+            ) or DEFAULT_SEARCH_MODE,
             max_results=_get_env_int(
                 "SEARCHAT_MAX_RESULTS",
                 data.get("max_results", DEFAULT_MAX_RESULTS)
@@ -207,7 +216,7 @@ class EmbeddingConfig:
             model=_get_env_str(
                 ENV_EMBEDDING_MODEL,
                 data.get("model", DEFAULT_EMBEDDING_MODEL)
-            ),
+            ) or DEFAULT_EMBEDDING_MODEL,
             batch_size=_get_env_int(
                 ENV_EMBEDDING_BATCH,
                 data.get("batch_size", DEFAULT_EMBEDDING_BATCH_SIZE)
@@ -219,7 +228,7 @@ class EmbeddingConfig:
             device=_get_env_str(
                 "SEARCHAT_EMBEDDING_DEVICE",
                 data.get("device", "auto")
-            ),
+            ) or "auto",
         )
 
     def get_device(self) -> str:
@@ -248,6 +257,31 @@ class EmbeddingConfig:
 
 
 @dataclass
+class LLMConfig:
+    default_provider: str
+    openai_model: str | None
+    ollama_model: str | None
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "LLMConfig":
+        """Create LLMConfig from dict with environment variable overrides."""
+        return cls(
+            default_provider=_get_env_str(
+                "SEARCHAT_LLM_PROVIDER",
+                data.get("default_provider", "ollama"),
+            ) or "ollama",
+            openai_model=_get_env_str(
+                "SEARCHAT_LLM_OPENAI_MODEL",
+                data.get("openai_model"),
+            ),
+            ollama_model=_get_env_str(
+                "SEARCHAT_LLM_OLLAMA_MODEL",
+                data.get("ollama_model"),
+            ),
+        )
+
+
+@dataclass
 class UIConfig:
     theme: str
     font_family: str
@@ -261,11 +295,11 @@ class UIConfig:
             theme=_get_env_str(
                 "SEARCHAT_THEME",
                 data.get("theme", DEFAULT_THEME)
-            ),
+            ) or DEFAULT_THEME,
             font_family=_get_env_str(
                 "SEARCHAT_FONT_FAMILY",
                 data.get("font_family", DEFAULT_FONT_FAMILY)
-            ),
+            ) or DEFAULT_FONT_FAMILY,
             font_size=_get_env_int(
                 "SEARCHAT_FONT_SIZE",
                 data.get("font_size", DEFAULT_FONT_SIZE)
@@ -273,7 +307,7 @@ class UIConfig:
             highlight_color=_get_env_str(
                 "SEARCHAT_HIGHLIGHT_COLOR",
                 data.get("highlight_color", DEFAULT_HIGHLIGHT_COLOR)
-            ),
+            ) or DEFAULT_HIGHLIGHT_COLOR,
         )
 
 
@@ -308,6 +342,7 @@ class Config:
     indexing: IndexingConfig
     search: SearchConfig
     embedding: EmbeddingConfig
+    llm: LLMConfig
     ui: UIConfig
     performance: PerformanceConfig
     logging: LogConfig
@@ -374,6 +409,7 @@ class Config:
             indexing=IndexingConfig.from_dict(data.get("indexing", {})),
             search=SearchConfig.from_dict(data.get("search", {})),
             embedding=EmbeddingConfig.from_dict(data.get("embedding", {})),
+            llm=LLMConfig.from_dict(data.get("llm", {})),
             ui=UIConfig.from_dict(data.get("ui", {})),
             performance=PerformanceConfig.from_dict(data.get("performance", {})),
             logging=LogConfig(**data.get("logging", {})),

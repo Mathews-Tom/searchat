@@ -6,6 +6,7 @@ from searchat.api.routers.indexing import router as indexing_router
 from searchat.api.routers.backup import router as backup_router
 from searchat.api.routers.admin import router as admin_router
 from searchat.api.routers.status import router as status_router
+from searchat.api.routers.chat import router as chat_router
 
 __all__ = [
     "search_router",
@@ -15,4 +16,5 @@ __all__ = [
     "backup_router",
     "admin_router",
     "status_router",
+    "chat_router",
 ]
