@@ -9,7 +9,8 @@ from typing import List, Optional
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Query, HTTPException
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
+from pydantic import BaseModel
 
 from searchat.api.models import (
     SearchResultResponse,
@@ -963,4 +964,170 @@ async def export_conversation(
         raise
     except Exception as e:
         logger.error(f"Failed to export conversation {conversation_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+class BulkExportRequest(BaseModel):
+    """Request model for bulk export."""
+
+    conversation_ids: list[str]
+    format: str = "json"
+
+
+@router.post("/conversations/bulk-export")
+async def bulk_export_conversations(request: BulkExportRequest):
+    """Export multiple conversations as a ZIP archive."""
+    try:
+        import io
+        import zipfile
+        from datetime import datetime
+
+        if not request.conversation_ids:
+            raise HTTPException(status_code=400, detail="No conversation IDs provided")
+
+        if len(request.conversation_ids) > 100:
+            raise HTTPException(
+                status_code=400,
+                detail="Too many conversations (max 100)"
+            )
+
+        format_lower = request.format.lower()
+        if format_lower not in ("json", "markdown", "text"):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid format. Use: json, markdown, or text"
+            )
+
+        # Determine file extension
+        ext_map = {
+            "json": "json",
+            "markdown": "md",
+            "text": "txt"
+        }
+        ext = ext_map[format_lower]
+
+        # Create ZIP file in memory
+        zip_buffer = io.BytesIO()
+
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            for conv_id in request.conversation_ids:
+                try:
+                    # Get conversation data (reuse export logic)
+                    conv_response = await get_conversation(conv_id)
+
+                    # Generate content based on format
+                    if format_lower == "json":
+                        content = json.dumps({
+                            "conversation_id": conv_response.conversation_id,
+                            "title": conv_response.title,
+                            "project_id": conv_response.project_id,
+                            "project_path": conv_response.project_path,
+                            "tool": conv_response.tool,
+                            "message_count": conv_response.message_count,
+                            "messages": [
+                                {
+                                    "role": msg.role,
+                                    "content": msg.content,
+                                    "timestamp": msg.timestamp
+                                }
+                                for msg in conv_response.messages
+                            ]
+                        }, indent=2)
+
+                    elif format_lower == "markdown":
+                        lines = [
+                            f"# {conv_response.title}",
+                            "",
+                            f"**Conversation ID:** {conv_response.conversation_id}",
+                            f"**Project:** {conv_response.project_id}",
+                            f"**Tool:** {conv_response.tool}",
+                            f"**Messages:** {conv_response.message_count}",
+                        ]
+
+                        if conv_response.project_path:
+                            lines.insert(4, f"**Project Path:** {conv_response.project_path}")
+
+                        lines.extend(["", "---", ""])
+
+                        for idx, msg in enumerate(conv_response.messages, 1):
+                            role_label = msg.role.upper()
+                            lines.append(f"## Message {idx} - {role_label}")
+                            if msg.timestamp:
+                                lines.append(f"*{msg.timestamp}*")
+                                lines.append("")
+                            lines.append(msg.content)
+                            lines.append("")
+                            lines.append("---")
+                            lines.append("")
+
+                        content = "\n".join(lines)
+
+                    else:  # text
+                        lines = [
+                            f"{'=' * 80}",
+                            f"CONVERSATION: {conv_response.title}",
+                            f"{'=' * 80}",
+                            "",
+                            f"ID: {conv_response.conversation_id}",
+                            f"Project: {conv_response.project_id}",
+                            f"Tool: {conv_response.tool}",
+                            f"Messages: {conv_response.message_count}",
+                        ]
+
+                        if conv_response.project_path:
+                            lines.insert(7, f"Project Path: {conv_response.project_path}")
+
+                        lines.extend(["", f"{'-' * 80}", ""])
+
+                        for idx, msg in enumerate(conv_response.messages, 1):
+                            role_label = msg.role.upper()
+                            lines.append(f"[Message {idx} - {role_label}]")
+                            if msg.timestamp:
+                                lines.append(f"Time: {msg.timestamp}")
+                            lines.append("")
+                            lines.append(msg.content)
+                            lines.append("")
+                            lines.append(f"{'-' * 80}")
+                            lines.append("")
+
+                        content = "\n".join(lines)
+
+                    # Sanitize filename
+                    safe_title = "".join(
+                        c for c in conv_response.title[:50]
+                        if c.isalnum() or c in (' ', '-', '_')
+                    ).strip()
+                    if not safe_title:
+                        safe_title = conv_id
+
+                    filename = f"{safe_title}_{conv_id[:8]}.{ext}"
+
+                    # Add to ZIP
+                    zip_file.writestr(filename, content.encode('utf-8'))
+
+                except HTTPException:
+                    # Skip conversations that can't be loaded
+                    logger.warning(f"Skipping conversation {conv_id} in bulk export")
+                    continue
+                except Exception as e:
+                    logger.error(f"Error exporting {conv_id}: {e}")
+                    continue
+
+        # Prepare ZIP for download
+        zip_buffer.seek(0)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        zip_filename = f"searchat_export_{timestamp}.zip"
+
+        return StreamingResponse(
+            iter([zip_buffer.getvalue()]),
+            media_type="application/zip",
+            headers={
+                "Content-Disposition": f'attachment; filename="{zip_filename}"'
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to bulk export conversations: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")

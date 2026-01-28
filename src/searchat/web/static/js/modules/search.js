@@ -5,6 +5,7 @@ import { addToHistory } from './search-history.js';
 import { loadCodeBlocks } from './code-extraction.js';
 import { createStarIcon } from './bookmarks.js';
 import { loadSimilarConversations } from './similar.js';
+import { addCheckboxToResult } from './bulk-export.js';
 
 let _searchNonce = 0;
 
@@ -100,6 +101,7 @@ export async function search() {
         const isWSL = r.source === 'WSL';
         div.className = `result ${isWSL ? 'wsl' : 'windows'}`;
         div.id = `result-${index}`;
+        div.dataset.conversationId = r.conversation_id;
         // Get last segment of conversation ID
         const shortId = r.conversation_id.split('-').pop();
 
@@ -123,6 +125,9 @@ export async function search() {
                 </button>
             </div>
         `;
+
+        // Add checkbox if bulk mode is active
+        addCheckboxToResult(div, r.conversation_id);
 
         // Add star icon to title
         const titleDiv = div.querySelector('.result-title');
@@ -306,6 +311,7 @@ export async function showAllConversations() {
             const isWSL = r.source === 'WSL';
             div.className = `result ${isWSL ? 'wsl' : 'windows'}`;
             div.id = `result-${index}`;
+            div.dataset.conversationId = r.conversation_id;
             const shortId = r.conversation_id.split('-').pop();
 
             // Detect tool from API field
@@ -328,6 +334,9 @@ export async function showAllConversations() {
                     </button>
                 </div>
             `;
+
+            // Add checkbox if bulk mode is active
+            addCheckboxToResult(div, r.conversation_id);
 
             // Add star icon to title
             const titleDiv = div.querySelector('.result-title');

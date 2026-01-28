@@ -10,14 +10,16 @@ import { initSearchHistory, restoreSearchFromHistory, clearHistory } from './mod
 import { copyCode } from './modules/code-extraction.js';
 import { initSuggestions } from './modules/suggestions.js';
 import { initBookmarks, showBookmarks } from './modules/bookmarks.js';
+import { initBulkExport, toggleBulkMode } from './modules/bulk-export.js';
 
-// Initialize theme, shortcuts, search history, suggestions, and bookmarks on page load
+// Initialize theme, shortcuts, search history, suggestions, bookmarks, and bulk export on page load
 initTheme();
 initChat();
 initShortcuts();
 initSearchHistory();
 initSuggestions();
 initBookmarks();
+initBulkExport();
 
 // Make functions globally available for inline event handlers
 window.setTheme = setTheme;
@@ -28,6 +30,7 @@ window.restoreSearchFromHistory = restoreSearchFromHistory;
 window.clearSearchHistory = clearHistory;
 window.copyCode = copyCode;
 window.showBookmarks = showBookmarks;
+window.toggleBulkMode = toggleBulkMode;
 
 // Import and expose other functions that might be called from HTML
 import('./modules/backup.js').then(module => {
