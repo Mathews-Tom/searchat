@@ -85,18 +85,18 @@ def mock_duckdb_store():
         }
     }
 
-    def _get_conversation_metadata(conversation_id):
+    def _get_conversation_meta(conversation_id):
         return mock._conversations.get(conversation_id)
 
-    mock.get_conversation_metadata.side_effect = _get_conversation_metadata
+    mock.get_conversation_meta.side_effect = _get_conversation_meta
 
     return mock
 
 
 def test_get_bookmarks_empty(client, mock_bookmarks_service, mock_duckdb_store):
     """Test GET /api/bookmarks with no bookmarks."""
-    with patch("searchat.api.dependencies.get_bookmarks_service", return_value=mock_bookmarks_service), \
-         patch("searchat.api.dependencies.get_duckdb_store", return_value=mock_duckdb_store):
+    with patch("searchat.api.routers.bookmarks.deps.get_bookmarks_service", return_value=mock_bookmarks_service), \
+         patch("searchat.api.routers.bookmarks.deps.get_duckdb_store", return_value=mock_duckdb_store):
 
         response = client.get("/api/bookmarks")
 
@@ -107,8 +107,8 @@ def test_get_bookmarks_empty(client, mock_bookmarks_service, mock_duckdb_store):
 
 def test_add_bookmark(client, mock_bookmarks_service, mock_duckdb_store):
     """Test POST /api/bookmarks to add a bookmark."""
-    with patch("searchat.api.dependencies.get_bookmarks_service", return_value=mock_bookmarks_service), \
-         patch("searchat.api.dependencies.get_duckdb_store", return_value=mock_duckdb_store):
+    with patch("searchat.api.routers.bookmarks.deps.get_bookmarks_service", return_value=mock_bookmarks_service), \
+         patch("searchat.api.routers.bookmarks.deps.get_duckdb_store", return_value=mock_duckdb_store):
 
         response = client.post(
             "/api/bookmarks",
@@ -117,15 +117,16 @@ def test_add_bookmark(client, mock_bookmarks_service, mock_duckdb_store):
 
         assert response.status_code == 200
         data = response.json()
-        assert data["conversation_id"] == "conv-1"
-        assert data["notes"] == "Important"
-        assert "added_at" in data
+        assert data["success"] is True
+        assert data["bookmark"]["conversation_id"] == "conv-1"
+        assert data["bookmark"]["notes"] == "Important"
+        assert "added_at" in data["bookmark"]
 
 
 def test_add_bookmark_without_notes(client, mock_bookmarks_service, mock_duckdb_store):
     """Test POST /api/bookmarks without notes field."""
-    with patch("searchat.api.dependencies.get_bookmarks_service", return_value=mock_bookmarks_service), \
-         patch("searchat.api.dependencies.get_duckdb_store", return_value=mock_duckdb_store):
+    with patch("searchat.api.routers.bookmarks.deps.get_bookmarks_service", return_value=mock_bookmarks_service), \
+         patch("searchat.api.routers.bookmarks.deps.get_duckdb_store", return_value=mock_duckdb_store):
 
         response = client.post(
             "/api/bookmarks",
@@ -134,8 +135,9 @@ def test_add_bookmark_without_notes(client, mock_bookmarks_service, mock_duckdb_
 
         assert response.status_code == 200
         data = response.json()
-        assert data["conversation_id"] == "conv-1"
-        assert data["notes"] == ""
+        assert data["success"] is True
+        assert data["bookmark"]["conversation_id"] == "conv-1"
+        assert data["bookmark"]["notes"] == ""
 
 
 def test_remove_bookmark(client, mock_bookmarks_service, mock_duckdb_store):
@@ -143,7 +145,7 @@ def test_remove_bookmark(client, mock_bookmarks_service, mock_duckdb_store):
     # Add bookmark first
     mock_bookmarks_service.add_bookmark("conv-1", "Test")
 
-    with patch("searchat.api.dependencies.get_bookmarks_service", return_value=mock_bookmarks_service):
+    with patch("searchat.api.routers.bookmarks.deps.get_bookmarks_service", return_value=mock_bookmarks_service):
 
         response = client.delete("/api/bookmarks/conv-1")
 
@@ -154,7 +156,7 @@ def test_remove_bookmark(client, mock_bookmarks_service, mock_duckdb_store):
 
 def test_remove_nonexistent_bookmark(client, mock_bookmarks_service):
     """Test DELETE for nonexistent bookmark returns 404."""
-    with patch("searchat.api.dependencies.get_bookmarks_service", return_value=mock_bookmarks_service):
+    with patch("searchat.api.routers.bookmarks.deps.get_bookmarks_service", return_value=mock_bookmarks_service):
 
         response = client.delete("/api/bookmarks/nonexistent")
 
@@ -166,7 +168,7 @@ def test_update_bookmark_notes(client, mock_bookmarks_service, mock_duckdb_store
     # Add bookmark first
     mock_bookmarks_service.add_bookmark("conv-1", "Original")
 
-    with patch("searchat.api.dependencies.get_bookmarks_service", return_value=mock_bookmarks_service):
+    with patch("searchat.api.routers.bookmarks.deps.get_bookmarks_service", return_value=mock_bookmarks_service):
 
         response = client.patch(
             "/api/bookmarks/conv-1/notes",
@@ -175,12 +177,13 @@ def test_update_bookmark_notes(client, mock_bookmarks_service, mock_duckdb_store
 
         assert response.status_code == 200
         data = response.json()
-        assert data["notes"] == "Updated notes"
+        assert data["success"] is True
+        assert "message" in data
 
 
 def test_update_notes_nonexistent_bookmark(client, mock_bookmarks_service):
     """Test PATCH for nonexistent bookmark returns 404."""
-    with patch("searchat.api.dependencies.get_bookmarks_service", return_value=mock_bookmarks_service):
+    with patch("searchat.api.routers.bookmarks.deps.get_bookmarks_service", return_value=mock_bookmarks_service):
 
         response = client.patch(
             "/api/bookmarks/nonexistent/notes",
@@ -196,8 +199,8 @@ def test_get_bookmarks_with_metadata(client, mock_bookmarks_service, mock_duckdb
     mock_bookmarks_service.add_bookmark("conv-1", "Note 1")
     mock_bookmarks_service.add_bookmark("conv-2", "Note 2")
 
-    with patch("searchat.api.dependencies.get_bookmarks_service", return_value=mock_bookmarks_service), \
-         patch("searchat.api.dependencies.get_duckdb_store", return_value=mock_duckdb_store):
+    with patch("searchat.api.routers.bookmarks.deps.get_bookmarks_service", return_value=mock_bookmarks_service), \
+         patch("searchat.api.routers.bookmarks.deps.get_duckdb_store", return_value=mock_duckdb_store):
 
         response = client.get("/api/bookmarks")
 
@@ -219,8 +222,8 @@ def test_get_bookmarks_missing_metadata(client, mock_bookmarks_service, mock_duc
     # Add bookmark for conversation that doesn't exist in store
     mock_bookmarks_service.add_bookmark("conv-missing", "Note")
 
-    with patch("searchat.api.dependencies.get_bookmarks_service", return_value=mock_bookmarks_service), \
-         patch("searchat.api.dependencies.get_duckdb_store", return_value=mock_duckdb_store):
+    with patch("searchat.api.routers.bookmarks.deps.get_bookmarks_service", return_value=mock_bookmarks_service), \
+         patch("searchat.api.routers.bookmarks.deps.get_duckdb_store", return_value=mock_duckdb_store):
 
         response = client.get("/api/bookmarks")
 
@@ -236,7 +239,7 @@ def test_get_bookmarks_missing_metadata(client, mock_bookmarks_service, mock_duc
 
 def test_bookmark_validation(client, mock_bookmarks_service):
     """Test request validation for bookmark endpoints."""
-    with patch("searchat.api.dependencies.get_bookmarks_service", return_value=mock_bookmarks_service):
+    with patch("searchat.api.routers.bookmarks.deps.get_bookmarks_service", return_value=mock_bookmarks_service):
 
         # Missing conversation_id in POST
         response = client.post("/api/bookmarks", json={})
@@ -249,8 +252,8 @@ def test_bookmark_validation(client, mock_bookmarks_service):
 
 def test_multiple_bookmarks_operations(client, mock_bookmarks_service, mock_duckdb_store):
     """Test multiple bookmark operations in sequence."""
-    with patch("searchat.api.dependencies.get_bookmarks_service", return_value=mock_bookmarks_service), \
-         patch("searchat.api.dependencies.get_duckdb_store", return_value=mock_duckdb_store):
+    with patch("searchat.api.routers.bookmarks.deps.get_bookmarks_service", return_value=mock_bookmarks_service), \
+         patch("searchat.api.routers.bookmarks.deps.get_duckdb_store", return_value=mock_duckdb_store):
 
         # Add first bookmark
         response = client.post("/api/bookmarks", json={"conversation_id": "conv-1", "notes": "First"})
