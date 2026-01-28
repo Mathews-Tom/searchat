@@ -46,7 +46,7 @@ class SearchEngine:
 
         # LRU cache for search results
         self.cache_size = config.performance.query_cache_size
-        self.result_cache: OrderedDict[str, Tuple[SearchResults, float]] = OrderedDict()
+        self.result_cache: OrderedDict[str, tuple[SearchResults, float]] = OrderedDict()
         self.cache_ttl = 300  # 5 minutes TTL
 
         # Columns needed for search (exclude large 'messages' column)

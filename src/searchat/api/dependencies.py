@@ -3,7 +3,6 @@
 This module must stay lightweight: avoid importing heavy ML/search modules at
 import time. Heavy resources are initialized lazily and/or in background warmup.
 """
-
 from __future__ import annotations
 
 import asyncio
@@ -11,7 +10,6 @@ import logging
 import os
 import time
 from threading import Lock
-from typing import Optional
 from pathlib import Path
 
 from searchat.services import BackupManager, PlatformManager
@@ -23,12 +21,12 @@ logger = logging.getLogger(__name__)
 
 
 # Global singletons (initialized on startup)
-_config: Optional[Config] = None
-_search_dir: Optional[Path] = None
+_config: Config | None = None
+_search_dir: Path | None = None
 _search_engine = None
 _indexer = None
-_backup_manager: Optional[BackupManager] = None
-_platform_manager: Optional[PlatformManager] = None
+_backup_manager: BackupManager | None = None
+_platform_manager: PlatformManager | None = None
 _bookmarks_service = None
 _analytics_service = None
 _watcher = None

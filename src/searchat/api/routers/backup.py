@@ -1,6 +1,7 @@
 """Backup endpoints - create, list, restore, and delete backups."""
+from __future__ import annotations
+
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 
@@ -15,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 @router.post("/create")
-async def create_backup(backup_name: Optional[str] = None):
+async def create_backup(backup_name: str | None = None):
     """Create a new backup of the index and data."""
     try:
         backup_manager = get_backup_manager()

@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 """Simple CLI for Claude Search - no complex TUI, just clean terminal output"""
+from __future__ import annotations
 
 import sys
 import os
 from pathlib import Path
 from datetime import datetime, timedelta
-from typing import List, Optional
 import json
 
 from rich.console import Console
@@ -27,7 +27,7 @@ class SearchCLI:
         self.config = Config.load()
         search_dir = PathResolver.get_shared_search_dir(self.config)
         self.search_engine = SearchEngine(search_dir, self.config)
-        self.current_results: List[SearchResult] = []
+        self.current_results: list[SearchResult] = []
         self.search_mode = SearchMode.HYBRID
         
     def run(self):

@@ -1,7 +1,8 @@
 """Domain models for searchat - business logic data structures."""
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List, Optional
 
 
 @dataclass
@@ -12,7 +13,7 @@ class MessageRecord:
     content: str
     timestamp: datetime
     has_code: bool
-    code_blocks: List[str] = field(default_factory=list)
+    code_blocks: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -25,7 +26,7 @@ class ConversationRecord:
     created_at: datetime
     updated_at: datetime
     message_count: int
-    messages: List[MessageRecord]
+    messages: list[MessageRecord]
     full_text: str
     embedding_id: int
     file_hash: str
@@ -35,12 +36,12 @@ class ConversationRecord:
 @dataclass
 class SearchFilters:
     """Filters for search queries."""
-    project_ids: Optional[List[str]] = None
-    date_from: Optional[datetime] = None
-    date_to: Optional[datetime] = None
+    project_ids: list[str] | None = None
+    date_from: datetime | None = None
+    date_to: datetime | None = None
     min_messages: int = 0
-    has_code: Optional[bool] = None
-    tool: Optional[str] = None
+    has_code: bool | None = None
+    tool: str | None = None
 
 
 @dataclass
@@ -55,18 +56,18 @@ class SearchResult:
     file_path: str
     score: float
     snippet: str
-    message_start_index: Optional[int] = None
-    message_end_index: Optional[int] = None
+    message_start_index: int | None = None
+    message_end_index: int | None = None
 
 
 @dataclass
 class SearchResults:
     """Collection of search results with metadata."""
-    results: List[SearchResult]
+    results: list[SearchResult]
     total_count: int
     search_time_ms: float
     mode_used: str
-    error: Optional[str] = None
+    error: str | None = None
 
 
 @dataclass
@@ -91,16 +92,16 @@ class UpdateStats:
 @dataclass
 class DateFilter:
     """Date range filter for search queries."""
-    from_date: Optional[datetime]
-    to_date: Optional[datetime]
+    from_date: datetime | None
+    to_date: datetime | None
 
 
 @dataclass
 class ParsedQuery:
     """Parsed search query with extracted components."""
     original: str
-    must_include: List[str] = field(default_factory=list)
-    should_include: List[str] = field(default_factory=list)
-    must_exclude: List[str] = field(default_factory=list)
-    exact_phrases: List[str] = field(default_factory=list)
-    date_filter: Optional[DateFilter] = None
+    must_include: list[str] = field(default_factory=list)
+    should_include: list[str] = field(default_factory=list)
+    must_exclude: list[str] = field(default_factory=list)
+    exact_phrases: list[str] = field(default_factory=list)
+    date_filter: DateFilter | None = None

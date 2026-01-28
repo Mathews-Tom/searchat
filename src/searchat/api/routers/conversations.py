@@ -1,12 +1,13 @@
 """Conversation endpoints - listing, viewing, and session resume."""
+from __future__ import annotations
+
 import asyncio
 import json
 import logging
 import re
 import time
 from pathlib import Path
-from typing import List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from fastapi import APIRouter, Query, HTTPException
 from fastapi.responses import Response, StreamingResponse
@@ -18,6 +19,7 @@ from searchat.api.models import (
     ConversationResponse,
     ResumeRequest,
 )
+from searchat.api.utils import detect_tool_from_path, detect_source_from_path, parse_date_filter
 import searchat.api.dependencies as deps
 
 from searchat.api.dependencies import get_platform_manager
@@ -33,8 +35,8 @@ async def read_file_async(file_path: str, encoding: str = 'utf-8') -> str:
     return await loop.run_in_executor(None, lambda: Path(file_path).read_text(encoding=encoding))
 
 
-def _extract_vibe_messages(data: dict) -> List[ConversationMessage]:
-    messages: List[ConversationMessage] = []
+def _extract_vibe_messages(data: dict) -> list[ConversationMessage]:
+    messages: list[ConversationMessage] = []
     for entry in data.get('messages', []):
         role = entry.get('role')
         if role not in ('user', 'assistant'):
@@ -51,7 +53,7 @@ def _extract_vibe_messages(data: dict) -> List[ConversationMessage]:
     return messages
 
 
-async def _load_opencode_messages(session_file_path: str, session_id: str) -> List[ConversationMessage]:
+async def _load_opencode_messages(session_file_path: str, session_id: str) -> list[ConversationMessage]:
     data_root = _resolve_opencode_data_root(session_file_path)
     from searchat.config import PathResolver
 
@@ -60,7 +62,7 @@ async def _load_opencode_messages(session_file_path: str, session_id: str) -> Li
         if opencode_dir not in candidate_roots:
             candidate_roots.append(opencode_dir)
 
-    raw_messages: List[tuple[float | None, str, str, str]] = []
+    raw_messages: list[tuple[float | None, str, str, str]] = []
     for root in candidate_roots:
         messages_dir = root / "storage" / "message" / session_id
         if not messages_dir.exists():
@@ -117,7 +119,7 @@ async def _load_opencode_messages(session_file_path: str, session_id: str) -> Li
 
     raw_messages.sort(key=lambda item: (item[0] or 0.0, item[1]))
 
-    messages: List[ConversationMessage] = []
+    messages: list[ConversationMessage] = []
     for created_ts, _name, text, role in raw_messages:
         timestamp = ""
         if created_ts is not None:
@@ -186,7 +188,7 @@ def _load_opencode_parts_text(data_root: Path, message_id: str) -> str:
     if not parts_dir.exists():
         return ""
 
-    parts: List[str] = []
+    parts: list[str] = []
     for part_file in sorted(parts_dir.glob("*.json")):
         try:
             content = part_file.read_text(encoding="utf-8")
@@ -264,12 +266,12 @@ def _load_vibe_project_path(session_file_path: str) -> str | None:
 @router.get("/conversations/all")
 async def get_all_conversations(
     sort_by: str = Query("length", description="Sort by: length, date_newest, date_oldest, title"),
-    project: Optional[str] = Query(None, description="Filter by project"),
-    date: Optional[str] = Query(None, description="Date filter: today, week, month, or custom"),
-    date_from: Optional[str] = Query(None, description="Custom date from (YYYY-MM-DD)"),
-    date_to: Optional[str] = Query(None, description="Custom date to (YYYY-MM-DD)"),
-    tool: Optional[str] = Query(None, description="Filter by tool: claude, vibe, opencode"),
-    limit: Optional[int] = Query(None, ge=1, le=5000, description="Max results to return"),
+    project: str | None = Query(None, description="Filter by project"),
+    date: str | None = Query(None, description="Date filter: today, week, month, or custom"),
+    date_from: str | None = Query(None, description="Custom date from (YYYY-MM-DD)"),
+    date_to: str | None = Query(None, description="Custom date to (YYYY-MM-DD)"),
+    tool: str | None = Query(None, description="Filter by tool: claude, vibe, opencode"),
+    limit: int | None = Query(None, ge=1, le=5000, description="Max results to return"),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
 ):
     """Get all conversations with sorting and filtering."""
@@ -278,27 +280,7 @@ async def get_all_conversations(
         store = deps.get_duckdb_store()
 
         # Handle date filtering
-        date_from_dt = None
-        date_to_dt = None
-        if date == "custom" and (date_from or date_to):
-            # Custom date range
-            if date_from:
-                date_from_dt = datetime.fromisoformat(date_from)
-            if date_to:
-                # Add 1 day to include the entire end date
-                date_to_dt = datetime.fromisoformat(date_to) + timedelta(days=1)
-        elif date:
-            # Preset date ranges
-            now = datetime.now()
-            if date == "today":
-                date_from_dt = now.replace(hour=0, minute=0, second=0, microsecond=0)
-                date_to_dt = now
-            elif date == "week":
-                date_from_dt = now - timedelta(days=7)
-                date_to_dt = now
-            elif date == "month":
-                date_from_dt = now - timedelta(days=30)
-                date_to_dt = now
+        date_from_dt, date_to_dt = parse_date_filter(date, date_from, date_to)
 
         if tool:
             tool_value = tool.lower()
@@ -306,7 +288,7 @@ async def get_all_conversations(
                 raise HTTPException(status_code=400, detail="Invalid tool filter")
             tool = tool_value
 
-        count_kwargs = {
+        count_kwargs: dict = {
             "project_id": project,
             "date_from": date_from_dt,
             "date_to": date_to_dt,
@@ -315,7 +297,7 @@ async def get_all_conversations(
             count_kwargs["tool"] = tool
         total = store.count_conversations(**count_kwargs)
 
-        list_kwargs = {
+        list_kwargs: dict = {
             "sort_by": sort_by,
             "project_id": project,
             "date_from": date_from_dt,
@@ -331,18 +313,6 @@ async def get_all_conversations(
         for row in rows:
             file_path = row["file_path"]
             full_text = row.get("full_text") or ""
-            file_path_lower = file_path.lower()
-            if file_path.endswith('.jsonl'):
-                tool_name = "claude"
-            elif "/.local/share/opencode/" in file_path_lower:
-                tool_name = "opencode"
-            else:
-                tool_name = "vibe"
-
-            if "/home/" in file_path_lower or "wsl" in file_path_lower:
-                source = "WSL"
-            else:
-                source = "WIN"
 
             response_results.append(
                 SearchResultResponse(
@@ -357,8 +327,8 @@ async def get_all_conversations(
                     score=0.0,
                     message_start_index=None,
                     message_end_index=None,
-                    source=source,
-                    tool=tool_name,
+                    source=detect_source_from_path(file_path),
+                    tool=detect_tool_from_path(file_path),
                 )
             )
 
@@ -458,17 +428,7 @@ async def get_conversation(conversation_id: str):
 
         logger.info(f"Successfully loaded conversation {conversation_id} with {len(messages)} messages")
 
-        project_label = conv["project_id"]
-        file_path_lower = file_path.lower()
-        if file_path.endswith('.jsonl'):
-            tool_name = "claude"
-            tool_label = "Claude Code"
-        elif "/.local/share/opencode/" in file_path_lower:
-            tool_name = "opencode"
-            tool_label = "OpenCode"
-        else:
-            tool_name = "vibe"
-            tool_label = "Vibe"
+        tool_name = detect_tool_from_path(file_path)
 
         project_path = None
         if tool_name == "opencode":
@@ -819,15 +779,6 @@ async def get_similar_conversations(
             # Calculate similarity score (inverse of distance)
             score = 1.0 / (1.0 + float(distance))
 
-            # Detect tool
-            file_path_lower = file_path.lower()
-            if file_path.endswith('.jsonl'):
-                tool_name = "claude"
-            elif "/.local/share/opencode/" in file_path_lower:
-                tool_name = "opencode"
-            else:
-                tool_name = "vibe"
-
             # Handle both string and datetime types for timestamps
             created_at_str = created_at if isinstance(created_at, str) else created_at.isoformat()
             updated_at_str = updated_at if isinstance(updated_at, str) else updated_at.isoformat()
@@ -840,7 +791,7 @@ async def get_similar_conversations(
                 'updated_at': updated_at_str,
                 'message_count': message_count,
                 'similarity_score': round(score, 3),
-                'tool': tool_name
+                'tool': detect_tool_from_path(file_path)
             })
 
         return {
