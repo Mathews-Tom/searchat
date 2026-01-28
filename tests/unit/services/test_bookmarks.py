@@ -23,15 +23,14 @@ def mock_config(tmp_path):
 @pytest.fixture
 def bookmarks_service(mock_config):
     """Create BookmarksService with mock config."""
+    # Service will create directory and file in __init__ via _ensure_file()
     service = BookmarksService(mock_config)
-    # Ensure bookmarks directory exists
-    service.bookmarks_dir.mkdir(parents=True, exist_ok=True)
     return service
 
 
 def test_bookmarks_service_initialization(bookmarks_service):
     """Test BookmarksService initializes correctly."""
-    assert bookmarks_service.bookmarks_dir.exists()
+    assert bookmarks_service.bookmarks_file.exists()
     assert bookmarks_service.bookmarks_file.name == "bookmarks.json"
 
 
@@ -214,9 +213,8 @@ def test_multiple_bookmarks(bookmarks_service):
 
 def test_bookmark_persistence_across_instances(mock_config):
     """Test bookmarks persist across service instances."""
-    # Create first instance and add bookmark
+    # Create first instance and add bookmark (service creates directory in __init__)
     service1 = BookmarksService(mock_config)
-    service1.bookmarks_dir.mkdir(parents=True, exist_ok=True)
     service1.add_bookmark("conv-persist", "Persistent note")
 
     # Create second instance
