@@ -1,5 +1,6 @@
 """Pydantic request models for API endpoints."""
-from typing import Optional
+from __future__ import annotations
+
 from pydantic import BaseModel
 
 
@@ -7,8 +8,8 @@ class SearchRequest(BaseModel):
     """Search request parameters."""
     query: str
     mode: str = "hybrid"
-    project: Optional[str] = None
-    date_filter: Optional[str] = None
+    project: str | None = None
+    date_filter: str | None = None
 
 
 class ResumeRequest(BaseModel):
@@ -18,7 +19,7 @@ class ResumeRequest(BaseModel):
 
 class BackupCreateRequest(BaseModel):
     """Backup creation request."""
-    backup_name: Optional[str] = None
+    backup_name: str | None = None
 
 
 class BackupRestoreRequest(BaseModel):
@@ -30,4 +31,4 @@ class ChatRequest(BaseModel):
     """Chat request parameters."""
     query: str
     model_provider: str = "ollama"
-    model_name: Optional[str] = None
+    model_name: str | None = None

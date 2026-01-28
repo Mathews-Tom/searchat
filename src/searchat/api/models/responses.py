@@ -1,5 +1,6 @@
 """Pydantic response models for API endpoints."""
-from typing import List, Optional
+from __future__ import annotations
+
 from pydantic import BaseModel
 
 
@@ -14,8 +15,8 @@ class SearchResultResponse(BaseModel):
     file_path: str
     snippet: str
     score: float
-    message_start_index: Optional[int] = None
-    message_end_index: Optional[int] = None
+    message_start_index: int | None = None
+    message_end_index: int | None = None
     source: str  # WIN or WSL
     tool: str
 
@@ -32,11 +33,11 @@ class ConversationResponse(BaseModel):
     conversation_id: str
     title: str
     project_id: str
-    project_path: Optional[str] = None
+    project_path: str | None = None
     file_path: str
     message_count: int
     tool: str
-    messages: List[ConversationMessage]
+    messages: list[ConversationMessage]
 
 
 class BackupMetadataResponse(BaseModel):
@@ -59,7 +60,7 @@ class BackupCreateResponse(BaseModel):
 
 class BackupListResponse(BaseModel):
     """List of available backups."""
-    backups: List[BackupMetadataResponse]
+    backups: list[BackupMetadataResponse]
 
 
 class BackupRestoreResponse(BaseModel):

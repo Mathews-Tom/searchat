@@ -1,11 +1,11 @@
 """FastAPI application initialization and configuration."""
+from __future__ import annotations
 
 import asyncio
 import os
 import time
 import warnings
 from pathlib import Path
-from typing import List
 from datetime import datetime
 
 from fastapi import FastAPI
@@ -94,7 +94,7 @@ app.include_router(status_router, prefix="/api", tags=["status"])
 app.include_router(chat_router, prefix="/api", tags=["chat"])
 
 
-def on_new_conversations(file_paths: List[str]) -> None:
+def on_new_conversations(file_paths: list[str]) -> None:
     """Callback when watcher detects new conversation files."""
     global projects_cache, watcher_stats, indexing_state
 

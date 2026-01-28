@@ -4,6 +4,7 @@ Backup and restore functionality for Searchat indices and data.
 CRITICAL: The Parquet files contain irreplaceable conversation data.
 This module provides safe backup/restore operations to protect that data.
 """
+from __future__ import annotations
 
 import shutil
 import json

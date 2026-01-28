@@ -1,9 +1,9 @@
 """Cross-platform utilities for terminal and path management."""
+from __future__ import annotations
 
 import platform
 import subprocess
 import logging
-from typing import Optional
 import shlex
 from pathlib import Path
 
@@ -26,7 +26,7 @@ class PlatformManager:
         self.is_macos = self.platform == 'macos'
         self.is_linux = self.platform == 'linux'
 
-    def _translate_cwd_if_needed(self, cwd: Optional[str]) -> Optional[str]:
+    def _translate_cwd_if_needed(self, cwd: str | None) -> str | None:
         """
         Translate cwd path to be suitable for current platform.
 
@@ -65,7 +65,7 @@ class PlatformManager:
     def open_terminal_with_command(
         self,
         command: str,
-        cwd: Optional[str] = None
+        cwd: str | None = None
     ) -> subprocess.Popen:
         """
         Open a new terminal window and execute a command.
@@ -97,7 +97,7 @@ class PlatformManager:
     def _open_windows_terminal(
         self,
         command: str,
-        cwd: Optional[str]
+        cwd: str | None
     ) -> subprocess.Popen:
         """Open terminal on Windows using argument lists."""
         if cwd and cwd.startswith('/'):
@@ -124,7 +124,7 @@ class PlatformManager:
     def _open_wsl_terminal(
         self,
         command: str,
-        cwd: Optional[str]
+        cwd: str | None
     ) -> subprocess.Popen:
         """
         Open terminal from WSL.
@@ -148,7 +148,7 @@ class PlatformManager:
     def _open_macos_terminal(
         self,
         command: str,
-        cwd: Optional[str]
+        cwd: str | None
     ) -> subprocess.Popen:
         """Open terminal on macOS using osascript."""
         if cwd:
@@ -163,7 +163,7 @@ class PlatformManager:
     def _open_linux_terminal(
         self,
         command: str,
-        cwd: Optional[str]
+        cwd: str | None
     ) -> subprocess.Popen:
         """Open terminal on Linux using gnome-terminal or alternatives."""
         # Build bash command
