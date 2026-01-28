@@ -1,6 +1,7 @@
 // Search Functionality
 
 import { saveAllConversationsState, saveSearchState, restoreSearchState } from './session.js';
+import { addToHistory } from './search-history.js';
 
 let _searchNonce = 0;
 
@@ -135,6 +136,18 @@ export async function search() {
             loadConversationView(r.conversation_id);
         };
         resultsDiv.appendChild(div);
+    });
+
+    // Add search to history
+    addToHistory({
+        query: query,
+        mode: document.getElementById('mode').value,
+        project: document.getElementById('project').value,
+        tool: tool,
+        date: document.getElementById('date').value,
+        dateFrom: document.getElementById('date').value === 'custom' ? document.getElementById('dateFrom').value : '',
+        dateTo: document.getElementById('date').value === 'custom' ? document.getElementById('dateTo').value : '',
+        sortBy: document.getElementById('sortBy').value
     });
 
     saveSearchState();

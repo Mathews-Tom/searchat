@@ -6,17 +6,21 @@ import { loadProjects } from './modules/api.js';
 import { search, toggleCustomDate, loadConversationView, showSearchView } from './modules/search.js';
 import { initChat } from './modules/chat.js';
 import { initShortcuts, toggleHelpModal } from './modules/shortcuts.js';
+import { initSearchHistory, restoreSearchFromHistory, clearHistory } from './modules/search-history.js';
 
-// Initialize theme and shortcuts on page load
+// Initialize theme, shortcuts, and search history on page load
 initTheme();
 initChat();
 initShortcuts();
+initSearchHistory();
 
 // Make functions globally available for inline event handlers
 window.setTheme = setTheme;
 window.search = search;
 window.toggleCustomDate = toggleCustomDate;
 window.toggleHelpModal = toggleHelpModal;
+window.restoreSearchFromHistory = restoreSearchFromHistory;
+window.clearSearchHistory = clearHistory;
 
 // Import and expose other functions that might be called from HTML
 import('./modules/backup.js').then(module => {
