@@ -9,6 +9,7 @@ from typing import List, Optional
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Query, HTTPException
+from fastapi.responses import Response
 
 from searchat.api.models import (
     SearchResultResponse,
@@ -670,3 +671,117 @@ def _detect_language(code: str) -> str:
 
     # Default
     return 'plaintext'
+
+
+@router.get("/conversation/{conversation_id}/export")
+async def export_conversation(
+    conversation_id: str,
+    format: str = Query("json", description="Export format: json, markdown, text")
+):
+    """Export a conversation in various formats."""
+    try:
+        # Get full conversation
+        conv_response = await get_conversation(conversation_id)
+
+        format_lower = format.lower()
+        if format_lower not in ("json", "markdown", "text"):
+            raise HTTPException(status_code=400, detail="Invalid format. Use: json, markdown, or text")
+
+        if format_lower == "json":
+            # Export as JSON
+            content = json.dumps({
+                "conversation_id": conv_response.conversation_id,
+                "title": conv_response.title,
+                "project_id": conv_response.project_id,
+                "project_path": conv_response.project_path,
+                "tool": conv_response.tool,
+                "message_count": conv_response.message_count,
+                "messages": [
+                    {
+                        "role": msg.role,
+                        "content": msg.content,
+                        "timestamp": msg.timestamp
+                    }
+                    for msg in conv_response.messages
+                ]
+            }, indent=2)
+            media_type = "application/json"
+            filename = f"{conversation_id}.json"
+
+        elif format_lower == "markdown":
+            # Export as Markdown
+            lines = [
+                f"# {conv_response.title}",
+                "",
+                f"**Conversation ID:** {conv_response.conversation_id}",
+                f"**Project:** {conv_response.project_id}",
+                f"**Tool:** {conv_response.tool}",
+                f"**Messages:** {conv_response.message_count}",
+            ]
+
+            if conv_response.project_path:
+                lines.insert(4, f"**Project Path:** {conv_response.project_path}")
+
+            lines.extend(["", "---", ""])
+
+            for idx, msg in enumerate(conv_response.messages, 1):
+                role_label = msg.role.upper()
+                lines.append(f"## Message {idx} - {role_label}")
+                if msg.timestamp:
+                    lines.append(f"*{msg.timestamp}*")
+                    lines.append("")
+                lines.append(msg.content)
+                lines.append("")
+                lines.append("---")
+                lines.append("")
+
+            content = "\n".join(lines)
+            media_type = "text/markdown"
+            filename = f"{conversation_id}.md"
+
+        else:  # text
+            # Export as plain text
+            lines = [
+                f"{'=' * 80}",
+                f"CONVERSATION: {conv_response.title}",
+                f"{'=' * 80}",
+                "",
+                f"ID: {conv_response.conversation_id}",
+                f"Project: {conv_response.project_id}",
+                f"Tool: {conv_response.tool}",
+                f"Messages: {conv_response.message_count}",
+            ]
+
+            if conv_response.project_path:
+                lines.insert(7, f"Project Path: {conv_response.project_path}")
+
+            lines.extend(["", f"{'-' * 80}", ""])
+
+            for idx, msg in enumerate(conv_response.messages, 1):
+                role_label = msg.role.upper()
+                lines.append(f"[Message {idx} - {role_label}]")
+                if msg.timestamp:
+                    lines.append(f"Time: {msg.timestamp}")
+                lines.append("")
+                lines.append(msg.content)
+                lines.append("")
+                lines.append(f"{'-' * 80}")
+                lines.append("")
+
+            content = "\n".join(lines)
+            media_type = "text/plain"
+            filename = f"{conversation_id}.txt"
+
+        return Response(
+            content=content,
+            media_type=media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"'
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to export conversation {conversation_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")

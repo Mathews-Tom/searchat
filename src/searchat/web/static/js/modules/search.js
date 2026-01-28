@@ -439,7 +439,98 @@ export async function loadConversationView(conversationId, pushState = true) {
             resumeSession(data.conversation_id, resumeBtn);
         });
 
+        // Export button with dropdown
+        const exportContainer = document.createElement('div');
+        exportContainer.style.cssText = 'position: relative; display: inline-block;';
+
+        const exportBtn = document.createElement('button');
+        exportBtn.className = 'export-btn';
+        exportBtn.textContent = '📥 Export';
+        exportBtn.style.cssText = `
+            background: var(--accent-primary);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+        `;
+
+        const exportDropdown = document.createElement('div');
+        exportDropdown.style.cssText = `
+            display: none;
+            position: absolute;
+            right: 0;
+            top: 100%;
+            margin-top: 4px;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border-default);
+            border-radius: 6px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            z-index: 1000;
+            min-width: 150px;
+        `;
+
+        const formats = [
+            { value: 'json', label: '📄 JSON', desc: 'Structured data' },
+            { value: 'markdown', label: '📝 Markdown', desc: 'Formatted text' },
+            { value: 'text', label: '📃 Plain Text', desc: 'Simple text' }
+        ];
+
+        formats.forEach(fmt => {
+            const option = document.createElement('div');
+            option.style.cssText = `
+                padding: 10px 14px;
+                cursor: pointer;
+                transition: background 0.2s;
+                border-bottom: 1px solid var(--border-muted);
+            `;
+            option.innerHTML = `
+                <div style="font-weight: 500; color: var(--text-primary); margin-bottom: 2px;">
+                    ${fmt.label}
+                </div>
+                <div style="font-size: 12px; color: var(--text-muted);">
+                    ${fmt.desc}
+                </div>
+            `;
+
+            option.addEventListener('mouseenter', () => {
+                option.style.background = 'var(--bg-surface)';
+            });
+            option.addEventListener('mouseleave', () => {
+                option.style.background = 'transparent';
+            });
+            option.addEventListener('click', () => {
+                exportConversation(data.conversation_id, fmt.value);
+                exportDropdown.style.display = 'none';
+            });
+
+            exportDropdown.appendChild(option);
+        });
+
+        // Remove border from last option
+        exportDropdown.lastChild.style.borderBottom = 'none';
+
+        exportBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            exportDropdown.style.display = exportDropdown.style.display === 'none' ? 'block' : 'none';
+        });
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!exportContainer.contains(e.target)) {
+                exportDropdown.style.display = 'none';
+            }
+        });
+
+        exportContainer.appendChild(exportBtn);
+        exportContainer.appendChild(exportDropdown);
+
         actions.appendChild(resumeBtn);
+        actions.appendChild(exportContainer);
         headerDiv.appendChild(badge);
         headerDiv.appendChild(title);
         headerDiv.appendChild(meta);
@@ -561,4 +652,17 @@ export async function loadConversationView(conversationId, pushState = true) {
         errorDiv.textContent = `Error: ${error.message}`;
         resultsDiv.appendChild(errorDiv);
     }
+}
+
+/**
+ * Export conversation in specified format
+ */
+function exportConversation(conversationId, format) {
+    // Create a temporary link to trigger download
+    const link = document.createElement('a');
+    link.href = `/api/conversation/${conversationId}/export?format=${format}`;
+    link.download = `conversation-${conversationId}.${format === 'markdown' ? 'md' : format}`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 }
