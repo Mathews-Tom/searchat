@@ -1,8 +1,12 @@
 """Statistics endpoint - index statistics and metadata."""
 
-from fastapi import APIRouter, Query
+import logging
+from fastapi import APIRouter, HTTPException, Query
 
 import searchat.api.dependencies as deps
+
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter()
@@ -30,8 +34,12 @@ async def get_analytics_summary(
     days: int = Query(7, description="Number of days to analyze (1-90)", ge=1, le=90)
 ):
     """Get search analytics summary for the past N days."""
-    analytics = deps.get_analytics_service()
-    return analytics.get_stats_summary(days=days)
+    try:
+        analytics = deps.get_analytics_service()
+        return analytics.get_stats_summary(days=days)
+    except Exception as e:
+        logger.error(f"Failed to get analytics summary: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/stats/analytics/top-queries")
@@ -40,11 +48,15 @@ async def get_top_queries(
     days: int = Query(7, description="Number of days to analyze (1-90)", ge=1, le=90)
 ):
     """Get most frequent search queries."""
-    analytics = deps.get_analytics_service()
-    return {
-        "queries": analytics.get_top_queries(limit=limit, days=days),
-        "days": days
-    }
+    try:
+        analytics = deps.get_analytics_service()
+        return {
+            "queries": analytics.get_top_queries(limit=limit, days=days),
+            "days": days
+        }
+    except Exception as e:
+        logger.error(f"Failed to get top queries: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/stats/analytics/dead-ends")
@@ -53,8 +65,12 @@ async def get_dead_end_queries(
     days: int = Query(7, description="Number of days to analyze (1-90)", ge=1, le=90)
 ):
     """Get queries that returned few or no results (dead ends)."""
-    analytics = deps.get_analytics_service()
-    return {
-        "queries": analytics.get_dead_end_queries(limit=limit, days=days),
-        "days": days
-    }
+    try:
+        analytics = deps.get_analytics_service()
+        return {
+            "queries": analytics.get_dead_end_queries(limit=limit, days=days),
+            "days": days
+        }
+    except Exception as e:
+        logger.error(f"Failed to get dead-end queries: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")

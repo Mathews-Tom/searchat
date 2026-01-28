@@ -37,22 +37,22 @@ def mock_bookmarks_service():
             return True
         return False
 
-    def _get_bookmarks():
+    def _list_bookmarks():
         return list(mock._bookmarks.values())
 
-    def _update_bookmark_notes(conversation_id, notes):
+    def _update_notes(conversation_id, notes):
         if conversation_id in mock._bookmarks:
             mock._bookmarks[conversation_id]["notes"] = notes
-            return mock._bookmarks[conversation_id]
-        return None
+            return True
+        return False
 
     def _is_bookmarked(conversation_id):
         return conversation_id in mock._bookmarks
 
     mock.add_bookmark.side_effect = _add_bookmark
     mock.remove_bookmark.side_effect = _remove_bookmark
-    mock.get_bookmarks.side_effect = _get_bookmarks
-    mock.update_bookmark_notes.side_effect = _update_bookmark_notes
+    mock.list_bookmarks.side_effect = _list_bookmarks
+    mock.update_notes.side_effect = _update_notes
     mock.is_bookmarked.side_effect = _is_bookmarked
 
     return mock

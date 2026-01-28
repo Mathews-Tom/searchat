@@ -235,16 +235,16 @@ def test_analytics_service_error_handling(client, mock_analytics_service):
         assert response.status_code == 500
 
 
-def test_all_analytics_endpoints_exist(client):
+def test_all_analytics_endpoints_exist(client, mock_analytics_service):
     """Test all analytics endpoints are registered."""
-    # Test that endpoints exist (even if they fail without proper setup)
-    endpoints = [
-        "/api/stats/analytics/summary",
-        "/api/stats/analytics/top-queries",
-        "/api/stats/analytics/dead-ends"
-    ]
+    with patch("searchat.api.dependencies.get_analytics_service", return_value=mock_analytics_service):
+        endpoints = [
+            "/api/stats/analytics/summary",
+            "/api/stats/analytics/top-queries",
+            "/api/stats/analytics/dead-ends"
+        ]
 
-    for endpoint in endpoints:
-        response = client.get(endpoint)
-        # Should not be 404 (endpoint exists)
-        assert response.status_code != 404
+        for endpoint in endpoints:
+            response = client.get(endpoint)
+            # Should not be 404 (endpoint exists)
+            assert response.status_code != 404

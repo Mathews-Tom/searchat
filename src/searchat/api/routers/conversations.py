@@ -624,6 +624,10 @@ def _detect_language(code: str) -> str:
     """Detect programming language from code content."""
     code_lower = code.lower().strip()
 
+    # SQL indicators (check before Python to avoid 'from' keyword collision)
+    if any(kw in code_lower for kw in ['select ', 'insert ', 'update ', 'delete ', 'create table']):
+        return 'sql'
+
     # Python indicators
     if any(kw in code_lower for kw in ['def ', 'import ', 'from ', 'class ', 'if __name__']):
         return 'python'
@@ -637,10 +641,6 @@ def _detect_language(code: str) -> str:
     # Shell/Bash indicators
     if code.startswith('#!') or any(kw in code_lower for kw in ['#!/bin/', 'echo ', 'export ', '${']):
         return 'bash'
-
-    # SQL indicators
-    if any(kw in code_lower for kw in ['select ', 'insert ', 'update ', 'delete ', 'create table']):
-        return 'sql'
 
     # JSON indicator
     if code.strip().startswith('{') and ':' in code:
@@ -828,12 +828,16 @@ async def get_similar_conversations(
             else:
                 tool_name = "vibe"
 
+            # Handle both string and datetime types for timestamps
+            created_at_str = created_at if isinstance(created_at, str) else created_at.isoformat()
+            updated_at_str = updated_at if isinstance(updated_at, str) else updated_at.isoformat()
+
             similar_conversations.append({
                 'conversation_id': sim_conv_id,
                 'project_id': project_id,
                 'title': title,
-                'created_at': created_at.isoformat(),
-                'updated_at': updated_at.isoformat(),
+                'created_at': created_at_str,
+                'updated_at': updated_at_str,
                 'message_count': message_count,
                 'similarity_score': round(score, 3),
                 'tool': tool_name

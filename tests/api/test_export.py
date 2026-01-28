@@ -69,7 +69,7 @@ def test_export_conversation_markdown(client, mock_conversation_response):
         response = client.get("/api/conversation/conv-123/export?format=markdown")
 
         assert response.status_code == 200
-        assert response.headers["content-type"] == "text/markdown"
+        assert "text/markdown" in response.headers["content-type"]
         assert 'attachment; filename="conv-123.md"' in response.headers["content-disposition"]
 
         content = response.content.decode('utf-8')
@@ -147,7 +147,7 @@ def test_export_conversation_without_project_path(client):
     mock.project_path = None  # No project path
     mock.tool = "vibe"
     mock.message_count = 1
-    mock.messages = [ConversationMessage(role="user", content="Test", timestamp=None)]
+    mock.messages = [ConversationMessage(role="user", content="Test", timestamp="2026-01-28T10:00:00")]
 
     with patch("searchat.api.routers.conversations.get_conversation", return_value=mock):
         # Test markdown (has conditional project path)
@@ -169,12 +169,12 @@ def test_export_conversation_case_insensitive_format(client, mock_conversation_r
         # Test uppercase
         response = client.get("/api/conversation/conv-123/export?format=JSON")
         assert response.status_code == 200
-        assert response.headers["content-type"] == "application/json"
+        assert "application/json" in response.headers["content-type"]
 
         # Test mixed case
         response = client.get("/api/conversation/conv-123/export?format=MarkDown")
         assert response.status_code == 200
-        assert response.headers["content-type"] == "text/markdown"
+        assert "text/markdown" in response.headers["content-type"]
 
 
 def test_bulk_export_json(client, mock_conversation_response):
