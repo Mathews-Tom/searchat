@@ -4,8 +4,8 @@ Performance benchmarking scripts for measuring Searchat optimization improvement
 
 ## Scripts
 
-### benchmark_optimizations.py
-Measures Phase 1 optimization improvements comparing old vs new approaches:
+### bench_dataframe_and_embedding.py
+Measures DataFrame and embedding optimization improvements:
 - **Conversation lookups**: O(n) filter vs O(1) index lookup
 - **DataFrame iteration**: iterrows() vs to_dict('records')
 - **Batch encoding**: Sequential vs batch processing with SentenceTransformer
@@ -13,31 +13,33 @@ Measures Phase 1 optimization improvements comparing old vs new approaches:
 
 Run with:
 ```bash
-python benchmarks/benchmark_optimizations.py
+python benchmarks/bench_dataframe_and_embedding.py
 ```
 
-### benchmark_phase2.py
-Measures Phase 2 DuckDB query optimizations.
+### bench_duckdb_query_performance.py
+Measures DuckDB query performance optimizations.
 
 Run with:
 ```bash
-python benchmarks/benchmark_phase2.py
+python benchmarks/bench_duckdb_query_performance.py
 ```
 
-### benchmark_predicate_pushdown.py
+### bench_duckdb_predicate_pushdown.py
 Measures predicate pushdown optimization for filtering operations in DuckDB.
+Tests how DuckDB pushes WHERE clauses down to Parquet file scanning.
 
 Run with:
 ```bash
-python benchmarks/benchmark_predicate_pushdown.py
+python benchmarks/bench_duckdb_predicate_pushdown.py
 ```
 
-### benchmark_projection_pushdown.py
+### bench_duckdb_projection_pushdown.py
 Measures projection pushdown optimization for column selection in DuckDB.
+Tests how DuckDB reads only required columns from Parquet files.
 
 Run with:
 ```bash
-python benchmarks/benchmark_projection_pushdown.py
+python benchmarks/bench_duckdb_projection_pushdown.py
 ```
 
 ## Requirements
