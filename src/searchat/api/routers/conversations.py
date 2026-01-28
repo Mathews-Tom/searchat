@@ -673,6 +673,185 @@ def _detect_language(code: str) -> str:
     return 'plaintext'
 
 
+@router.get("/conversation/{conversation_id}/similar")
+async def get_similar_conversations(
+    conversation_id: str,
+    limit: int = Query(5, description="Max similar conversations to return (1-20)", ge=1, le=20)
+):
+    """Get conversations similar to the specified conversation using FAISS embeddings."""
+    try:
+        store = deps.get_duckdb_store()
+        search_engine = deps.get_search_engine()
+
+        # Verify conversation exists
+        conv_meta = store.get_conversation_meta(conversation_id)
+        if not conv_meta:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Conversation {conversation_id} not found"
+            )
+
+        # Ensure FAISS and embedder are ready
+        search_engine.ensure_faiss_loaded()
+        search_engine.ensure_embedder_loaded()
+
+        faiss_index = search_engine.faiss_index
+        if faiss_index is None:
+            raise HTTPException(
+                status_code=503,
+                detail="FAISS index not available"
+            )
+
+        # Get representative text from the conversation to generate embedding
+        import numpy as np
+
+        # Get the conversation's title and some content
+        metadata_path = search_engine.metadata_path
+        conn = store._connect()
+
+        try:
+            # Get chunk text for this conversation
+            query = """
+                SELECT chunk_text
+                FROM parquet_scan(?)
+                WHERE conversation_id = ?
+                ORDER BY vector_id
+                LIMIT 1
+            """
+            result = conn.execute(query, [str(metadata_path), conversation_id]).fetchone()
+
+            if not result:
+                raise HTTPException(
+                    status_code=404,
+                    detail="No embeddings found for this conversation"
+                )
+
+            chunk_text = result[0]
+
+            # Generate embedding from the conversation's representative text
+            embedder = search_engine.embedder
+            if embedder is None:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Embedder not available"
+                )
+
+            # Combine title and chunk text for better representation
+            representative_text = f"{conv_meta['title']} {chunk_text}"
+            query_embedding = np.asarray(
+                embedder.encode(representative_text),
+                dtype=np.float32
+            )
+
+            # Search for similar vectors
+            # Request more than needed to filter out the original conversation
+            k = limit + 10
+            distances, labels = faiss_index.search(  # type: ignore[call-arg,arg-type]
+                query_embedding.reshape(1, -1),
+                k
+            )
+
+            # Build results
+            valid_mask = labels[0] >= 0
+            hits = []
+            for vid, distance in zip(labels[0][valid_mask], distances[0][valid_mask]):
+                hits.append((int(vid), float(distance)))
+
+            if not hits:
+                return {
+                    'conversation_id': conversation_id,
+                    'similar_conversations': []
+                }
+
+            # Query metadata and conversations to get details
+            values_clause = ", ".join(["(?, ?)"] * len(hits))
+            params = []
+            for vid, distance in hits:
+                params.extend([vid, distance])
+
+            params.append(str(metadata_path))
+            params.append(search_engine.conversations_glob)
+
+            sql = f"""
+                WITH hits(vector_id, distance) AS (
+                    VALUES {values_clause}
+                )
+                SELECT
+                    m.conversation_id,
+                    c.project_id,
+                    c.title,
+                    c.created_at,
+                    c.updated_at,
+                    c.message_count,
+                    c.file_path,
+                    hits.distance
+                FROM hits
+                JOIN parquet_scan(?) AS m
+                    ON m.vector_id = hits.vector_id
+                JOIN parquet_scan(?) AS c
+                    ON c.conversation_id = m.conversation_id
+                WHERE m.conversation_id != ?
+                QUALIFY row_number() OVER (PARTITION BY m.conversation_id ORDER BY hits.distance) = 1
+                ORDER BY hits.distance
+                LIMIT ?
+            """
+            params.append(conversation_id)  # Filter out original conversation
+            params.append(limit)
+
+            rows = conn.execute(sql, params).fetchall()
+
+        finally:
+            conn.close()
+
+        # Format results
+        similar_conversations = []
+        for (
+            sim_conv_id,
+            project_id,
+            title,
+            created_at,
+            updated_at,
+            message_count,
+            file_path,
+            distance,
+        ) in rows:
+            # Calculate similarity score (inverse of distance)
+            score = 1.0 / (1.0 + float(distance))
+
+            # Detect tool
+            file_path_lower = file_path.lower()
+            if file_path.endswith('.jsonl'):
+                tool_name = "claude"
+            elif "/.local/share/opencode/" in file_path_lower:
+                tool_name = "opencode"
+            else:
+                tool_name = "vibe"
+
+            similar_conversations.append({
+                'conversation_id': sim_conv_id,
+                'project_id': project_id,
+                'title': title,
+                'created_at': created_at.isoformat(),
+                'updated_at': updated_at.isoformat(),
+                'message_count': message_count,
+                'similarity_score': round(score, 3),
+                'tool': tool_name
+            })
+
+        return {
+            'conversation_id': conversation_id,
+            'title': conv_meta['title'],
+            'similar_count': len(similar_conversations),
+            'similar_conversations': similar_conversations
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to find similar conversations for {conversation_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
 @router.get("/conversation/{conversation_id}/export")
 async def export_conversation(
     conversation_id: str,

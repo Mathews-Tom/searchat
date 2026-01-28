@@ -4,6 +4,7 @@ import { saveAllConversationsState, saveSearchState, restoreSearchState } from '
 import { addToHistory } from './search-history.js';
 import { loadCodeBlocks } from './code-extraction.js';
 import { createStarIcon } from './bookmarks.js';
+import { loadSimilarConversations } from './similar.js';
 
 let _searchNonce = 0;
 
@@ -591,6 +592,22 @@ export async function loadConversationView(conversationId, pushState = true) {
             transition: all 0.2s;
         `;
 
+        const similarTab = document.createElement('button');
+        similarTab.className = 'tab-button';
+        similarTab.textContent = 'Similar';
+        similarTab.style.cssText = `
+            padding: 10px 20px;
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid transparent;
+            color: var(--text-muted);
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        `;
+
         // Tab content containers
         const messagesContainer = document.createElement('div');
         messagesContainer.id = 'messagesContainer';
@@ -600,24 +617,32 @@ export async function loadConversationView(conversationId, pushState = true) {
         codeContainer.id = 'codeContainer';
         codeContainer.style.display = 'none';
 
+        const similarContainer = document.createElement('div');
+        similarContainer.id = 'similarContainer';
+        similarContainer.style.display = 'none';
+
+        // Helper function to switch tabs
+        const switchTab = (activeTab, activeContainer) => {
+            [messagesTab, codeTab, similarTab].forEach(tab => {
+                tab.style.borderBottomColor = 'transparent';
+                tab.style.color = 'var(--text-muted)';
+            });
+            [messagesContainer, codeContainer, similarContainer].forEach(container => {
+                container.style.display = 'none';
+            });
+
+            activeTab.style.borderBottomColor = 'var(--accent-primary)';
+            activeTab.style.color = 'var(--accent-primary)';
+            activeContainer.style.display = 'block';
+        };
+
         // Tab click handlers
         messagesTab.addEventListener('click', () => {
-            messagesTab.style.borderBottomColor = 'var(--accent-primary)';
-            messagesTab.style.color = 'var(--accent-primary)';
-            codeTab.style.borderBottomColor = 'transparent';
-            codeTab.style.color = 'var(--text-muted)';
-            messagesContainer.style.display = 'block';
-            codeContainer.style.display = 'none';
+            switchTab(messagesTab, messagesContainer);
         });
 
         codeTab.addEventListener('click', () => {
-            codeTab.style.borderBottomColor = 'var(--accent-primary)';
-            codeTab.style.color = 'var(--accent-primary)';
-            messagesTab.style.borderBottomColor = 'transparent';
-            messagesTab.style.color = 'var(--text-muted)';
-            messagesContainer.style.display = 'none';
-            codeContainer.style.display = 'block';
-
+            switchTab(codeTab, codeContainer);
             // Load code blocks if not already loaded
             if (!codeContainer.dataset.loaded) {
                 loadCodeBlocks(conversationId, codeContainer);
@@ -625,11 +650,22 @@ export async function loadConversationView(conversationId, pushState = true) {
             }
         });
 
+        similarTab.addEventListener('click', () => {
+            switchTab(similarTab, similarContainer);
+            // Load similar conversations if not already loaded
+            if (!similarContainer.dataset.loaded) {
+                loadSimilarConversations(conversationId, similarContainer);
+                similarContainer.dataset.loaded = 'true';
+            }
+        });
+
         tabsDiv.appendChild(messagesTab);
         tabsDiv.appendChild(codeTab);
+        tabsDiv.appendChild(similarTab);
         resultsDiv.appendChild(tabsDiv);
         resultsDiv.appendChild(messagesContainer);
         resultsDiv.appendChild(codeContainer);
+        resultsDiv.appendChild(similarContainer);
 
         if (data.messages && Array.isArray(data.messages) && data.messages.length > 0) {
             data.messages.forEach((msg, i) => {
