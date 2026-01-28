@@ -8,7 +8,7 @@ from unittest.mock import Mock, patch
 from fastapi.testclient import TestClient
 
 from searchat.api.app import app
-from searchat.models import Message
+from searchat.api.models.responses import ConversationMessage
 
 
 @pytest.fixture
@@ -28,12 +28,12 @@ def mock_conversation_response():
     mock.tool = "claude"
     mock.message_count = 2
     mock.messages = [
-        Message(
+        ConversationMessage(
             role="user",
             content="Hello, how are you?",
             timestamp="2026-01-28T10:00:00"
         ),
-        Message(
+        ConversationMessage(
             role="assistant",
             content="I'm doing well, thank you!",
             timestamp="2026-01-28T10:00:05"
@@ -147,7 +147,7 @@ def test_export_conversation_without_project_path(client):
     mock.project_path = None  # No project path
     mock.tool = "vibe"
     mock.message_count = 1
-    mock.messages = [Message(role="user", content="Test", timestamp=None)]
+    mock.messages = [ConversationMessage(role="user", content="Test", timestamp=None)]
 
     with patch("searchat.api.routers.conversations.get_conversation", return_value=mock):
         # Test markdown (has conditional project path)
