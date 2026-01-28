@@ -8,12 +8,14 @@ import { initChat } from './modules/chat.js';
 import { initShortcuts, toggleHelpModal } from './modules/shortcuts.js';
 import { initSearchHistory, restoreSearchFromHistory, clearHistory } from './modules/search-history.js';
 import { copyCode } from './modules/code-extraction.js';
+import { initSuggestions } from './modules/suggestions.js';
 
-// Initialize theme, shortcuts, and search history on page load
+// Initialize theme, shortcuts, search history, and suggestions on page load
 initTheme();
 initChat();
 initShortcuts();
 initSearchHistory();
+initSuggestions();
 
 // Make functions globally available for inline event handlers
 window.setTheme = setTheme;
