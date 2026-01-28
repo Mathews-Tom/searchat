@@ -108,6 +108,7 @@ poetry.lock
 .sage/
 
 # Local Testing
+.approval_tests_temp
 
 # macOS
 .DS_Store

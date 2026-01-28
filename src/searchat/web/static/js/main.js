@@ -5,15 +5,36 @@ import { restoreSearchState } from './modules/session.js';
 import { loadProjects } from './modules/api.js';
 import { search, toggleCustomDate, loadConversationView, showSearchView } from './modules/search.js';
 import { initChat } from './modules/chat.js';
+import { initShortcuts, toggleHelpModal } from './modules/shortcuts.js';
+import { initSearchHistory, restoreSearchFromHistory, clearHistory } from './modules/search-history.js';
+import { copyCode } from './modules/code-extraction.js';
+import { initSuggestions } from './modules/suggestions.js';
+import { initBookmarks, showBookmarks } from './modules/bookmarks.js';
+import { initBulkExport, toggleBulkMode } from './modules/bulk-export.js';
+import { showAnalytics } from './modules/analytics.js';
+import { goToPage } from './modules/pagination.js';
 
-// Initialize theme on page load
+// Initialize theme, shortcuts, search history, suggestions, bookmarks, and bulk export on page load
 initTheme();
 initChat();
+initShortcuts();
+initSearchHistory();
+initSuggestions();
+initBookmarks();
+initBulkExport();
 
 // Make functions globally available for inline event handlers
 window.setTheme = setTheme;
 window.search = search;
 window.toggleCustomDate = toggleCustomDate;
+window.toggleHelpModal = toggleHelpModal;
+window.restoreSearchFromHistory = restoreSearchFromHistory;
+window.clearSearchHistory = clearHistory;
+window.copyCode = copyCode;
+window.showBookmarks = showBookmarks;
+window.toggleBulkMode = toggleBulkMode;
+window.showAnalytics = showAnalytics;
+window.goToPage = (page) => goToPage(page, search);
 
 // Import and expose other functions that might be called from HTML
 import('./modules/backup.js').then(module => {

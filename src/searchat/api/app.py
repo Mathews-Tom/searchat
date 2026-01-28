@@ -32,6 +32,7 @@ from searchat.api.readiness import get_readiness
 from searchat.api.routers import (
     search_router,
     conversations_router,
+    bookmarks_router,
     stats_router,
     indexing_router,
     backup_router,
@@ -84,6 +85,7 @@ app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
 # Register routers
 app.include_router(search_router, prefix="/api", tags=["search"])
 app.include_router(conversations_router, prefix="/api", tags=["conversations"])
+app.include_router(bookmarks_router, prefix="/api", tags=["bookmarks"])
 app.include_router(stats_router, prefix="/api", tags=["statistics"])
 app.include_router(indexing_router, prefix="/api", tags=["indexing"])
 app.include_router(backup_router, prefix="/api/backup", tags=["backup"])

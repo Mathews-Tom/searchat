@@ -1,6 +1,12 @@
 // Search Functionality
 
 import { saveAllConversationsState, saveSearchState, restoreSearchState } from './session.js';
+import { addToHistory } from './search-history.js';
+import { loadCodeBlocks } from './code-extraction.js';
+import { createStarIcon } from './bookmarks.js';
+import { loadSimilarConversations } from './similar.js';
+import { addCheckboxToResult } from './bulk-export.js';
+import { renderPagination, setTotalResults, getOffset, resetPagination } from './pagination.js';
 
 let _searchNonce = 0;
 
@@ -8,7 +14,7 @@ function _sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-export async function search() {
+export async function search(resetPage = true) {
     _searchNonce += 1;
     const nonce = _searchNonce;
 
@@ -23,6 +29,11 @@ export async function search() {
         return;
     }
 
+    // Reset to page 1 when starting a new search (not pagination)
+    if (resetPage) {
+        resetPagination();
+    }
+
     const resultsDiv = document.getElementById('results');
     resultsDiv.innerHTML = '<div class="loading">Searching...</div>';
 
@@ -32,7 +43,8 @@ export async function search() {
         project: document.getElementById('project').value,
         tool: tool,
         date: document.getElementById('date').value,
-        sort_by: document.getElementById('sortBy').value
+        sort_by: document.getElementById('sortBy').value,
+        offset: getOffset()
     });
 
     // Add custom date range if selected
@@ -82,6 +94,9 @@ export async function search() {
 
     const data = await response.json();
 
+    // Store total results for pagination
+    setTotalResults(data.total);
+
     resultsDiv.innerHTML = '';
     if (data.results.length === 0) {
         resultsDiv.innerHTML = '<div>No results found</div>';
@@ -89,13 +104,15 @@ export async function search() {
         return;
     }
 
-    resultsDiv.innerHTML = `<div class="results-header">Found ${data.total} results in ${Math.round(data.search_time_ms)}ms</div>`;
+    const paginationInfo = data.total > 20 ? ` (page ${Math.floor(getOffset() / 20) + 1})` : '';
+    resultsDiv.innerHTML = `<div class="results-header">Found ${data.total} results in ${Math.round(data.search_time_ms)}ms${paginationInfo}</div>`;
 
     data.results.forEach((r, index) => {
         const div = document.createElement('div');
         const isWSL = r.source === 'WSL';
         div.className = `result ${isWSL ? 'wsl' : 'windows'}`;
         div.id = `result-${index}`;
+        div.dataset.conversationId = r.conversation_id;
         // Get last segment of conversation ID
         const shortId = r.conversation_id.split('-').pop();
 
@@ -120,6 +137,14 @@ export async function search() {
             </div>
         `;
 
+        // Add checkbox if bulk mode is active
+        addCheckboxToResult(div, r.conversation_id);
+
+        // Add star icon to title
+        const titleDiv = div.querySelector('.result-title');
+        const starIcon = createStarIcon(r.conversation_id);
+        titleDiv.appendChild(starIcon);
+
         // Add click handler for resume button
         const resumeBtn = div.querySelector('.resume-btn');
         resumeBtn.addEventListener('click', (e) => {
@@ -135,6 +160,21 @@ export async function search() {
             loadConversationView(r.conversation_id);
         };
         resultsDiv.appendChild(div);
+    });
+
+    // Render pagination controls
+    renderPagination(resultsDiv, search);
+
+    // Add search to history
+    addToHistory({
+        query: query,
+        mode: document.getElementById('mode').value,
+        project: document.getElementById('project').value,
+        tool: tool,
+        date: document.getElementById('date').value,
+        dateFrom: document.getElementById('date').value === 'custom' ? document.getElementById('dateFrom').value : '',
+        dateTo: document.getElementById('date').value === 'custom' ? document.getElementById('dateTo').value : '',
+        sortBy: document.getElementById('sortBy').value
     });
 
     saveSearchState();
@@ -285,6 +325,7 @@ export async function showAllConversations() {
             const isWSL = r.source === 'WSL';
             div.className = `result ${isWSL ? 'wsl' : 'windows'}`;
             div.id = `result-${index}`;
+            div.dataset.conversationId = r.conversation_id;
             const shortId = r.conversation_id.split('-').pop();
 
             // Detect tool from API field
@@ -307,6 +348,14 @@ export async function showAllConversations() {
                     </button>
                 </div>
             `;
+
+            // Add checkbox if bulk mode is active
+            addCheckboxToResult(div, r.conversation_id);
+
+            // Add star icon to title
+            const titleDiv = div.querySelector('.result-title');
+            const starIcon = createStarIcon(r.conversation_id);
+            titleDiv.appendChild(starIcon);
 
             // Add click handler for resume button
             const resumeBtn = div.querySelector('.resume-btn');
@@ -425,12 +474,221 @@ export async function loadConversationView(conversationId, pushState = true) {
             resumeSession(data.conversation_id, resumeBtn);
         });
 
+        // Export button with dropdown
+        const exportContainer = document.createElement('div');
+        exportContainer.style.cssText = 'position: relative; display: inline-block;';
+
+        const exportBtn = document.createElement('button');
+        exportBtn.className = 'export-btn';
+        exportBtn.textContent = '📥 Export';
+        exportBtn.style.cssText = `
+            background: var(--accent-primary);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+        `;
+
+        const exportDropdown = document.createElement('div');
+        exportDropdown.style.cssText = `
+            display: none;
+            position: absolute;
+            right: 0;
+            top: 100%;
+            margin-top: 4px;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border-default);
+            border-radius: 6px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            z-index: 1000;
+            min-width: 150px;
+        `;
+
+        const formats = [
+            { value: 'json', label: '📄 JSON', desc: 'Structured data' },
+            { value: 'markdown', label: '📝 Markdown', desc: 'Formatted text' },
+            { value: 'text', label: '📃 Plain Text', desc: 'Simple text' }
+        ];
+
+        formats.forEach(fmt => {
+            const option = document.createElement('div');
+            option.style.cssText = `
+                padding: 10px 14px;
+                cursor: pointer;
+                transition: background 0.2s;
+                border-bottom: 1px solid var(--border-muted);
+            `;
+            option.innerHTML = `
+                <div style="font-weight: 500; color: var(--text-primary); margin-bottom: 2px;">
+                    ${fmt.label}
+                </div>
+                <div style="font-size: 12px; color: var(--text-muted);">
+                    ${fmt.desc}
+                </div>
+            `;
+
+            option.addEventListener('mouseenter', () => {
+                option.style.background = 'var(--bg-surface)';
+            });
+            option.addEventListener('mouseleave', () => {
+                option.style.background = 'transparent';
+            });
+            option.addEventListener('click', () => {
+                exportConversation(data.conversation_id, fmt.value);
+                exportDropdown.style.display = 'none';
+            });
+
+            exportDropdown.appendChild(option);
+        });
+
+        // Remove border from last option
+        exportDropdown.lastChild.style.borderBottom = 'none';
+
+        exportBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            exportDropdown.style.display = exportDropdown.style.display === 'none' ? 'block' : 'none';
+        });
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!exportContainer.contains(e.target)) {
+                exportDropdown.style.display = 'none';
+            }
+        });
+
+        exportContainer.appendChild(exportBtn);
+        exportContainer.appendChild(exportDropdown);
+
         actions.appendChild(resumeBtn);
+        actions.appendChild(exportContainer);
         headerDiv.appendChild(badge);
         headerDiv.appendChild(title);
         headerDiv.appendChild(meta);
         headerDiv.appendChild(actions);
         resultsDiv.appendChild(headerDiv);
+
+        // Add tabs for Messages and Code
+        const tabsDiv = document.createElement('div');
+        tabsDiv.className = 'conversation-tabs';
+        tabsDiv.style.cssText = `
+            display: flex;
+            gap: 8px;
+            margin: 20px 0 16px 0;
+            border-bottom: 1px solid var(--border-default);
+            padding-bottom: 0;
+        `;
+
+        const messagesTab = document.createElement('button');
+        messagesTab.className = 'tab-button active';
+        messagesTab.textContent = 'Messages';
+        messagesTab.style.cssText = `
+            padding: 10px 20px;
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid var(--accent-primary);
+            color: var(--accent-primary);
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        `;
+
+        const codeTab = document.createElement('button');
+        codeTab.className = 'tab-button';
+        codeTab.textContent = 'Code';
+        codeTab.style.cssText = `
+            padding: 10px 20px;
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid transparent;
+            color: var(--text-muted);
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        `;
+
+        const similarTab = document.createElement('button');
+        similarTab.className = 'tab-button';
+        similarTab.textContent = 'Similar';
+        similarTab.style.cssText = `
+            padding: 10px 20px;
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid transparent;
+            color: var(--text-muted);
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        `;
+
+        // Tab content containers
+        const messagesContainer = document.createElement('div');
+        messagesContainer.id = 'messagesContainer';
+        messagesContainer.style.display = 'block';
+
+        const codeContainer = document.createElement('div');
+        codeContainer.id = 'codeContainer';
+        codeContainer.style.display = 'none';
+
+        const similarContainer = document.createElement('div');
+        similarContainer.id = 'similarContainer';
+        similarContainer.style.display = 'none';
+
+        // Helper function to switch tabs
+        const switchTab = (activeTab, activeContainer) => {
+            [messagesTab, codeTab, similarTab].forEach(tab => {
+                tab.style.borderBottomColor = 'transparent';
+                tab.style.color = 'var(--text-muted)';
+            });
+            [messagesContainer, codeContainer, similarContainer].forEach(container => {
+                container.style.display = 'none';
+            });
+
+            activeTab.style.borderBottomColor = 'var(--accent-primary)';
+            activeTab.style.color = 'var(--accent-primary)';
+            activeContainer.style.display = 'block';
+        };
+
+        // Tab click handlers
+        messagesTab.addEventListener('click', () => {
+            switchTab(messagesTab, messagesContainer);
+        });
+
+        codeTab.addEventListener('click', () => {
+            switchTab(codeTab, codeContainer);
+            // Load code blocks if not already loaded
+            if (!codeContainer.dataset.loaded) {
+                loadCodeBlocks(conversationId, codeContainer);
+                codeContainer.dataset.loaded = 'true';
+            }
+        });
+
+        similarTab.addEventListener('click', () => {
+            switchTab(similarTab, similarContainer);
+            // Load similar conversations if not already loaded
+            if (!similarContainer.dataset.loaded) {
+                loadSimilarConversations(conversationId, similarContainer);
+                similarContainer.dataset.loaded = 'true';
+            }
+        });
+
+        tabsDiv.appendChild(messagesTab);
+        tabsDiv.appendChild(codeTab);
+        tabsDiv.appendChild(similarTab);
+        resultsDiv.appendChild(tabsDiv);
+        resultsDiv.appendChild(messagesContainer);
+        resultsDiv.appendChild(codeContainer);
+        resultsDiv.appendChild(similarContainer);
 
         if (data.messages && Array.isArray(data.messages) && data.messages.length > 0) {
             data.messages.forEach((msg, i) => {
@@ -447,13 +705,13 @@ export async function loadConversationView(conversationId, pushState = true) {
 
                 msgDiv.appendChild(roleDiv);
                 msgDiv.appendChild(contentDiv);
-                resultsDiv.appendChild(msgDiv);
+                messagesContainer.appendChild(msgDiv);
             });
         } else {
             const empty = document.createElement('div');
             empty.className = 'message';
             empty.textContent = 'No messages available';
-            resultsDiv.appendChild(empty);
+            messagesContainer.appendChild(empty);
         }
 
         sessionStorage.setItem('activeConversationId', conversationId);
@@ -464,4 +722,17 @@ export async function loadConversationView(conversationId, pushState = true) {
         errorDiv.textContent = `Error: ${error.message}`;
         resultsDiv.appendChild(errorDiv);
     }
+}
+
+/**
+ * Export conversation in specified format
+ */
+function exportConversation(conversationId, format) {
+    // Create a temporary link to trigger download
+    const link = document.createElement('a');
+    link.href = `/api/conversation/${conversationId}/export?format=${format}`;
+    link.download = `conversation-${conversationId}.${format === 'markdown' ? 'md' : format}`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 }

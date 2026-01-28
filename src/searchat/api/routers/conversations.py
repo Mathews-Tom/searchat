@@ -2,12 +2,15 @@
 import asyncio
 import json
 import logging
+import re
 import time
 from pathlib import Path
 from typing import List, Optional
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Query, HTTPException
+from fastapi.responses import Response, StreamingResponse
+from pydantic import BaseModel
 
 from searchat.api.models import (
     SearchResultResponse,
@@ -567,3 +570,568 @@ async def resume_session(request: ResumeRequest):
     except Exception as e:
         logger.error(f"Failed to resume session {request.conversation_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/conversation/{conversation_id}/code")
+async def get_conversation_code(conversation_id: str):
+    """Extract code blocks from a conversation."""
+    try:
+        # Get full conversation with messages
+        conv_response = await get_conversation(conversation_id)
+
+        code_blocks = []
+        for msg_idx, message in enumerate(conv_response.messages):
+            # Extract code blocks with language detection
+            # Pattern: ```language\ncode\n``` or just ```\ncode\n```
+            pattern = r'```(\w*)\n(.*?)```'
+            matches = re.findall(pattern, message.content, re.DOTALL)
+
+            for block_idx, (language, code) in enumerate(matches):
+                # Clean up code (remove leading/trailing whitespace)
+                code = code.strip()
+                if not code:
+                    continue
+
+                # Detect language if not specified
+                if not language:
+                    language = _detect_language(code)
+
+                code_blocks.append({
+                    'message_index': msg_idx,
+                    'block_index': block_idx,
+                    'role': message.role,
+                    'language': language or 'plaintext',
+                    'code': code,
+                    'timestamp': message.timestamp,
+                    'lines': len(code.splitlines())
+                })
+
+        return {
+            'conversation_id': conversation_id,
+            'title': conv_response.title,
+            'total_blocks': len(code_blocks),
+            'code_blocks': code_blocks
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to extract code from conversation {conversation_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+def _detect_language(code: str) -> str:
+    """Detect programming language from code content."""
+    code_lower = code.lower().strip()
+
+    # SQL indicators (check before Python to avoid 'from' keyword collision)
+    if any(kw in code_lower for kw in ['select ', 'insert ', 'update ', 'delete ', 'create table']):
+        return 'sql'
+
+    # Python indicators
+    if any(kw in code_lower for kw in ['def ', 'import ', 'from ', 'class ', 'if __name__']):
+        return 'python'
+
+    # JavaScript/TypeScript indicators
+    if any(kw in code_lower for kw in ['function ', 'const ', 'let ', 'var ', '=>', 'console.log']):
+        if 'interface ' in code_lower or ': ' in code and 'type ' in code_lower:
+            return 'typescript'
+        return 'javascript'
+
+    # Shell/Bash indicators
+    if code.startswith('#!') or any(kw in code_lower for kw in ['#!/bin/', 'echo ', 'export ', '${']):
+        return 'bash'
+
+    # JSON indicator
+    if code.strip().startswith('{') and ':' in code:
+        try:
+            json.loads(code)
+            return 'json'
+        except json.JSONDecodeError:
+            pass
+
+    # HTML indicator
+    if '<' in code and '>' in code and any(tag in code_lower for tag in ['<div', '<html', '<body', '<p>']):
+        return 'html'
+
+    # CSS indicator
+    if '{' in code and '}' in code and ':' in code and ';' in code:
+        return 'css'
+
+    # Go indicators
+    if any(kw in code_lower for kw in ['package ', 'func ', 'import (']):
+        return 'go'
+
+    # Rust indicators
+    if any(kw in code_lower for kw in ['fn ', 'let mut', 'impl ', 'use ']):
+        return 'rust'
+
+    # Java indicators
+    if any(kw in code_lower for kw in ['public class', 'private ', 'public static void main']):
+        return 'java'
+
+    # Default
+    return 'plaintext'
+
+
+@router.get("/conversation/{conversation_id}/similar")
+async def get_similar_conversations(
+    conversation_id: str,
+    limit: int = Query(5, description="Max similar conversations to return (1-20)", ge=1, le=20)
+):
+    """Get conversations similar to the specified conversation using FAISS embeddings."""
+    try:
+        store = deps.get_duckdb_store()
+        search_engine = deps.get_search_engine()
+
+        # Verify conversation exists
+        conv_meta = store.get_conversation_meta(conversation_id)
+        if not conv_meta:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Conversation {conversation_id} not found"
+            )
+
+        # Ensure FAISS and embedder are ready
+        search_engine.ensure_faiss_loaded()
+        search_engine.ensure_embedder_loaded()
+
+        faiss_index = search_engine.faiss_index
+        if faiss_index is None:
+            raise HTTPException(
+                status_code=503,
+                detail="FAISS index not available"
+            )
+
+        # Get representative text from the conversation to generate embedding
+        import numpy as np
+
+        # Get the conversation's title and some content
+        metadata_path = search_engine.metadata_path
+        conn = store._connect()
+
+        try:
+            # Get chunk text for this conversation
+            query = """
+                SELECT chunk_text
+                FROM parquet_scan(?)
+                WHERE conversation_id = ?
+                ORDER BY vector_id
+                LIMIT 1
+            """
+            result = conn.execute(query, [str(metadata_path), conversation_id]).fetchone()
+
+            if not result:
+                raise HTTPException(
+                    status_code=404,
+                    detail="No embeddings found for this conversation"
+                )
+
+            chunk_text = result[0]
+
+            # Generate embedding from the conversation's representative text
+            embedder = search_engine.embedder
+            if embedder is None:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Embedder not available"
+                )
+
+            # Combine title and chunk text for better representation
+            representative_text = f"{conv_meta['title']} {chunk_text}"
+            query_embedding = np.asarray(
+                embedder.encode(representative_text),
+                dtype=np.float32
+            )
+
+            # Search for similar vectors
+            # Request more than needed to filter out the original conversation
+            k = limit + 10
+            distances, labels = faiss_index.search(  # type: ignore[call-arg,arg-type]
+                query_embedding.reshape(1, -1),
+                k
+            )
+
+            # Build results
+            valid_mask = labels[0] >= 0
+            hits = []
+            for vid, distance in zip(labels[0][valid_mask], distances[0][valid_mask]):
+                hits.append((int(vid), float(distance)))
+
+            if not hits:
+                return {
+                    'conversation_id': conversation_id,
+                    'similar_conversations': []
+                }
+
+            # Query metadata and conversations to get details
+            values_clause = ", ".join(["(?, ?)"] * len(hits))
+            params = []
+            for vid, distance in hits:
+                params.extend([vid, distance])
+
+            params.append(str(metadata_path))
+            params.append(search_engine.conversations_glob)
+
+            sql = f"""
+                WITH hits(vector_id, distance) AS (
+                    VALUES {values_clause}
+                )
+                SELECT
+                    m.conversation_id,
+                    c.project_id,
+                    c.title,
+                    c.created_at,
+                    c.updated_at,
+                    c.message_count,
+                    c.file_path,
+                    hits.distance
+                FROM hits
+                JOIN parquet_scan(?) AS m
+                    ON m.vector_id = hits.vector_id
+                JOIN parquet_scan(?) AS c
+                    ON c.conversation_id = m.conversation_id
+                WHERE m.conversation_id != ?
+                QUALIFY row_number() OVER (PARTITION BY m.conversation_id ORDER BY hits.distance) = 1
+                ORDER BY hits.distance
+                LIMIT ?
+            """
+            params.append(conversation_id)  # Filter out original conversation
+            params.append(limit)
+
+            rows = conn.execute(sql, params).fetchall()
+
+        finally:
+            conn.close()
+
+        # Format results
+        similar_conversations = []
+        for (
+            sim_conv_id,
+            project_id,
+            title,
+            created_at,
+            updated_at,
+            message_count,
+            file_path,
+            distance,
+        ) in rows:
+            # Calculate similarity score (inverse of distance)
+            score = 1.0 / (1.0 + float(distance))
+
+            # Detect tool
+            file_path_lower = file_path.lower()
+            if file_path.endswith('.jsonl'):
+                tool_name = "claude"
+            elif "/.local/share/opencode/" in file_path_lower:
+                tool_name = "opencode"
+            else:
+                tool_name = "vibe"
+
+            # Handle both string and datetime types for timestamps
+            created_at_str = created_at if isinstance(created_at, str) else created_at.isoformat()
+            updated_at_str = updated_at if isinstance(updated_at, str) else updated_at.isoformat()
+
+            similar_conversations.append({
+                'conversation_id': sim_conv_id,
+                'project_id': project_id,
+                'title': title,
+                'created_at': created_at_str,
+                'updated_at': updated_at_str,
+                'message_count': message_count,
+                'similarity_score': round(score, 3),
+                'tool': tool_name
+            })
+
+        return {
+            'conversation_id': conversation_id,
+            'title': conv_meta['title'],
+            'similar_count': len(similar_conversations),
+            'similar_conversations': similar_conversations
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to find similar conversations for {conversation_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.get("/conversation/{conversation_id}/export")
+async def export_conversation(
+    conversation_id: str,
+    format: str = Query("json", description="Export format: json, markdown, text")
+):
+    """Export a conversation in various formats."""
+    try:
+        # Get full conversation
+        conv_response = await get_conversation(conversation_id)
+
+        format_lower = format.lower()
+        if format_lower not in ("json", "markdown", "text"):
+            raise HTTPException(status_code=400, detail="Invalid format. Use: json, markdown, or text")
+
+        if format_lower == "json":
+            # Export as JSON
+            content = json.dumps({
+                "conversation_id": conv_response.conversation_id,
+                "title": conv_response.title,
+                "project_id": conv_response.project_id,
+                "project_path": conv_response.project_path,
+                "tool": conv_response.tool,
+                "message_count": conv_response.message_count,
+                "messages": [
+                    {
+                        "role": msg.role,
+                        "content": msg.content,
+                        "timestamp": msg.timestamp
+                    }
+                    for msg in conv_response.messages
+                ]
+            }, indent=2)
+            media_type = "application/json"
+            filename = f"{conversation_id}.json"
+
+        elif format_lower == "markdown":
+            # Export as Markdown
+            lines = [
+                f"# {conv_response.title}",
+                "",
+                f"**Conversation ID:** {conv_response.conversation_id}",
+                f"**Project:** {conv_response.project_id}",
+                f"**Tool:** {conv_response.tool}",
+                f"**Messages:** {conv_response.message_count}",
+            ]
+
+            if conv_response.project_path:
+                lines.insert(4, f"**Project Path:** {conv_response.project_path}")
+
+            lines.extend(["", "---", ""])
+
+            for idx, msg in enumerate(conv_response.messages, 1):
+                role_label = msg.role.upper()
+                lines.append(f"## Message {idx} - {role_label}")
+                if msg.timestamp:
+                    lines.append(f"*{msg.timestamp}*")
+                    lines.append("")
+                lines.append(msg.content)
+                lines.append("")
+                lines.append("---")
+                lines.append("")
+
+            content = "\n".join(lines)
+            media_type = "text/markdown"
+            filename = f"{conversation_id}.md"
+
+        else:  # text
+            # Export as plain text
+            lines = [
+                f"{'=' * 80}",
+                f"CONVERSATION: {conv_response.title}",
+                f"{'=' * 80}",
+                "",
+                f"ID: {conv_response.conversation_id}",
+                f"Project: {conv_response.project_id}",
+                f"Tool: {conv_response.tool}",
+                f"Messages: {conv_response.message_count}",
+            ]
+
+            if conv_response.project_path:
+                lines.insert(7, f"Project Path: {conv_response.project_path}")
+
+            lines.extend(["", f"{'-' * 80}", ""])
+
+            for idx, msg in enumerate(conv_response.messages, 1):
+                role_label = msg.role.upper()
+                lines.append(f"[Message {idx} - {role_label}]")
+                if msg.timestamp:
+                    lines.append(f"Time: {msg.timestamp}")
+                lines.append("")
+                lines.append(msg.content)
+                lines.append("")
+                lines.append(f"{'-' * 80}")
+                lines.append("")
+
+            content = "\n".join(lines)
+            media_type = "text/plain"
+            filename = f"{conversation_id}.txt"
+
+        return Response(
+            content=content,
+            media_type=media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"'
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to export conversation {conversation_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+class BulkExportRequest(BaseModel):
+    """Request model for bulk export."""
+
+    conversation_ids: list[str]
+    format: str = "json"
+
+
+@router.post("/conversations/bulk-export")
+async def bulk_export_conversations(request: BulkExportRequest):
+    """Export multiple conversations as a ZIP archive."""
+    try:
+        import io
+        import zipfile
+        from datetime import datetime
+
+        if not request.conversation_ids:
+            raise HTTPException(status_code=400, detail="No conversation IDs provided")
+
+        if len(request.conversation_ids) > 100:
+            raise HTTPException(
+                status_code=400,
+                detail="Too many conversations (max 100)"
+            )
+
+        format_lower = request.format.lower()
+        if format_lower not in ("json", "markdown", "text"):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid format. Use: json, markdown, or text"
+            )
+
+        # Determine file extension
+        ext_map = {
+            "json": "json",
+            "markdown": "md",
+            "text": "txt"
+        }
+        ext = ext_map[format_lower]
+
+        # Create ZIP file in memory
+        zip_buffer = io.BytesIO()
+
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            for conv_id in request.conversation_ids:
+                try:
+                    # Get conversation data (reuse export logic)
+                    conv_response = await get_conversation(conv_id)
+
+                    # Generate content based on format
+                    if format_lower == "json":
+                        content = json.dumps({
+                            "conversation_id": conv_response.conversation_id,
+                            "title": conv_response.title,
+                            "project_id": conv_response.project_id,
+                            "project_path": conv_response.project_path,
+                            "tool": conv_response.tool,
+                            "message_count": conv_response.message_count,
+                            "messages": [
+                                {
+                                    "role": msg.role,
+                                    "content": msg.content,
+                                    "timestamp": msg.timestamp
+                                }
+                                for msg in conv_response.messages
+                            ]
+                        }, indent=2)
+
+                    elif format_lower == "markdown":
+                        lines = [
+                            f"# {conv_response.title}",
+                            "",
+                            f"**Conversation ID:** {conv_response.conversation_id}",
+                            f"**Project:** {conv_response.project_id}",
+                            f"**Tool:** {conv_response.tool}",
+                            f"**Messages:** {conv_response.message_count}",
+                        ]
+
+                        if conv_response.project_path:
+                            lines.insert(4, f"**Project Path:** {conv_response.project_path}")
+
+                        lines.extend(["", "---", ""])
+
+                        for idx, msg in enumerate(conv_response.messages, 1):
+                            role_label = msg.role.upper()
+                            lines.append(f"## Message {idx} - {role_label}")
+                            if msg.timestamp:
+                                lines.append(f"*{msg.timestamp}*")
+                                lines.append("")
+                            lines.append(msg.content)
+                            lines.append("")
+                            lines.append("---")
+                            lines.append("")
+
+                        content = "\n".join(lines)
+
+                    else:  # text
+                        lines = [
+                            f"{'=' * 80}",
+                            f"CONVERSATION: {conv_response.title}",
+                            f"{'=' * 80}",
+                            "",
+                            f"ID: {conv_response.conversation_id}",
+                            f"Project: {conv_response.project_id}",
+                            f"Tool: {conv_response.tool}",
+                            f"Messages: {conv_response.message_count}",
+                        ]
+
+                        if conv_response.project_path:
+                            lines.insert(7, f"Project Path: {conv_response.project_path}")
+
+                        lines.extend(["", f"{'-' * 80}", ""])
+
+                        for idx, msg in enumerate(conv_response.messages, 1):
+                            role_label = msg.role.upper()
+                            lines.append(f"[Message {idx} - {role_label}]")
+                            if msg.timestamp:
+                                lines.append(f"Time: {msg.timestamp}")
+                            lines.append("")
+                            lines.append(msg.content)
+                            lines.append("")
+                            lines.append(f"{'-' * 80}")
+                            lines.append("")
+
+                        content = "\n".join(lines)
+
+                    # Sanitize filename
+                    safe_title = "".join(
+                        c for c in conv_response.title[:50]
+                        if c.isalnum() or c in (' ', '-', '_')
+                    ).strip()
+                    if not safe_title:
+                        safe_title = conv_id
+
+                    filename = f"{safe_title}_{conv_id[:8]}.{ext}"
+
+                    # Add to ZIP
+                    zip_file.writestr(filename, content.encode('utf-8'))
+
+                except HTTPException:
+                    # Skip conversations that can't be loaded
+                    logger.warning(f"Skipping conversation {conv_id} in bulk export")
+                    continue
+                except Exception as e:
+                    logger.error(f"Error exporting {conv_id}: {e}")
+                    continue
+
+        # Prepare ZIP for download
+        zip_buffer.seek(0)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        zip_filename = f"searchat_export_{timestamp}.zip"
+
+        return StreamingResponse(
+            iter([zip_buffer.getvalue()]),
+            media_type="application/zip",
+            headers={
+                "Content-Disposition": f'attachment; filename="{zip_filename}"'
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to bulk export conversations: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")

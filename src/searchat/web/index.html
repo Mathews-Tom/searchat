@@ -35,9 +35,10 @@
             </div>
 
             <div class="tip">
-                <div class="tip-title">Keyboard Shortcut</div>
+                <div class="tip-title">Keyboard Shortcuts</div>
                 <div class="tip-content">
-                    Press <kbd>Enter</kbd> in search box to search
+                    Press <kbd>?</kbd> to see all shortcuts<br>
+                    <small style="color: var(--text-muted);">Quick access: <kbd>/</kbd> search, <kbd>r</kbd> resume, <kbd>c</kbd> chat</small>
                 </div>
             </div>
 
@@ -148,6 +149,9 @@
         
         <button onclick="search()">Search</button>
         <button onclick="showAllConversations()" style="background: #2196F3; margin-left: 10px;">Show All</button>
+        <button onclick="showBookmarks()" style="background: #FFA500; margin-left: 10px;" title="View your bookmarked conversations">⭐ Bookmarks</button>
+        <button onclick="showAnalytics()" style="background: #00BCD4; margin-left: 10px;" title="View search analytics and patterns">📊 Analytics</button>
+        <button id="bulkModeToggle" onclick="toggleBulkMode()" style="background: #9C27B0; margin-left: 10px;" title="Select multiple conversations for bulk export">☑ Bulk Export</button>
         <button onclick="indexMissing()" style="background: #4CAF50; margin-left: 10px;" title="Safely add conversations that aren't in the index yet">Add Missing Conversations</button>
         <button onclick="shutdownServer()" style="background: #f44336; margin-left: 10px;" title="Stop the search server">Stop Server</button>
     </div>
