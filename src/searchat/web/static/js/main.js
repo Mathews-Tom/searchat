@@ -11,6 +11,7 @@ import { copyCode } from './modules/code-extraction.js';
 import { initSuggestions } from './modules/suggestions.js';
 import { initBookmarks, showBookmarks } from './modules/bookmarks.js';
 import { initBulkExport, toggleBulkMode } from './modules/bulk-export.js';
+import { showAnalytics } from './modules/analytics.js';
 
 // Initialize theme, shortcuts, search history, suggestions, bookmarks, and bulk export on page load
 initTheme();
@@ -31,6 +32,7 @@ window.clearSearchHistory = clearHistory;
 window.copyCode = copyCode;
 window.showBookmarks = showBookmarks;
 window.toggleBulkMode = toggleBulkMode;
+window.showAnalytics = showAnalytics;
 
 // Import and expose other functions that might be called from HTML
 import('./modules/backup.js').then(module => {

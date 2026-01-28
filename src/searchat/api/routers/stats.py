@@ -1,6 +1,6 @@
 """Statistics endpoint - index statistics and metadata."""
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 import searchat.api.dependencies as deps
 
@@ -23,3 +23,38 @@ async def get_statistics():
             "latest_date": stats.latest_date,
         }
     return deps.stats_cache
+
+
+@router.get("/stats/analytics/summary")
+async def get_analytics_summary(
+    days: int = Query(7, description="Number of days to analyze (1-90)", ge=1, le=90)
+):
+    """Get search analytics summary for the past N days."""
+    analytics = deps.get_analytics_service()
+    return analytics.get_stats_summary(days=days)
+
+
+@router.get("/stats/analytics/top-queries")
+async def get_top_queries(
+    limit: int = Query(10, description="Number of queries to return (1-50)", ge=1, le=50),
+    days: int = Query(7, description="Number of days to analyze (1-90)", ge=1, le=90)
+):
+    """Get most frequent search queries."""
+    analytics = deps.get_analytics_service()
+    return {
+        "queries": analytics.get_top_queries(limit=limit, days=days),
+        "days": days
+    }
+
+
+@router.get("/stats/analytics/dead-ends")
+async def get_dead_end_queries(
+    limit: int = Query(10, description="Number of queries to return (1-50)", ge=1, le=50),
+    days: int = Query(7, description="Number of days to analyze (1-90)", ge=1, le=90)
+):
+    """Get queries that returned few or no results (dead ends)."""
+    analytics = deps.get_analytics_service()
+    return {
+        "queries": analytics.get_dead_end_queries(limit=limit, days=days),
+        "days": days
+    }

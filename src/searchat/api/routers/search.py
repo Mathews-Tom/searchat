@@ -9,7 +9,12 @@ from searchat.models import SearchMode, SearchFilters
 from searchat.api.models import SearchResultResponse
 import searchat.api.dependencies as deps
 
-from searchat.api.dependencies import get_search_engine, get_or_create_search_engine, trigger_search_engine_warmup
+from searchat.api.dependencies import (
+    get_search_engine,
+    get_or_create_search_engine,
+    trigger_search_engine_warmup,
+    get_analytics_service
+)
 from searchat.api.readiness import get_readiness, warming_payload, error_payload
 
 
@@ -90,6 +95,19 @@ async def search(
 
         # Execute search
         results = search_engine.search(q, mode=search_mode, filters=filters)
+
+        # Log search analytics
+        try:
+            analytics = get_analytics_service()
+            analytics.log_search(
+                query=q,
+                result_count=len(results.results),
+                search_mode=mode,
+                search_time_ms=results.search_time_ms
+            )
+        except Exception:
+            # Don't fail the search if analytics logging fails
+            pass
 
         # Sort results based on sort_by parameter
         sorted_results = results.results.copy()

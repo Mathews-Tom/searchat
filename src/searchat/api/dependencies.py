@@ -30,6 +30,7 @@ _indexer = None
 _backup_manager: Optional[BackupManager] = None
 _platform_manager: Optional[PlatformManager] = None
 _bookmarks_service = None
+_analytics_service = None
 _watcher = None
 _duckdb_store = None
 
@@ -52,7 +53,7 @@ indexing_state = {
 
 def initialize_services():
     """Initialize all services on app startup."""
-    global _config, _search_dir, _backup_manager, _platform_manager, _bookmarks_service, _duckdb_store
+    global _config, _search_dir, _backup_manager, _platform_manager, _bookmarks_service, _analytics_service, _duckdb_store
 
     readiness = get_readiness()
     readiness.set_component("services", "loading")
@@ -64,9 +65,11 @@ def initialize_services():
 
         from searchat.api.duckdb_store import DuckDBStore
         from searchat.services.bookmarks import BookmarksService
+        from searchat.services.analytics import SearchAnalyticsService
 
         _duckdb_store = DuckDBStore(_search_dir, memory_limit_mb=_config.performance.memory_limit_mb)
         _bookmarks_service = BookmarksService(_config)
+        _analytics_service = SearchAnalyticsService(_config)
         readiness.set_component("services", "ready")
     except Exception as e:
         readiness.set_component("services", "error", error=str(e))
@@ -244,6 +247,13 @@ def get_bookmarks_service():
     if _bookmarks_service is None:
         raise RuntimeError("Services not initialized. Call initialize_services() first.")
     return _bookmarks_service
+
+
+def get_analytics_service():
+    """Get analytics service singleton."""
+    if _analytics_service is None:
+        raise RuntimeError("Services not initialized. Call initialize_services() first.")
+    return _analytics_service
 
 
 def get_watcher():
