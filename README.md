@@ -26,7 +26,7 @@ Semantic search for AI coding agent conversations. Find past solutions by meanin
 ## Quick Start
 
 ```bash
-git clone https://github.com/Process-Point-Technologies-Corporation/searchat.git
+git clone https://github.com/Mathews-Tom/searchat.git
 cd searchat
 pip install -e .
 
@@ -49,7 +49,6 @@ Add to `~/.claude/CLAUDE.md`:
 
 Search past Claude Code conversations via local API (requires server running).
 
-````markdown
 **Search:**
 
 ```bash
@@ -69,7 +68,7 @@ curl -s "http://localhost:8000/api/conversation/CONVERSATION_ID" | jq '.messages
 - Checking how something was implemented in past sessions
 
 **Start server:** `searchat-web` from the searchat directory
-````
+
 
 See `CLAUDE.example.md` for the full template.
 
