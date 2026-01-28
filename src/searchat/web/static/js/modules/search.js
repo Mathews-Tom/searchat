@@ -2,6 +2,7 @@
 
 import { saveAllConversationsState, saveSearchState, restoreSearchState } from './session.js';
 import { addToHistory } from './search-history.js';
+import { loadCodeBlocks } from './code-extraction.js';
 
 let _searchNonce = 0;
 
@@ -445,6 +446,89 @@ export async function loadConversationView(conversationId, pushState = true) {
         headerDiv.appendChild(actions);
         resultsDiv.appendChild(headerDiv);
 
+        // Add tabs for Messages and Code
+        const tabsDiv = document.createElement('div');
+        tabsDiv.className = 'conversation-tabs';
+        tabsDiv.style.cssText = `
+            display: flex;
+            gap: 8px;
+            margin: 20px 0 16px 0;
+            border-bottom: 1px solid var(--border-default);
+            padding-bottom: 0;
+        `;
+
+        const messagesTab = document.createElement('button');
+        messagesTab.className = 'tab-button active';
+        messagesTab.textContent = 'Messages';
+        messagesTab.style.cssText = `
+            padding: 10px 20px;
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid var(--accent-primary);
+            color: var(--accent-primary);
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        `;
+
+        const codeTab = document.createElement('button');
+        codeTab.className = 'tab-button';
+        codeTab.textContent = 'Code';
+        codeTab.style.cssText = `
+            padding: 10px 20px;
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid transparent;
+            color: var(--text-muted);
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        `;
+
+        // Tab content containers
+        const messagesContainer = document.createElement('div');
+        messagesContainer.id = 'messagesContainer';
+        messagesContainer.style.display = 'block';
+
+        const codeContainer = document.createElement('div');
+        codeContainer.id = 'codeContainer';
+        codeContainer.style.display = 'none';
+
+        // Tab click handlers
+        messagesTab.addEventListener('click', () => {
+            messagesTab.style.borderBottomColor = 'var(--accent-primary)';
+            messagesTab.style.color = 'var(--accent-primary)';
+            codeTab.style.borderBottomColor = 'transparent';
+            codeTab.style.color = 'var(--text-muted)';
+            messagesContainer.style.display = 'block';
+            codeContainer.style.display = 'none';
+        });
+
+        codeTab.addEventListener('click', () => {
+            codeTab.style.borderBottomColor = 'var(--accent-primary)';
+            codeTab.style.color = 'var(--accent-primary)';
+            messagesTab.style.borderBottomColor = 'transparent';
+            messagesTab.style.color = 'var(--text-muted)';
+            messagesContainer.style.display = 'none';
+            codeContainer.style.display = 'block';
+
+            // Load code blocks if not already loaded
+            if (!codeContainer.dataset.loaded) {
+                loadCodeBlocks(conversationId, codeContainer);
+                codeContainer.dataset.loaded = 'true';
+            }
+        });
+
+        tabsDiv.appendChild(messagesTab);
+        tabsDiv.appendChild(codeTab);
+        resultsDiv.appendChild(tabsDiv);
+        resultsDiv.appendChild(messagesContainer);
+        resultsDiv.appendChild(codeContainer);
+
         if (data.messages && Array.isArray(data.messages) && data.messages.length > 0) {
             data.messages.forEach((msg, i) => {
                 const msgDiv = document.createElement('div');
@@ -460,13 +544,13 @@ export async function loadConversationView(conversationId, pushState = true) {
 
                 msgDiv.appendChild(roleDiv);
                 msgDiv.appendChild(contentDiv);
-                resultsDiv.appendChild(msgDiv);
+                messagesContainer.appendChild(msgDiv);
             });
         } else {
             const empty = document.createElement('div');
             empty.className = 'message';
             empty.textContent = 'No messages available';
-            resultsDiv.appendChild(empty);
+            messagesContainer.appendChild(empty);
         }
 
         sessionStorage.setItem('activeConversationId', conversationId);

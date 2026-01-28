@@ -2,6 +2,7 @@
 import asyncio
 import json
 import logging
+import re
 import time
 from pathlib import Path
 from typing import List, Optional
@@ -567,3 +568,105 @@ async def resume_session(request: ResumeRequest):
     except Exception as e:
         logger.error(f"Failed to resume session {request.conversation_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/conversation/{conversation_id}/code")
+async def get_conversation_code(conversation_id: str):
+    """Extract code blocks from a conversation."""
+    try:
+        # Get full conversation with messages
+        conv_response = await get_conversation(conversation_id)
+
+        code_blocks = []
+        for msg_idx, message in enumerate(conv_response.messages):
+            # Extract code blocks with language detection
+            # Pattern: ```language\ncode\n``` or just ```\ncode\n```
+            pattern = r'```(\w*)\n(.*?)```'
+            matches = re.findall(pattern, message.content, re.DOTALL)
+
+            for block_idx, (language, code) in enumerate(matches):
+                # Clean up code (remove leading/trailing whitespace)
+                code = code.strip()
+                if not code:
+                    continue
+
+                # Detect language if not specified
+                if not language:
+                    language = _detect_language(code)
+
+                code_blocks.append({
+                    'message_index': msg_idx,
+                    'block_index': block_idx,
+                    'role': message.role,
+                    'language': language or 'plaintext',
+                    'code': code,
+                    'timestamp': message.timestamp,
+                    'lines': len(code.splitlines())
+                })
+
+        return {
+            'conversation_id': conversation_id,
+            'title': conv_response.title,
+            'total_blocks': len(code_blocks),
+            'code_blocks': code_blocks
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to extract code from conversation {conversation_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+def _detect_language(code: str) -> str:
+    """Detect programming language from code content."""
+    code_lower = code.lower().strip()
+
+    # Python indicators
+    if any(kw in code_lower for kw in ['def ', 'import ', 'from ', 'class ', 'if __name__']):
+        return 'python'
+
+    # JavaScript/TypeScript indicators
+    if any(kw in code_lower for kw in ['function ', 'const ', 'let ', 'var ', '=>', 'console.log']):
+        if 'interface ' in code_lower or ': ' in code and 'type ' in code_lower:
+            return 'typescript'
+        return 'javascript'
+
+    # Shell/Bash indicators
+    if code.startswith('#!') or any(kw in code_lower for kw in ['#!/bin/', 'echo ', 'export ', '${']):
+        return 'bash'
+
+    # SQL indicators
+    if any(kw in code_lower for kw in ['select ', 'insert ', 'update ', 'delete ', 'create table']):
+        return 'sql'
+
+    # JSON indicator
+    if code.strip().startswith('{') and ':' in code:
+        try:
+            json.loads(code)
+            return 'json'
+        except json.JSONDecodeError:
+            pass
+
+    # HTML indicator
+    if '<' in code and '>' in code and any(tag in code_lower for tag in ['<div', '<html', '<body', '<p>']):
+        return 'html'
+
+    # CSS indicator
+    if '{' in code and '}' in code and ':' in code and ';' in code:
+        return 'css'
+
+    # Go indicators
+    if any(kw in code_lower for kw in ['package ', 'func ', 'import (']):
+        return 'go'
+
+    # Rust indicators
+    if any(kw in code_lower for kw in ['fn ', 'let mut', 'impl ', 'use ']):
+        return 'rust'
+
+    # Java indicators
+    if any(kw in code_lower for kw in ['public class', 'private ', 'public static void main']):
+        return 'java'
+
+    # Default
+    return 'plaintext'

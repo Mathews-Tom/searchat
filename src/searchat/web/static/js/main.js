@@ -7,6 +7,7 @@ import { search, toggleCustomDate, loadConversationView, showSearchView } from '
 import { initChat } from './modules/chat.js';
 import { initShortcuts, toggleHelpModal } from './modules/shortcuts.js';
 import { initSearchHistory, restoreSearchFromHistory, clearHistory } from './modules/search-history.js';
+import { copyCode } from './modules/code-extraction.js';
 
 // Initialize theme, shortcuts, and search history on page load
 initTheme();
@@ -21,6 +22,7 @@ window.toggleCustomDate = toggleCustomDate;
 window.toggleHelpModal = toggleHelpModal;
 window.restoreSearchFromHistory = restoreSearchFromHistory;
 window.clearSearchHistory = clearHistory;
+window.copyCode = copyCode;
 
 // Import and expose other functions that might be called from HTML
 import('./modules/backup.js').then(module => {
