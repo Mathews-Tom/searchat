@@ -3,6 +3,7 @@
 import { saveAllConversationsState, saveSearchState, restoreSearchState } from './session.js';
 import { addToHistory } from './search-history.js';
 import { loadCodeBlocks } from './code-extraction.js';
+import { createStarIcon } from './bookmarks.js';
 
 let _searchNonce = 0;
 
@@ -121,6 +122,11 @@ export async function search() {
                 </button>
             </div>
         `;
+
+        // Add star icon to title
+        const titleDiv = div.querySelector('.result-title');
+        const starIcon = createStarIcon(r.conversation_id);
+        titleDiv.appendChild(starIcon);
 
         // Add click handler for resume button
         const resumeBtn = div.querySelector('.resume-btn');
@@ -321,6 +327,11 @@ export async function showAllConversations() {
                     </button>
                 </div>
             `;
+
+            // Add star icon to title
+            const titleDiv = div.querySelector('.result-title');
+            const starIcon = createStarIcon(r.conversation_id);
+            titleDiv.appendChild(starIcon);
 
             // Add click handler for resume button
             const resumeBtn = div.querySelector('.resume-btn');

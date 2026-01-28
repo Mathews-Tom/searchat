@@ -9,13 +9,15 @@ import { initShortcuts, toggleHelpModal } from './modules/shortcuts.js';
 import { initSearchHistory, restoreSearchFromHistory, clearHistory } from './modules/search-history.js';
 import { copyCode } from './modules/code-extraction.js';
 import { initSuggestions } from './modules/suggestions.js';
+import { initBookmarks, showBookmarks } from './modules/bookmarks.js';
 
-// Initialize theme, shortcuts, search history, and suggestions on page load
+// Initialize theme, shortcuts, search history, suggestions, and bookmarks on page load
 initTheme();
 initChat();
 initShortcuts();
 initSearchHistory();
 initSuggestions();
+initBookmarks();
 
 // Make functions globally available for inline event handlers
 window.setTheme = setTheme;
@@ -25,6 +27,7 @@ window.toggleHelpModal = toggleHelpModal;
 window.restoreSearchFromHistory = restoreSearchFromHistory;
 window.clearSearchHistory = clearHistory;
 window.copyCode = copyCode;
+window.showBookmarks = showBookmarks;
 
 // Import and expose other functions that might be called from HTML
 import('./modules/backup.js').then(module => {
