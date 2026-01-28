@@ -108,7 +108,7 @@ def test_remove_nonexistent_bookmark(bookmarks_service):
 
 def test_get_bookmarks_empty(bookmarks_service):
     """Test getting bookmarks when none exist."""
-    bookmarks = bookmarks_service.get_bookmarks()
+    bookmarks = bookmarks_service.list_bookmarks()
     assert bookmarks == []
 
 
@@ -136,7 +136,7 @@ def test_get_bookmarks_sorted(bookmarks_service):
         }
     })
 
-    bookmarks = bookmarks_service.get_bookmarks()
+    bookmarks = bookmarks_service.list_bookmarks()
 
     # Should be sorted by added_at descending
     assert len(bookmarks) == 3
@@ -153,11 +153,9 @@ def test_update_bookmark_notes(bookmarks_service):
     bookmarks_service.add_bookmark(conv_id, "Original notes")
 
     # Update notes
-    updated = bookmarks_service.update_bookmark_notes(conv_id, "Updated notes")
+    updated = bookmarks_service.update_notes(conv_id, "Updated notes")
 
-    assert updated is not None
-    assert updated["notes"] == "Updated notes"
-    assert updated["conversation_id"] == conv_id
+    assert updated is True
 
     # Verify persistence
     bookmarks = bookmarks_service._load_bookmarks()
@@ -165,9 +163,9 @@ def test_update_bookmark_notes(bookmarks_service):
 
 
 def test_update_notes_nonexistent_bookmark(bookmarks_service):
-    """Test updating notes for nonexistent bookmark returns None."""
-    result = bookmarks_service.update_bookmark_notes("nonexistent", "Notes")
-    assert result is None
+    """Test updating notes for nonexistent bookmark returns False."""
+    result = bookmarks_service.update_notes("nonexistent", "Notes")
+    assert result is False
 
 
 def test_is_bookmarked(bookmarks_service):
@@ -201,12 +199,12 @@ def test_multiple_bookmarks(bookmarks_service):
         bookmarks_service.add_bookmark(f"conv-{i}", f"Notes {i}")
 
     # Get all bookmarks
-    bookmarks = bookmarks_service.get_bookmarks()
+    bookmarks = bookmarks_service.list_bookmarks()
     assert len(bookmarks) == 5
 
     # Remove one
     bookmarks_service.remove_bookmark("conv-2")
-    bookmarks = bookmarks_service.get_bookmarks()
+    bookmarks = bookmarks_service.list_bookmarks()
     assert len(bookmarks) == 4
     assert not any(b["conversation_id"] == "conv-2" for b in bookmarks)
 
@@ -222,6 +220,6 @@ def test_bookmark_persistence_across_instances(mock_config):
 
     # Should be able to retrieve bookmark
     assert service2.is_bookmarked("conv-persist")
-    bookmarks = service2.get_bookmarks()
+    bookmarks = service2.list_bookmarks()
     assert len(bookmarks) == 1
     assert bookmarks[0]["notes"] == "Persistent note"

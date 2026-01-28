@@ -67,7 +67,7 @@ def mock_analytics_service():
 
 def test_get_analytics_summary(client, mock_analytics_service):
     """Test GET /api/stats/analytics/summary."""
-    with patch("searchat.api.routers.stats.get_analytics_service", return_value=mock_analytics_service):
+    with patch("searchat.api.dependencies.get_analytics_service", return_value=mock_analytics_service):
         response = client.get("/api/stats/analytics/summary")
 
         assert response.status_code == 200
@@ -85,7 +85,7 @@ def test_get_analytics_summary(client, mock_analytics_service):
 
 def test_get_analytics_summary_with_days_param(client, mock_analytics_service):
     """Test GET /api/stats/analytics/summary with custom days parameter."""
-    with patch("searchat.api.routers.stats.get_analytics_service", return_value=mock_analytics_service):
+    with patch("searchat.api.dependencies.get_analytics_service", return_value=mock_analytics_service):
         response = client.get("/api/stats/analytics/summary?days=30")
 
         assert response.status_code == 200
@@ -96,7 +96,7 @@ def test_get_analytics_summary_with_days_param(client, mock_analytics_service):
 
 def test_get_analytics_summary_days_validation(client, mock_analytics_service):
     """Test days parameter validation for summary endpoint."""
-    with patch("searchat.api.routers.stats.get_analytics_service", return_value=mock_analytics_service):
+    with patch("searchat.api.dependencies.get_analytics_service", return_value=mock_analytics_service):
         # days < 1 should fail
         response = client.get("/api/stats/analytics/summary?days=0")
         assert response.status_code == 422
@@ -112,7 +112,7 @@ def test_get_analytics_summary_days_validation(client, mock_analytics_service):
 
 def test_get_top_queries(client, mock_analytics_service):
     """Test GET /api/stats/analytics/top-queries."""
-    with patch("searchat.api.routers.stats.get_analytics_service", return_value=mock_analytics_service):
+    with patch("searchat.api.dependencies.get_analytics_service", return_value=mock_analytics_service):
         response = client.get("/api/stats/analytics/top-queries")
 
         assert response.status_code == 200
@@ -133,7 +133,7 @@ def test_get_top_queries(client, mock_analytics_service):
 
 def test_get_top_queries_with_params(client, mock_analytics_service):
     """Test GET /api/stats/analytics/top-queries with custom parameters."""
-    with patch("searchat.api.routers.stats.get_analytics_service", return_value=mock_analytics_service):
+    with patch("searchat.api.dependencies.get_analytics_service", return_value=mock_analytics_service):
         response = client.get("/api/stats/analytics/top-queries?limit=20&days=30")
 
         assert response.status_code == 200
@@ -144,7 +144,7 @@ def test_get_top_queries_with_params(client, mock_analytics_service):
 
 def test_get_top_queries_limit_validation(client, mock_analytics_service):
     """Test limit parameter validation for top-queries endpoint."""
-    with patch("searchat.api.routers.stats.get_analytics_service", return_value=mock_analytics_service):
+    with patch("searchat.api.dependencies.get_analytics_service", return_value=mock_analytics_service):
         # limit < 1 should fail
         response = client.get("/api/stats/analytics/top-queries?limit=0")
         assert response.status_code == 422
@@ -160,7 +160,7 @@ def test_get_top_queries_limit_validation(client, mock_analytics_service):
 
 def test_get_dead_end_queries(client, mock_analytics_service):
     """Test GET /api/stats/analytics/dead-ends."""
-    with patch("searchat.api.routers.stats.get_analytics_service", return_value=mock_analytics_service):
+    with patch("searchat.api.dependencies.get_analytics_service", return_value=mock_analytics_service):
         response = client.get("/api/stats/analytics/dead-ends")
 
         assert response.status_code == 200
@@ -181,7 +181,7 @@ def test_get_dead_end_queries(client, mock_analytics_service):
 
 def test_get_dead_end_queries_with_params(client, mock_analytics_service):
     """Test GET /api/stats/analytics/dead-ends with custom parameters."""
-    with patch("searchat.api.routers.stats.get_analytics_service", return_value=mock_analytics_service):
+    with patch("searchat.api.dependencies.get_analytics_service", return_value=mock_analytics_service):
         response = client.get("/api/stats/analytics/dead-ends?limit=20&days=14")
 
         assert response.status_code == 200
@@ -203,7 +203,7 @@ def test_analytics_empty_data(client, mock_analytics_service):
     mock_analytics_service.get_top_queries.return_value = []
     mock_analytics_service.get_dead_end_queries.return_value = []
 
-    with patch("searchat.api.routers.stats.get_analytics_service", return_value=mock_analytics_service):
+    with patch("searchat.api.dependencies.get_analytics_service", return_value=mock_analytics_service):
         # Summary with no data
         response = client.get("/api/stats/analytics/summary")
         assert response.status_code == 200
@@ -228,7 +228,7 @@ def test_analytics_service_error_handling(client, mock_analytics_service):
     # Mock service to raise exception
     mock_analytics_service.get_stats_summary.side_effect = Exception("Database error")
 
-    with patch("searchat.api.routers.stats.get_analytics_service", return_value=mock_analytics_service):
+    with patch("searchat.api.dependencies.get_analytics_service", return_value=mock_analytics_service):
         response = client.get("/api/stats/analytics/summary")
 
         # Should return 500 error
