@@ -1,12 +1,12 @@
 """Search endpoints - main search and projects list."""
-from typing import Optional, List
-from datetime import datetime, timedelta
+from __future__ import annotations
 
 from fastapi import APIRouter, Query, HTTPException
 from fastapi.responses import JSONResponse
 
 from searchat.models import SearchMode, SearchFilters
 from searchat.api.models import SearchResultResponse
+from searchat.api.utils import detect_tool_from_path, detect_source_from_path, parse_date_filter
 import searchat.api.dependencies as deps
 
 from searchat.api.dependencies import (
@@ -25,11 +25,11 @@ router = APIRouter()
 async def search(
     q: str = Query(..., description="Search query"),
     mode: str = Query("hybrid", description="Search mode: hybrid, semantic, or keyword"),
-    project: Optional[str] = Query(None, description="Filter by project"),
-    date: Optional[str] = Query(None, description="Date filter: today, week, month, or custom"),
-    date_from: Optional[str] = Query(None, description="Custom date from (YYYY-MM-DD)"),
-    date_to: Optional[str] = Query(None, description="Custom date to (YYYY-MM-DD)"),
-    tool: Optional[str] = Query(None, description="Filter by tool: claude, vibe, opencode"),
+    project: str | None = Query(None, description="Filter by project"),
+    date: str | None = Query(None, description="Date filter: today, week, month, or custom"),
+    date_from: str | None = Query(None, description="Custom date from (YYYY-MM-DD)"),
+    date_to: str | None = Query(None, description="Custom date to (YYYY-MM-DD)"),
+    tool: str | None = Query(None, description="Filter by tool: claude, vibe, opencode"),
     sort_by: str = Query("relevance", description="Sort by: relevance, date_newest, date_oldest, messages"),
     limit: int = Query(20, description="Max results per page (1-100)", ge=1, le=100),
     offset: int = Query(0, description="Number of results to skip for pagination", ge=0)
@@ -74,25 +74,7 @@ async def search(
             filters.tool = tool_value
 
         # Handle date filtering
-        if date == "custom" and (date_from or date_to):
-            # Custom date range
-            if date_from:
-                filters.date_from = datetime.fromisoformat(date_from)
-            if date_to:
-                # Add 1 day to include the entire end date
-                filters.date_to = datetime.fromisoformat(date_to) + timedelta(days=1)
-        elif date:
-            # Preset date ranges
-            now = datetime.now()
-            if date == "today":
-                filters.date_from = now.replace(hour=0, minute=0, second=0, microsecond=0)
-                filters.date_to = now
-            elif date == "week":
-                filters.date_from = now - timedelta(days=7)
-                filters.date_to = now
-            elif date == "month":
-                filters.date_from = now - timedelta(days=30)
-                filters.date_to = now
+        filters.date_from, filters.date_to = parse_date_filter(date, date_from, date_to)
 
         # Execute search
         results = search_engine.search(q, mode=search_mode, filters=filters)
@@ -104,7 +86,7 @@ async def search(
                 query=q,
                 result_count=len(results.results),
                 search_mode=mode,
-                search_time_ms=results.search_time_ms
+                search_time_ms=int(results.search_time_ms)
             )
         except Exception:
             # Don't fail the search if analytics logging fails
@@ -127,18 +109,6 @@ async def search(
         # Convert results to response format
         response_results = []
         for r in paginated_results:
-            file_path_lower = r.file_path.lower()
-            if r.file_path.endswith('.jsonl'):
-                tool_name = "claude"
-            elif "/.local/share/opencode/" in file_path_lower:
-                tool_name = "opencode"
-            else:
-                tool_name = "vibe"
-
-            if "/home/" in file_path_lower or "wsl" in file_path_lower:
-                source = "WSL"
-            else:
-                source = "WIN"
             response_results.append(SearchResultResponse(
                 conversation_id=r.conversation_id,
                 project_id=r.project_id,
@@ -151,8 +121,8 @@ async def search(
                 score=r.score,
                 message_start_index=r.message_start_index,
                 message_end_index=r.message_end_index,
-                source=source,
-                tool=tool_name,
+                source=detect_source_from_path(r.file_path),
+                tool=detect_tool_from_path(r.file_path),
             ))
 
         return {
