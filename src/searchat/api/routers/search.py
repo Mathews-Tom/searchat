@@ -31,7 +31,8 @@ async def search(
     date_to: Optional[str] = Query(None, description="Custom date to (YYYY-MM-DD)"),
     tool: Optional[str] = Query(None, description="Filter by tool: claude, vibe, opencode"),
     sort_by: str = Query("relevance", description="Sort by: relevance, date_newest, date_oldest, messages"),
-    limit: int = Query(100, description="Max results to return (1-100)", ge=1, le=100)
+    limit: int = Query(20, description="Max results per page (1-100)", ge=1, le=100),
+    offset: int = Query(0, description="Number of results to skip for pagination", ge=0)
 ):
     """Search conversations with filters and sorting."""
     try:
@@ -119,9 +120,13 @@ async def search(
             sorted_results.sort(key=lambda r: r.message_count, reverse=True)
         # else keep default relevance sorting (by score)
 
+        # Apply pagination
+        total_results = len(sorted_results)
+        paginated_results = sorted_results[offset:offset + limit]
+
         # Convert results to response format
         response_results = []
-        for r in sorted_results[:limit]:
+        for r in paginated_results:
             file_path_lower = r.file_path.lower()
             if r.file_path.endswith('.jsonl'):
                 tool_name = "claude"
@@ -152,8 +157,11 @@ async def search(
 
         return {
             "results": response_results,
-            "total": results.total_count,
-            "search_time_ms": results.search_time_ms
+            "total": total_results,
+            "search_time_ms": results.search_time_ms,
+            "limit": limit,
+            "offset": offset,
+            "has_more": (offset + limit) < total_results
         }
 
     except Exception as e:

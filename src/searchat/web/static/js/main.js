@@ -12,6 +12,7 @@ import { initSuggestions } from './modules/suggestions.js';
 import { initBookmarks, showBookmarks } from './modules/bookmarks.js';
 import { initBulkExport, toggleBulkMode } from './modules/bulk-export.js';
 import { showAnalytics } from './modules/analytics.js';
+import { goToPage } from './modules/pagination.js';
 
 // Initialize theme, shortcuts, search history, suggestions, bookmarks, and bulk export on page load
 initTheme();
@@ -33,6 +34,7 @@ window.copyCode = copyCode;
 window.showBookmarks = showBookmarks;
 window.toggleBulkMode = toggleBulkMode;
 window.showAnalytics = showAnalytics;
+window.goToPage = (page) => goToPage(page, search);
 
 // Import and expose other functions that might be called from HTML
 import('./modules/backup.js').then(module => {

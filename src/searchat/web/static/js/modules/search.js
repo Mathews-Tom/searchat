@@ -6,6 +6,7 @@ import { loadCodeBlocks } from './code-extraction.js';
 import { createStarIcon } from './bookmarks.js';
 import { loadSimilarConversations } from './similar.js';
 import { addCheckboxToResult } from './bulk-export.js';
+import { renderPagination, setTotalResults, getOffset, resetPagination } from './pagination.js';
 
 let _searchNonce = 0;
 
@@ -13,7 +14,7 @@ function _sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-export async function search() {
+export async function search(resetPage = true) {
     _searchNonce += 1;
     const nonce = _searchNonce;
 
@@ -28,6 +29,11 @@ export async function search() {
         return;
     }
 
+    // Reset to page 1 when starting a new search (not pagination)
+    if (resetPage) {
+        resetPagination();
+    }
+
     const resultsDiv = document.getElementById('results');
     resultsDiv.innerHTML = '<div class="loading">Searching...</div>';
 
@@ -37,7 +43,8 @@ export async function search() {
         project: document.getElementById('project').value,
         tool: tool,
         date: document.getElementById('date').value,
-        sort_by: document.getElementById('sortBy').value
+        sort_by: document.getElementById('sortBy').value,
+        offset: getOffset()
     });
 
     // Add custom date range if selected
@@ -87,6 +94,9 @@ export async function search() {
 
     const data = await response.json();
 
+    // Store total results for pagination
+    setTotalResults(data.total);
+
     resultsDiv.innerHTML = '';
     if (data.results.length === 0) {
         resultsDiv.innerHTML = '<div>No results found</div>';
@@ -94,7 +104,8 @@ export async function search() {
         return;
     }
 
-    resultsDiv.innerHTML = `<div class="results-header">Found ${data.total} results in ${Math.round(data.search_time_ms)}ms</div>`;
+    const paginationInfo = data.total > 20 ? ` (page ${Math.floor(getOffset() / 20) + 1})` : '';
+    resultsDiv.innerHTML = `<div class="results-header">Found ${data.total} results in ${Math.round(data.search_time_ms)}ms${paginationInfo}</div>`;
 
     data.results.forEach((r, index) => {
         const div = document.createElement('div');
@@ -150,6 +161,9 @@ export async function search() {
         };
         resultsDiv.appendChild(div);
     });
+
+    // Render pagination controls
+    renderPagination(resultsDiv, search);
 
     // Add search to history
     addToHistory({
