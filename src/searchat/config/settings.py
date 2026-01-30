@@ -31,6 +31,8 @@ from .constants import (
     DEFAULT_INDEX_INTERVAL_MINUTES,
     DEFAULT_REINDEX_ON_MODIFICATION,
     DEFAULT_MODIFICATION_DEBOUNCE_MINUTES,
+    DEFAULT_ENABLE_CONNECTORS,
+    DEFAULT_ENABLE_ADAPTIVE_INDEXING,
     DEFAULT_SEARCH_MODE,
     DEFAULT_MAX_RESULTS,
     DEFAULT_SNIPPET_LENGTH,
@@ -50,6 +52,8 @@ from .constants import (
     ENV_EMBEDDING_BATCH,
     ENV_CACHE_SIZE,
     ENV_PROFILING,
+    ENV_ENABLE_CONNECTORS,
+    ENV_ENABLE_ADAPTIVE_INDEXING,
     ERROR_NO_CONFIG,
 )
 
@@ -145,6 +149,8 @@ class IndexingConfig:
     max_workers: int
     reindex_on_modification: bool
     modification_debounce_minutes: int
+    enable_connectors: bool
+    enable_adaptive_indexing: bool
 
     @classmethod
     def from_dict(cls, data: dict) -> "IndexingConfig":
@@ -173,6 +179,14 @@ class IndexingConfig:
             modification_debounce_minutes=_get_env_int(
                 "SEARCHAT_MODIFICATION_DEBOUNCE_MINUTES",
                 data.get("modification_debounce_minutes", DEFAULT_MODIFICATION_DEBOUNCE_MINUTES)
+            ),
+            enable_connectors=_get_env_bool(
+                ENV_ENABLE_CONNECTORS,
+                data.get("enable_connectors", DEFAULT_ENABLE_CONNECTORS)
+            ),
+            enable_adaptive_indexing=_get_env_bool(
+                ENV_ENABLE_ADAPTIVE_INDEXING,
+                data.get("enable_adaptive_indexing", DEFAULT_ENABLE_ADAPTIVE_INDEXING)
             ),
         )
 

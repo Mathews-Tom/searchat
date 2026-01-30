@@ -18,6 +18,8 @@ max_workers = 4
 reindex_on_modification = true
 # Wait 5 minutes after last modification before re-indexing (prevents excessive re-indexing)
 modification_debounce_minutes = 5
+enable_connectors = true
+enable_adaptive_indexing = true
 
 [search]
 default_mode = "hybrid"

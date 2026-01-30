@@ -14,6 +14,7 @@ from searchat.models.domain import (
 from searchat.models.schemas import (
     CONVERSATION_SCHEMA,
     METADATA_SCHEMA,
+    FILE_STATE_SCHEMA,
 )
 
 __all__ = [
@@ -32,4 +33,5 @@ __all__ = [
     # Schemas
     "CONVERSATION_SCHEMA",
     "METADATA_SCHEMA",
+    "FILE_STATE_SCHEMA",
 ]

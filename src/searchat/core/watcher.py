@@ -20,7 +20,8 @@ from threading import Thread
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler, FileCreatedEvent, FileModifiedEvent
 
-from searchat.config import PathResolver, Config
+from searchat.config import Config
+from searchat.core.connectors import discover_watch_dirs, supported_extensions
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,7 @@ class ConversationEventHandler(FileSystemEventHandler):
     """Handles file system events for conversation files (JSONL and JSON)."""
 
     # Supported file extensions
-    SUPPORTED_EXTENSIONS = ('.jsonl', '.json')
+    SUPPORTED_EXTENSIONS = supported_extensions()
 
     def __init__(self, pending_queue: Queue, debounce_seconds: float = 2.0):
         super().__init__()
@@ -100,16 +101,12 @@ class ConversationWatcher:
             config = Config.load()
         self.config = config
 
-        self.path_resolver = PathResolver()
-        self.claude_dirs = self.path_resolver.resolve_claude_dirs(config)
-        self.vibe_dirs = self.path_resolver.resolve_vibe_dirs()
-        self.opencode_dirs = self.path_resolver.resolve_opencode_dirs(config)
+        if not self.config.indexing.enable_connectors:
+            raise RuntimeError(
+                "Connector loading is disabled. Set indexing.enable_connectors to true."
+            )
 
-        # Combine all watched directories
-        self.watched_dirs = self.claude_dirs + self.vibe_dirs
-        for opencode_dir in self.opencode_dirs:
-            storage_session_dir = opencode_dir / "storage" / "session"
-            self.watched_dirs.append(storage_session_dir)
+        self.watched_dirs = discover_watch_dirs(config)
 
         self.on_update = on_update
         self.batch_delay_seconds = batch_delay_seconds

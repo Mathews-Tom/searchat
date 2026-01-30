@@ -20,6 +20,12 @@ from searchat.models import (
 )
 from searchat.core.query_parser import QueryParser
 from searchat.config import Config
+from searchat.config.constants import (
+    INDEX_SCHEMA_VERSION,
+    INDEX_FORMAT_VERSION,
+    INDEX_FORMAT,
+    INDEX_METADATA_FILENAME,
+)
 
 
 if TYPE_CHECKING:
@@ -191,7 +197,7 @@ class SearchEngine:
         return " AND ".join(conditions)
     
     def _validate_index_metadata(self) -> None:
-        metadata_path = self.search_dir / 'data/indices/index_metadata.json'
+        metadata_path = self.search_dir / f"data/indices/{INDEX_METADATA_FILENAME}"
         
         if not metadata_path.exists():
             raise FileNotFoundError(
@@ -202,17 +208,29 @@ class SearchEngine:
         with open(metadata_path, 'r') as f:
             metadata = json.load(f)
         
-        if metadata.get('model_name') != self.config.embedding.model:
+        if metadata.get("embedding_model") != self.config.embedding.model:
             raise ValueError(
-                f"Model mismatch: index uses '{metadata.get('model_name')}', "
+                f"Model mismatch: index uses '{metadata.get('embedding_model')}', "
                 f"config specifies '{self.config.embedding.model}'. "
                 "Rebuild index with correct model."
             )
-        
-        if metadata.get('schema_version') != 1:
+
+        if metadata.get("format") != INDEX_FORMAT:
+            raise ValueError(
+                f"Index format mismatch: index uses '{metadata.get('format')}', "
+                f"expected '{INDEX_FORMAT}'. Rebuild index required."
+            )
+
+        if metadata.get("schema_version") != INDEX_SCHEMA_VERSION:
             raise ValueError(
                 f"Schema version mismatch: index uses version {metadata.get('schema_version')}, "
-                "expected version 1. Rebuild index required."
+                f"expected version {INDEX_SCHEMA_VERSION}. Rebuild index required."
+            )
+
+        if metadata.get("index_format_version") != INDEX_FORMAT_VERSION:
+            raise ValueError(
+                f"Index format version mismatch: index uses version {metadata.get('index_format_version')}, "
+                f"expected version {INDEX_FORMAT_VERSION}. Rebuild index required."
             )
     
     def _get_cache_key(self, query: str, mode: SearchMode, filters: SearchFilters | None) -> str:

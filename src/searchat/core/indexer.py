@@ -9,6 +9,7 @@ from dataclasses import asdict
 import numpy as np
 import faiss
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 from searchat.core.logging_config import get_logger
@@ -19,11 +20,26 @@ from searchat.models import (
     IndexStats,
     UpdateStats,
     CONVERSATION_SCHEMA,
-    METADATA_SCHEMA
+    METADATA_SCHEMA,
+    FILE_STATE_SCHEMA
 )
-from searchat.config import PathResolver, Config
+from searchat.config import Config, PathResolver
+from searchat.config.constants import (
+    INDEX_SCHEMA_VERSION,
+    INDEX_FORMAT_VERSION,
+    INDEX_FORMAT,
+    INDEX_METADATA_FILENAME,
+)
+from searchat.core.connectors import discover_all_files, detect_connector
 
 logger = get_logger(__name__)
+
+
+def _build_id_selector(ids: np.ndarray) -> faiss.IDSelector:
+    try:
+        return faiss.IDSelectorBatch(ids)  # type: ignore[call-arg]
+    except Exception:
+        return faiss.IDSelectorBatch(ids.size, faiss.swig_ptr(ids))  # type: ignore[call-arg]
 
 
 class ConversationIndexer:
@@ -37,15 +53,12 @@ class ConversationIndexer:
     """
 
     def __init__(self, search_dir: Path, config: Config | None = None):
-        self.path_resolver = PathResolver()
-        self.claude_dirs = self.path_resolver.resolve_claude_dirs()
-        self.vibe_dirs = self.path_resolver.resolve_vibe_dirs()
-        self.opencode_dirs = self.path_resolver.resolve_opencode_dirs()
         self.search_dir = search_dir
         self.data_dir = search_dir / "data"
         self.conversations_dir = self.data_dir / "conversations"
         self.indices_dir = self.data_dir / "indices"
         self.indexed_paths_path = self.indices_dir / "indexed_paths.parquet"
+        self.file_state_path = self.indices_dir / "file_state.parquet"
 
         if config is None:
             config = Config.load()
@@ -67,6 +80,52 @@ class ConversationIndexer:
         """
         table = pa.Table.from_pydict({"file_path": sorted(paths)})
         pq.write_table(table, self.indexed_paths_path)
+
+    def _load_file_state(self) -> dict[str, dict]:
+        if not self.file_state_path.exists():
+            return {}
+        table = pq.read_table(self.file_state_path)
+        state: dict[str, dict] = {}
+        for row in table.to_pylist():
+            file_path = row.get("file_path")
+            if isinstance(file_path, str):
+                state[file_path] = row
+        return state
+
+    def _write_file_state(self, entries: list[dict]) -> None:
+        table = pa.Table.from_pylist(entries, schema=FILE_STATE_SCHEMA)
+        pq.write_table(table, self.file_state_path)
+
+    def _backfill_file_state(self) -> dict[str, dict]:
+        state: dict[str, dict] = {}
+        for parquet_file in self.conversations_dir.glob("*.parquet"):
+            table = pq.read_table(
+                parquet_file,
+                columns=["file_path", "file_hash", "indexed_at", "conversation_id", "project_id"],
+            )
+            for row in table.to_pylist():
+                file_path = row.get("file_path")
+                if not isinstance(file_path, str):
+                    continue
+                file_size = 0
+                path_obj = Path(file_path)
+                if path_obj.exists():
+                    file_size = path_obj.stat().st_size
+                connector_name = "unknown"
+                try:
+                    connector_name = detect_connector(path_obj).name
+                except Exception:
+                    connector_name = "unknown"
+                state[file_path] = {
+                    "file_path": file_path,
+                    "file_hash": row.get("file_hash"),
+                    "file_size": file_size,
+                    "indexed_at": row.get("indexed_at"),
+                    "connector_name": connector_name,
+                    "conversation_id": row.get("conversation_id"),
+                    "project_id": row.get("project_id"),
+                }
+        return state
 
     def _get_embedder(self):
         """Create and cache the embedding model on first use."""
@@ -242,6 +301,10 @@ class ConversationIndexer:
         """
         if progress is None:
             progress = NullProgressAdapter()
+        if not self.config.indexing.enable_connectors:
+            raise RuntimeError(
+                "Connector loading is disabled. Set indexing.enable_connectors to true."
+            )
         has_existing_index = self._has_existing_index()
 
         if has_existing_index and not force:
@@ -273,35 +336,7 @@ class ConversationIndexer:
         progress.update_phase("Discovering conversation files")
 
         # Collect all files first for accurate progress tracking
-        all_files = []
-        file_metadata = []  # Store (file_path, project_id, agent_type)
-
-        claude_seen: set[Path] = set()
-        for claude_dir in self.claude_dirs:
-            if not claude_dir.exists():
-                continue
-            for json_file in claude_dir.rglob("*.jsonl"):
-                if json_file in claude_seen:
-                    continue
-                claude_seen.add(json_file)
-                project_id = json_file.parent.name
-                all_files.append(json_file)
-                file_metadata.append((json_file, project_id, 'claude'))
-
-        for vibe_dir in self.vibe_dirs:
-            if not vibe_dir.exists():
-                continue
-            for json_file in vibe_dir.glob("*.json"):
-                all_files.append(json_file)
-                file_metadata.append((json_file, "vibe-sessions", 'vibe'))
-
-        for opencode_dir in self.opencode_dirs:
-            storage_session_dir = opencode_dir / "storage" / "session"
-            if not storage_session_dir.exists():
-                continue
-            for session_file in storage_session_dir.glob("*/*.json"):
-                all_files.append(session_file)
-                file_metadata.append((session_file, "opencode", 'opencode'))
+        file_matches = discover_all_files(self.config)
 
         # Phase 2: Processing conversations
         progress.update_phase("Processing conversations")
@@ -309,19 +344,17 @@ class ConversationIndexer:
         all_records: list[ConversationRecord] = []
         all_chunks_with_meta: list[dict] = []
         project_records_map: dict[str, list[ConversationRecord]] = {}
+        file_state_entries: list[dict] = []
 
-        for idx, (json_file, project_id, agent_type) in enumerate(file_metadata, 1):
-            display_name = f"{agent_type} | {json_file.name}"
-            progress.update_file_progress(idx, len(file_metadata), display_name)
+        for idx, match in enumerate(file_matches, 1):
+            json_file = match.path
+            connector = match.connector
+            display_name = f"{connector.name} | {json_file.name}"
+            progress.update_file_progress(idx, len(file_matches), display_name)
 
             try:
                 # Process based on agent type
-                if agent_type == 'claude':
-                    record = self._process_conversation(json_file, project_id, 0)
-                elif agent_type == 'opencode':
-                    record = self._process_opencode_session(json_file, 0)
-                else:
-                    record = self._process_vibe_session(json_file, 0)
+                record = connector.parse(json_file, 0)
 
                 # Skip conversations with no messages
                 if record.message_count == 0:
@@ -334,16 +367,28 @@ class ConversationIndexer:
                     project_records_map[project_key] = []
                 project_records_map[project_key].append(record)
 
+                file_size = json_file.stat().st_size if json_file.exists() else 0
+                file_state_entries.append({
+                    "file_path": record.file_path,
+                    "file_hash": record.file_hash,
+                    "file_size": file_size,
+                    "indexed_at": record.indexed_at,
+                    "connector_name": connector.name,
+                    "conversation_id": record.conversation_id,
+                    "project_id": record.project_id,
+                })
+
                 # Collect chunks (will batch encode later)
                 chunks_with_meta = self._chunk_by_messages(record.messages, record.title)
-                for chunk in chunks_with_meta:
-                    chunk['_record'] = record  # Store reference for later
+                for chunk_idx, chunk in enumerate(chunks_with_meta):
+                    chunk["_record"] = record
+                    chunk["_chunk_index"] = chunk_idx
                     all_chunks_with_meta.append(chunk)
 
             except Exception as e:
-                if agent_type == 'claude':
+                if connector.name == "claude":
                     raise RuntimeError(f"Failed to process {json_file}: {e}") from e
-                logger.warning(f"Failed to process {agent_type} session {json_file}: {e}")
+                logger.warning(f"Failed to process {connector.name} session {json_file}: {e}")
                 continue
 
         # Phase 3: Generate embeddings
@@ -352,39 +397,49 @@ class ConversationIndexer:
 
         # Build metadata for FAISS index
         metadata: list[dict] = []
-        for chunk_idx, (chunk_meta, embedding) in enumerate(zip(all_chunks_with_meta, embeddings_array)):
-            record = chunk_meta['_record']
+        vector_ids: list[int] = []
+        next_vector_id = 0
+        record_first_vector_id: dict[str, int] = {}
+        for chunk_meta, _embedding in zip(all_chunks_with_meta, embeddings_array):
+            record = chunk_meta["_record"]
+            if record.conversation_id not in record_first_vector_id:
+                record_first_vector_id[record.conversation_id] = next_vector_id
+            vector_id = next_vector_id
+            next_vector_id += 1
+            vector_ids.append(vector_id)
             metadata.append({
-                'vector_id': chunk_idx,
-                'conversation_id': record.conversation_id,
-                'project_id': record.project_id,
-                'chunk_index': chunk_idx,
-                'chunk_text': chunk_meta['text'],
-                'message_start_index': chunk_meta['start_message_index'],
-                'message_end_index': chunk_meta['end_message_index'],
-                'created_at': record.created_at
+                "vector_id": vector_id,
+                "conversation_id": record.conversation_id,
+                "project_id": record.project_id,
+                "chunk_index": chunk_meta["_chunk_index"],
+                "chunk_text": chunk_meta["text"],
+                "message_start_index": chunk_meta["start_message_index"],
+                "message_end_index": chunk_meta["end_message_index"],
+                "created_at": record.created_at,
             })
 
         # Phase 4: Building index
         progress.update_phase("Building search index")
         if len(embeddings_array) > 0:
-            self._build_faiss_index(embeddings_array, metadata)
+            self._build_faiss_index(embeddings_array, metadata, vector_ids)
 
         # Phase 5: Saving
         progress.update_phase("Writing to storage")
         for project_id, records in project_records_map.items():
-            # Update embedding_id for records
-            embedding_offset = 0
             for record in records:
-                record.embedding_id = embedding_offset
-                chunks_count = len(self._chunk_by_messages(record.messages, record.title))
-                embedding_offset += chunks_count
+                record.embedding_id = record_first_vector_id.get(record.conversation_id, 0)
             self._write_parquet_batch(records, project_id)
 
-        self._write_index_metadata(len(all_records), len(embeddings_array))
+        self._write_index_metadata(
+            len(all_records),
+            len(embeddings_array),
+            next_vector_id=next_vector_id,
+        )
 
         # Persist indexed source paths for fast watcher startup.
         self._write_indexed_paths({r.file_path for r in all_records})
+        if file_state_entries:
+            self._write_file_state(file_state_entries)
 
         # Update final stats
         progress.update_stats(
@@ -695,7 +750,7 @@ class ConversationIndexer:
         data_root = self._resolve_opencode_data_root(session_path)
         messages = self._load_opencode_messages(data_root, session_id)
         if not messages:
-            for alt_root in self.opencode_dirs:
+            for alt_root in PathResolver.resolve_opencode_dirs(self.config):
                 if alt_root == data_root:
                     continue
                 messages = self._load_opencode_messages(alt_root, session_id)
@@ -923,56 +978,187 @@ class ConversationIndexer:
         
         table = pa.Table.from_pydict(data, schema=CONVERSATION_SCHEMA)
         pq.write_table(table, output_path)
+
+    def _record_to_dict(self, record: ConversationRecord) -> dict:
+        return {
+            "conversation_id": record.conversation_id,
+            "project_id": record.project_id,
+            "file_path": record.file_path,
+            "title": record.title,
+            "created_at": record.created_at,
+            "updated_at": record.updated_at,
+            "message_count": record.message_count,
+            "messages": [
+                {
+                    "sequence": m.sequence,
+                    "role": m.role,
+                    "content": m.content,
+                    "timestamp": m.timestamp,
+                    "has_code": m.has_code,
+                    "code_blocks": m.code_blocks,
+                }
+                for m in record.messages
+            ],
+            "full_text": record.full_text,
+            "embedding_id": record.embedding_id,
+            "file_hash": record.file_hash,
+            "indexed_at": record.indexed_at,
+        }
+
+    def _write_project_parquet_dicts(self, project_id: str, record_dicts: list[dict]) -> None:
+        output_path = self.conversations_dir / f"project_{project_id}.parquet"
+        table = pa.Table.from_pylist(record_dicts, schema=CONVERSATION_SCHEMA)
+        pq.write_table(table, output_path)
+
+    def _append_record_dicts(self, project_id: str, record_dicts: list[dict]) -> None:
+        if not record_dicts:
+            return
+        project_parquet = self.conversations_dir / f"project_{project_id}.parquet"
+        new_table = pa.Table.from_pylist(record_dicts, schema=CONVERSATION_SCHEMA)
+        if project_parquet.exists():
+            existing_table = pq.read_table(project_parquet)
+            combined_table = pa.concat_tables([existing_table, new_table])
+            pq.write_table(combined_table, project_parquet)
+        else:
+            pq.write_table(new_table, project_parquet)
+
+    def _remove_conversation_from_project(self, project_id: str, conversation_id: str) -> None:
+        project_parquet = self.conversations_dir / f"project_{project_id}.parquet"
+        if not project_parquet.exists():
+            return
+        table = pq.read_table(project_parquet)
+        filtered = table.filter(pc.field("conversation_id") != conversation_id)
+        pq.write_table(filtered, project_parquet)
+
+    def _rebuild_idmap_index(
+        self,
+        existing_index: faiss.Index,
+        remaining_ids: list[int],
+        new_embeddings: list[np.ndarray],
+        new_ids: list[int],
+    ) -> faiss.Index:
+        dimension = existing_index.d
+        base_index = faiss.IndexFlatL2(dimension)  # type: ignore[call-arg]
+        rebuilt_index = faiss.IndexIDMap2(base_index)  # type: ignore[call-arg]
+
+        vectors: list[np.ndarray] = []
+        ids: list[int] = []
+
+        for vector_id in remaining_ids:
+            try:
+                vector = existing_index.reconstruct(int(vector_id))  # type: ignore[call-arg]
+            except Exception as exc:
+                raise RuntimeError(
+                    "Failed to reconstruct existing vectors for rebuild."
+                ) from exc
+            vectors.append(vector)
+            ids.append(int(vector_id))
+
+        if new_embeddings:
+            vectors.extend(new_embeddings)
+            ids.extend(int(vector_id) for vector_id in new_ids)
+
+        if vectors:
+            vectors_array = np.vstack(vectors).astype(np.float32)
+            ids_array = np.asarray(ids, dtype=np.int64)
+            rebuilt_index.add_with_ids(vectors_array, ids_array)  # type: ignore[call-arg]
+
+        return rebuilt_index
     
-    def _build_faiss_index(self, embeddings: np.ndarray, metadata: list[dict]) -> None:
+    def _build_faiss_index(
+        self,
+        embeddings: np.ndarray,
+        metadata: list[dict],
+        vector_ids: list[int],
+    ) -> None:
         dimension = embeddings.shape[1]  # type: ignore[call-arg]
         n_vectors = embeddings.shape[0]  # type: ignore[call-arg]
-        
+
         if n_vectors < 100:
-            index = faiss.IndexFlatL2(dimension)  # type: ignore[call-arg]
+            base_index = faiss.IndexFlatL2(dimension)  # type: ignore[call-arg]
         else:
             quantizer = faiss.IndexFlatL2(dimension)  # type: ignore[call-arg]
-            index = faiss.IndexIVFFlat(quantizer, dimension, min(100, n_vectors // 10))  # type: ignore[call-arg]
-            index.train(embeddings)  # type: ignore[call-arg,arg-type]
-        
-        index.add(embeddings)  # type: ignore[call-arg,arg-type]
-        
+            base_index = faiss.IndexIVFFlat(quantizer, dimension, min(100, n_vectors // 10))  # type: ignore[call-arg]
+            base_index.train(embeddings)  # type: ignore[call-arg,arg-type]
+
+        index = faiss.IndexIDMap2(base_index)  # type: ignore[call-arg]
+        id_array = np.asarray(vector_ids, dtype=np.int64)
+        index.add_with_ids(embeddings, id_array)  # type: ignore[call-arg,arg-type]
+
         faiss.write_index(index, str(self.indices_dir / "embeddings.faiss"))  # type: ignore[call-arg]
-        
+
         metadata_table = pa.Table.from_pylist(metadata, schema=METADATA_SCHEMA)  # type: ignore[call-arg]
         pq.write_table(metadata_table, self.indices_dir / "embeddings.metadata.parquet")  # type: ignore[call-arg]
     
-    def _write_index_metadata(self, total_conversations: int, total_chunks: int) -> None:
+    def _write_index_metadata(
+        self,
+        total_conversations: int,
+        total_chunks: int,
+        *,
+        created_at: str | None = None,
+        next_vector_id: int | None = None,
+    ) -> None:
+        if created_at is None:
+            created_at = datetime.now().isoformat()
+        if next_vector_id is None:
+            next_vector_id = total_chunks
+
         metadata = {
-            "version": "1.0.0",
-            "schema_version": 1,
-            "model_name": self.config.embedding.model,
+            "schema_version": INDEX_SCHEMA_VERSION,
+            "index_format_version": INDEX_FORMAT_VERSION,
+            "created_at": created_at,
+            "embedding_model": self.config.embedding.model,
+            "format": INDEX_FORMAT,
             "last_updated": datetime.now().isoformat(),
             "total_conversations": total_conversations,
             "total_chunks": total_chunks,
             "chunk_size": self.chunk_size,
-            "chunk_overlap": self.chunk_overlap
+            "chunk_overlap": self.chunk_overlap,
+            "next_vector_id": next_vector_id,
         }
-        
-        metadata_path = self.indices_dir / "index_metadata.json"
-        with open(metadata_path, 'w') as f:
+
+        metadata_path = self.indices_dir / INDEX_METADATA_FILENAME
+        with open(metadata_path, "w", encoding="utf-8") as f:
             json.dump(metadata, f, indent=2)
     
     def _has_existing_index(self) -> bool:
         """Check if an existing index is present."""
-        metadata_path = self.indices_dir / "index_metadata.json"
+        metadata_path = self.indices_dir / INDEX_METADATA_FILENAME
         faiss_path = self.indices_dir / "embeddings.faiss"
         has_parquets = any(self.conversations_dir.glob("*.parquet"))
 
         return metadata_path.exists() or faiss_path.exists() or has_parquets
 
     def _load_existing_metadata(self) -> dict | None:
-        metadata_path = self.indices_dir / "index_metadata.json"
+        metadata_path = self.indices_dir / INDEX_METADATA_FILENAME
         if not metadata_path.exists():
             return None
         
         with open(metadata_path, 'r') as f:
             return json.load(f)
+
+    def _require_compatible_index(self, metadata: dict) -> None:
+        if metadata.get("embedding_model") != self.config.embedding.model:
+            raise ValueError(
+                f"Model mismatch: index uses '{metadata.get('embedding_model')}', "
+                f"config specifies '{self.config.embedding.model}'. "
+                "Cannot append with different embedding model."
+            )
+        if metadata.get("format") != INDEX_FORMAT:
+            raise ValueError(
+                f"Index format mismatch: index uses '{metadata.get('format')}', "
+                f"expected '{INDEX_FORMAT}'. Rebuild index required."
+            )
+        if metadata.get("schema_version") != INDEX_SCHEMA_VERSION:
+            raise ValueError(
+                f"Schema version mismatch: index uses version {metadata.get('schema_version')}, "
+                f"expected version {INDEX_SCHEMA_VERSION}. Rebuild index required."
+            )
+        if metadata.get("index_format_version") != INDEX_FORMAT_VERSION:
+            raise ValueError(
+                f"Index format version mismatch: index uses version {metadata.get('index_format_version')}, "
+                f"expected version {INDEX_FORMAT_VERSION}. Rebuild index required."
+            )
     
     def get_indexed_file_paths(self) -> set:
         """
@@ -1019,6 +1205,10 @@ class ConversationIndexer:
         """
         if progress is None:
             progress = NullProgressAdapter()
+        if not self.config.indexing.enable_connectors:
+            raise RuntimeError(
+                "Connector loading is disabled. Set indexing.enable_connectors to true."
+            )
 
         progress.update_phase("Processing new conversations")
         start_time = time.time()
@@ -1030,12 +1220,7 @@ class ConversationIndexer:
                 "Initial index must exist before append-only mode can be used."
             )
 
-        if existing_metadata.get('model_name') != self.config.embedding.model:
-            raise ValueError(
-                f"Model mismatch: index uses '{existing_metadata.get('model_name')}', "
-                f"config specifies '{self.config.embedding.model}'. "
-                "Cannot append with different embedding model."
-            )
+        self._require_compatible_index(existing_metadata)
 
         # Get already indexed paths to skip duplicates
         existing_paths = self.get_indexed_file_paths()
@@ -1060,10 +1245,15 @@ class ConversationIndexer:
             self.indices_dir / "embeddings.metadata.parquet"
         )
         existing_metadata_df = existing_metadata_table.to_pandas()
-        next_vector_id = int(existing_metadata_df['vector_id'].max()) + 1 if len(existing_metadata_df) > 0 else 0
+        next_vector_id = int(existing_metadata.get("next_vector_id", 0) or 0)
+        existing_ids = existing_metadata_table.column("vector_id").to_pylist()
+        max_vector_id = max(existing_ids) if existing_ids else -1
+        if next_vector_id <= max_vector_id:
+            next_vector_id = max_vector_id + 1
 
         new_embeddings = []
         new_metadata = []
+        new_vector_ids: list[int] = []
         new_conversation_records: dict[str, list[ConversationRecord]] = {}
         new_indexed_paths: set[str] = set()
         processed_count = 0
@@ -1075,17 +1265,12 @@ class ConversationIndexer:
                 logger.warning(f"File not found, skipping: {file_path}")
                 continue
 
-            # Detect format and get project_id
-            agent_format = self._detect_agent_format(json_path)
-            display_name = f"{agent_format} | {json_path.name}"
+            connector = detect_connector(json_path)
+            display_name = f"{connector.name} | {json_path.name}"
             progress.update_file_progress(idx, len(new_files), display_name)
-            if agent_format == 'vibe':
-                project_id = "vibe-sessions"
-            else:
-                project_id = json_path.parent.name
 
             try:
-                record = self._process_any_conversation(json_path, project_id, next_vector_id)
+                record = connector.parse(json_path, next_vector_id)
 
                 # Skip conversations with no messages
                 if record.message_count == 0:
@@ -1116,6 +1301,7 @@ class ConversationIndexer:
                         'message_end_index': chunk_meta['end_message_index'],
                         'created_at': record.created_at
                     })
+                    new_vector_ids.append(next_vector_id)
                     next_vector_id += 1
 
                 processed_count += 1
@@ -1127,8 +1313,23 @@ class ConversationIndexer:
         # Append to FAISS index
         if new_embeddings:
             embeddings_array = np.array(new_embeddings).astype(np.float32)
-            existing_index.add(embeddings_array)
-            faiss.write_index(existing_index, str(faiss_path))
+            id_array = np.asarray(new_vector_ids, dtype=np.int64)
+            try:
+                existing_index.add_with_ids(embeddings_array, id_array)
+                faiss.write_index(existing_index, str(faiss_path))
+            except Exception:
+                remaining_ids = [
+                    int(value)
+                    for value in existing_metadata_table.column("vector_id").to_pylist()
+                    if value is not None
+                ]
+                rebuilt_index = self._rebuild_idmap_index(
+                    existing_index,
+                    remaining_ids,
+                    new_embeddings,
+                    new_vector_ids,
+                )
+                faiss.write_index(rebuilt_index, str(faiss_path))
 
             # Append to metadata parquet
             new_metadata_table = pa.Table.from_pylist(new_metadata, schema=METADATA_SCHEMA)
@@ -1137,45 +1338,8 @@ class ConversationIndexer:
 
         # Append to conversation parquets
         for project_id, records in new_conversation_records.items():
-            project_parquet = self.conversations_dir / f"project_{project_id}.parquet"
-
-            new_record_dicts = []
-            for r in records:
-                new_record_dicts.append({
-                    'conversation_id': r.conversation_id,
-                    'project_id': r.project_id,
-                    'file_path': r.file_path,
-                    'title': r.title,
-                    'created_at': r.created_at,
-                    'updated_at': r.updated_at,
-                    'message_count': r.message_count,
-                    'messages': [
-                        {
-                            'sequence': m.sequence,
-                            'role': m.role,
-                            'content': m.content,
-                            'timestamp': m.timestamp,
-                            'has_code': m.has_code,
-                            'code_blocks': m.code_blocks
-                        }
-                        for m in r.messages
-                    ],
-                    'full_text': r.full_text,
-                    'embedding_id': r.embedding_id,
-                    'file_hash': r.file_hash,
-                    'indexed_at': r.indexed_at
-                })
-
-            if project_parquet.exists():
-                # Append to existing parquet
-                existing_table = pq.read_table(project_parquet)
-                new_table = pa.Table.from_pylist(new_record_dicts, schema=CONVERSATION_SCHEMA)
-                combined_table = pa.concat_tables([existing_table, new_table])
-                pq.write_table(combined_table, project_parquet)
-            else:
-                # Create new parquet for this project
-                new_table = pa.Table.from_pylist(new_record_dicts, schema=CONVERSATION_SCHEMA)
-                pq.write_table(new_table, project_parquet)
+            new_record_dicts = [self._record_to_dict(r) for r in records]
+            self._append_record_dicts(project_id, new_record_dicts)
 
         # Update index metadata
         existing_index_metadata = self._load_existing_metadata()
@@ -1183,7 +1347,13 @@ class ConversationIndexer:
             raise RuntimeError("Index metadata missing after append-only update")
         total_conversations = existing_index_metadata["total_conversations"] + processed_count
         total_chunks = existing_index_metadata["total_chunks"] + len(new_embeddings)
-        self._write_index_metadata(total_conversations, total_chunks)
+        created_at = existing_index_metadata.get("created_at") or datetime.now().isoformat()
+        self._write_index_metadata(
+            total_conversations,
+            total_chunks,
+            created_at=created_at,
+            next_vector_id=next_vector_id,
+        )
 
         progress.update_stats(
             conversations=processed_count,
@@ -1195,6 +1365,25 @@ class ConversationIndexer:
         if new_indexed_paths:
             self._write_indexed_paths(existing_paths | new_indexed_paths)
 
+        if new_conversation_records:
+            file_state = self._load_file_state()
+            if not file_state:
+                file_state = self._backfill_file_state()
+            for records in new_conversation_records.values():
+                for record in records:
+                    path_obj = Path(record.file_path)
+                    file_size = path_obj.stat().st_size if path_obj.exists() else 0
+                    file_state[record.file_path] = {
+                        "file_path": record.file_path,
+                        "file_hash": record.file_hash,
+                        "file_size": file_size,
+                        "indexed_at": record.indexed_at,
+                        "connector_name": detect_connector(path_obj).name,
+                        "conversation_id": record.conversation_id,
+                        "project_id": record.project_id,
+                    }
+            self._write_file_state(list(file_state.values()))
+
         elapsed = time.time() - start_time
 
         return UpdateStats(
@@ -1202,4 +1391,212 @@ class ConversationIndexer:
             updated_conversations=0,
             skipped_conversations=len(file_paths) - processed_count,
             update_time_seconds=elapsed
+        )
+
+    def index_adaptive(
+        self,
+        file_paths: list[str],
+        progress: ProgressCallback | None = None,
+    ) -> UpdateStats:
+        """
+        Adaptive indexing for new and modified conversation files.
+
+        New files are appended. Modified files trigger per-conversation reindexing.
+        """
+        if progress is None:
+            progress = NullProgressAdapter()
+        if not self.config.indexing.enable_connectors:
+            raise RuntimeError(
+                "Connector loading is disabled. Set indexing.enable_connectors to true."
+            )
+        if not self.config.indexing.enable_adaptive_indexing:
+            return self.index_append_only(file_paths, progress)
+
+        progress.update_phase("Processing conversations")
+        start_time = time.time()
+
+        existing_metadata = self._load_existing_metadata()
+        if existing_metadata is None:
+            raise RuntimeError(
+                "No existing index found. Cannot perform adaptive update. "
+                "Initial index must exist before adaptive mode can be used."
+            )
+
+        self._require_compatible_index(existing_metadata)
+
+        faiss_path = self.indices_dir / "embeddings.faiss"
+        existing_index = faiss.read_index(str(faiss_path))
+
+        existing_metadata_table = pq.read_table(
+            self.indices_dir / "embeddings.metadata.parquet"
+        )
+
+        file_state = self._load_file_state()
+        if not file_state:
+            file_state = self._backfill_file_state()
+
+        next_vector_id = int(existing_metadata.get("next_vector_id", 0) or 0)
+        existing_ids = existing_metadata_table.column("vector_id").to_pylist()
+        max_vector_id = max(existing_ids) if existing_ids else -1
+        if next_vector_id <= max_vector_id:
+            next_vector_id = max_vector_id + 1
+
+        new_embeddings: list[np.ndarray] = []
+        new_metadata: list[dict] = []
+        new_vector_ids: list[int] = []
+        records_to_append: dict[str, list[ConversationRecord]] = {}
+        removed_vector_ids: set[int] = set()
+
+        new_count = 0
+        updated_count = 0
+        skipped_count = 0
+
+        for idx, file_path in enumerate(file_paths, 1):
+            json_path = Path(file_path)
+            if not json_path.exists():
+                logger.warning(f"File not found, skipping: {file_path}")
+                skipped_count += 1
+                continue
+
+            connector = detect_connector(json_path)
+            display_name = f"{connector.name} | {json_path.name}"
+            progress.update_file_progress(idx, len(file_paths), display_name)
+
+            file_hash = hashlib.sha256(json_path.read_bytes()).hexdigest()
+            file_size = json_path.stat().st_size
+            existing_state = file_state.get(file_path)
+            if existing_state and existing_state.get("file_hash") == file_hash:
+                skipped_count += 1
+                continue
+
+            record = connector.parse(json_path, next_vector_id)
+            if record.message_count == 0:
+                skipped_count += 1
+                continue
+
+            old_conversation_id = None
+            old_project_id = None
+            if existing_state:
+                old_conversation_id = existing_state.get("conversation_id")
+                old_project_id = existing_state.get("project_id")
+
+            if isinstance(old_conversation_id, str):
+                mask = pc.equal(existing_metadata_table["conversation_id"], old_conversation_id)  # type: ignore[attr-defined]
+                filtered_rows = existing_metadata_table.filter(mask)
+                removed_vector_ids.update(
+                    value for value in filtered_rows.column("vector_id").to_pylist() if value is not None
+                )
+                existing_metadata_table = existing_metadata_table.filter(pc.invert(mask))  # type: ignore[attr-defined]
+                if isinstance(old_project_id, str):
+                    self._remove_conversation_from_project(old_project_id, old_conversation_id)
+                updated_count += 1
+            else:
+                new_count += 1
+
+            chunks_with_meta = self._chunk_by_messages(record.messages, record.title)
+            record.embedding_id = next_vector_id
+            chunk_embeddings = self._batch_encode_chunks(chunks_with_meta, progress)
+            for chunk_idx, (chunk_meta, embedding) in enumerate(zip(chunks_with_meta, chunk_embeddings)):
+                new_embeddings.append(embedding)
+                new_metadata.append({
+                    "vector_id": next_vector_id,
+                    "conversation_id": record.conversation_id,
+                    "project_id": record.project_id,
+                    "chunk_index": chunk_idx,
+                    "chunk_text": chunk_meta["text"],
+                    "message_start_index": chunk_meta["start_message_index"],
+                    "message_end_index": chunk_meta["end_message_index"],
+                    "created_at": record.created_at,
+                })
+                new_vector_ids.append(next_vector_id)
+                next_vector_id += 1
+
+            records_to_append.setdefault(record.project_id, []).append(record)
+            file_state[record.file_path] = {
+                "file_path": record.file_path,
+                "file_hash": file_hash,
+                "file_size": file_size,
+                "indexed_at": record.indexed_at,
+                "connector_name": connector.name,
+                "conversation_id": record.conversation_id,
+                "project_id": record.project_id,
+            }
+
+        needs_rebuild = False
+
+        if removed_vector_ids:
+            ids = np.asarray(sorted(removed_vector_ids), dtype=np.int64)
+            selector = _build_id_selector(ids)
+            try:
+                existing_index.remove_ids(selector)
+            except Exception:
+                needs_rebuild = True
+
+        if new_embeddings:
+            embeddings_array = np.array(new_embeddings).astype(np.float32)
+            id_array = np.asarray(new_vector_ids, dtype=np.int64)
+            try:
+                if not needs_rebuild:
+                    existing_index.add_with_ids(embeddings_array, id_array)
+                    faiss.write_index(existing_index, str(faiss_path))
+            except Exception:
+                needs_rebuild = True
+
+        if needs_rebuild:
+            remaining_ids = [
+                int(value)
+                for value in existing_metadata_table.column("vector_id").to_pylist()
+                if value is not None
+            ]
+            rebuilt_index = self._rebuild_idmap_index(
+                existing_index,
+                remaining_ids,
+                new_embeddings,
+                new_vector_ids,
+            )
+            faiss.write_index(rebuilt_index, str(faiss_path))
+
+        if new_metadata or removed_vector_ids:
+            filtered_metadata = existing_metadata_table.to_pylist()
+            combined_metadata = filtered_metadata + new_metadata
+            updated_table = pa.Table.from_pylist(combined_metadata, schema=METADATA_SCHEMA)
+            pq.write_table(updated_table, self.indices_dir / "embeddings.metadata.parquet")
+
+        for project_id, records in records_to_append.items():
+            record_dicts = [self._record_to_dict(r) for r in records]
+            self._append_record_dicts(project_id, record_dicts)
+
+        if file_state:
+            self._write_file_state(list(file_state.values()))
+
+        existing_paths = self.get_indexed_file_paths()
+        if records_to_append:
+            new_paths = {r.file_path for records in records_to_append.values() for r in records}
+            if new_paths:
+                self._write_indexed_paths(existing_paths | new_paths)
+
+        total_conversations = existing_metadata["total_conversations"] + new_count
+        total_chunks = len(existing_metadata_table) + len(new_metadata)
+        created_at = existing_metadata.get("created_at") or datetime.now().isoformat()
+        self._write_index_metadata(
+            total_conversations,
+            total_chunks,
+            created_at=created_at,
+            next_vector_id=next_vector_id,
+        )
+
+        progress.update_stats(
+            conversations=new_count + updated_count,
+            chunks=len(new_metadata),
+            embeddings=len(new_metadata),
+        )
+        progress.finish()
+
+        elapsed = time.time() - start_time
+
+        return UpdateStats(
+            new_conversations=new_count,
+            updated_conversations=updated_count,
+            skipped_conversations=skipped_count,
+            update_time_seconds=elapsed,
         )
