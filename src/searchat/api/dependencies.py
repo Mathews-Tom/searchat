@@ -28,6 +28,7 @@ _indexer = None
 _backup_manager: BackupManager | None = None
 _platform_manager: PlatformManager | None = None
 _bookmarks_service = None
+_saved_queries_service = None
 _analytics_service = None
 _watcher = None
 _duckdb_store = None
@@ -38,6 +39,7 @@ _warmup_task: asyncio.Task[None] | None = None
 
 # Shared state
 projects_cache = None
+projects_summary_cache = None
 stats_cache = None
 watcher_stats = {"indexed_count": 0, "last_update": None}
 indexing_state = {
@@ -51,7 +53,7 @@ indexing_state = {
 
 def initialize_services():
     """Initialize all services on app startup."""
-    global _config, _search_dir, _backup_manager, _platform_manager, _bookmarks_service, _analytics_service, _duckdb_store
+    global _config, _search_dir, _backup_manager, _platform_manager, _bookmarks_service, _saved_queries_service, _analytics_service, _duckdb_store
 
     readiness = get_readiness()
     readiness.set_component("services", "loading")
@@ -63,11 +65,13 @@ def initialize_services():
 
         from searchat.api.duckdb_store import DuckDBStore
         from searchat.services.bookmarks import BookmarksService
+        from searchat.services.saved_queries import SavedQueriesService
         from searchat.services.analytics import SearchAnalyticsService
 
         _duckdb_store = DuckDBStore(_search_dir, memory_limit_mb=_config.performance.memory_limit_mb)
         _bookmarks_service = BookmarksService(_config)
         _analytics_service = SearchAnalyticsService(_config)
+        _saved_queries_service = SavedQueriesService(_config)
         readiness.set_component("services", "ready")
     except Exception as e:
         readiness.set_component("services", "error", error=str(e))
@@ -166,9 +170,10 @@ def get_or_create_search_engine():
 
 def invalidate_search_index() -> None:
     """Clear caches and mark semantic components stale after indexing."""
-    global projects_cache, stats_cache
+    global projects_cache, projects_summary_cache, stats_cache
 
     projects_cache = None
+    projects_summary_cache = None
     stats_cache = None
 
     engine = _search_engine
@@ -245,6 +250,13 @@ def get_bookmarks_service():
     if _bookmarks_service is None:
         raise RuntimeError("Services not initialized. Call initialize_services() first.")
     return _bookmarks_service
+
+
+def get_saved_queries_service():
+    """Get saved queries service singleton."""
+    if _saved_queries_service is None:
+        raise RuntimeError("Services not initialized. Call initialize_services() first.")
+    return _saved_queries_service
 
 
 def get_analytics_service():

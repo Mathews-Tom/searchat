@@ -39,6 +39,7 @@ from searchat.api.routers import (
     admin_router,
     status_router,
     chat_router,
+    queries_router,
 )
 from searchat.config.constants import (
     DEFAULT_HOST,
@@ -52,9 +53,16 @@ from searchat.config.constants import (
 
 warnings.filterwarnings(
     "ignore",
-    message=r"resource_tracker: There appear to be .* leaked semaphore objects to clean up at shutdown",
     category=UserWarning,
+    module=r"multiprocessing\.resource_tracker",
 )
+
+_warn_filter = "ignore::UserWarning:multiprocessing.resource_tracker"
+_existing_warn = os.environ.get("PYTHONWARNINGS", "")
+if _warn_filter not in _existing_warn:
+    os.environ["PYTHONWARNINGS"] = (
+        f"{_existing_warn},{_warn_filter}" if _existing_warn else _warn_filter
+    )
 
 
 # Cache HTML at module load for faster responses
@@ -92,6 +100,7 @@ app.include_router(backup_router, prefix="/api/backup", tags=["backup"])
 app.include_router(admin_router, prefix="/api", tags=["admin"])
 app.include_router(status_router, prefix="/api", tags=["status"])
 app.include_router(chat_router, prefix="/api", tags=["chat"])
+app.include_router(queries_router, prefix="/api", tags=["queries"])
 
 
 def on_new_conversations(file_paths: list[str]) -> None:
