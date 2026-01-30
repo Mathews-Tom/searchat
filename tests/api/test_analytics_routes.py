@@ -62,6 +62,23 @@ def mock_analytics_service():
         }
     ]
 
+    mock.get_trends.return_value = [
+        {"day": "2026-01-01", "searches": 3, "unique_queries": 2, "avg_time_ms": 100.0, "avg_results": 5.0},
+    ]
+    mock.get_heatmap.return_value = {"days": 30, "cells": [{"dow": 1, "hour": 9, "searches": 2}]}
+    mock.get_agent_comparison.return_value = [
+        {"tool_filter": "all", "searches": 10, "avg_time_ms": 120.0, "avg_results": 8.0},
+    ]
+    mock.get_topic_clusters.return_value = [
+        {
+            "cluster_id": 0,
+            "searches": 10,
+            "representative_query": "python",
+            "top_terms": ["python"],
+            "examples": ["python"],
+        }
+    ]
+
     return mock
 
 
@@ -235,16 +252,101 @@ def test_analytics_service_error_handling(client, mock_analytics_service):
         assert response.status_code == 500
 
 
+def test_analytics_new_endpoints_error_handling(client, mock_analytics_service):
+    mock_analytics_service.get_trends.side_effect = Exception("boom")
+    mock_analytics_service.get_heatmap.side_effect = Exception("boom")
+    mock_analytics_service.get_agent_comparison.side_effect = Exception("boom")
+    mock_analytics_service.get_topic_clusters.side_effect = Exception("boom")
+
+    with patch("searchat.api.dependencies.get_analytics_service", return_value=mock_analytics_service):
+        assert client.get("/api/stats/analytics/trends").status_code == 500
+        assert client.get("/api/stats/analytics/heatmap").status_code == 500
+        assert client.get("/api/stats/analytics/agent-comparison").status_code == 500
+        assert client.get("/api/stats/analytics/topics").status_code == 500
+
+
+def test_analytics_topics_value_error_returns_400(client, mock_analytics_service):
+    mock_analytics_service.get_topic_clusters.side_effect = ValueError("k must be between 2 and 20")
+    with patch("searchat.api.dependencies.get_analytics_service", return_value=mock_analytics_service):
+        resp = client.get("/api/stats/analytics/topics?days=30&k=8")
+        assert resp.status_code == 400
+
+
+def test_analytics_config_error_handling(client, mock_analytics_service):
+    with patch("searchat.api.dependencies.get_analytics_service", return_value=mock_analytics_service), \
+         patch("searchat.api.routers.stats.deps.get_config", side_effect=Exception("boom")):
+        resp = client.get("/api/stats/analytics/config")
+        assert resp.status_code == 500
+
+
 def test_all_analytics_endpoints_exist(client, mock_analytics_service):
     """Test all analytics endpoints are registered."""
-    with patch("searchat.api.dependencies.get_analytics_service", return_value=mock_analytics_service):
+    with patch("searchat.api.dependencies.get_analytics_service", return_value=mock_analytics_service), \
+         patch("searchat.api.routers.stats.deps.get_config") as mock_get_config:
+        mock_get_config.return_value = Mock(analytics=Mock(enabled=False, retention_days=30))
         endpoints = [
             "/api/stats/analytics/summary",
             "/api/stats/analytics/top-queries",
-            "/api/stats/analytics/dead-ends"
+            "/api/stats/analytics/dead-ends",
+            "/api/stats/analytics/config",
+            "/api/stats/analytics/trends",
+            "/api/stats/analytics/heatmap",
+            "/api/stats/analytics/agent-comparison",
+            "/api/stats/analytics/topics",
         ]
 
         for endpoint in endpoints:
             response = client.get(endpoint)
             # Should not be 404 (endpoint exists)
             assert response.status_code != 404
+
+
+def test_get_analytics_trends(client, mock_analytics_service):
+    with patch("searchat.api.dependencies.get_analytics_service", return_value=mock_analytics_service):
+        response = client.get("/api/stats/analytics/trends?days=30")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["days"] == 30
+        assert data["points"][0]["day"] == "2026-01-01"
+        mock_analytics_service.get_trends.assert_called_once_with(days=30)
+
+
+def test_get_analytics_heatmap(client, mock_analytics_service):
+    with patch("searchat.api.dependencies.get_analytics_service", return_value=mock_analytics_service):
+        response = client.get("/api/stats/analytics/heatmap?days=30")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["days"] == 30
+        assert "cells" in data
+        mock_analytics_service.get_heatmap.assert_called_once_with(days=30)
+
+
+def test_get_analytics_agent_comparison(client, mock_analytics_service):
+    with patch("searchat.api.dependencies.get_analytics_service", return_value=mock_analytics_service):
+        response = client.get("/api/stats/analytics/agent-comparison?days=30")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["days"] == 30
+        assert data["tools"][0]["tool_filter"] == "all"
+        mock_analytics_service.get_agent_comparison.assert_called_once_with(days=30)
+
+
+def test_get_analytics_topics(client, mock_analytics_service):
+    with patch("searchat.api.dependencies.get_analytics_service", return_value=mock_analytics_service):
+        response = client.get("/api/stats/analytics/topics?days=30&k=8")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["days"] == 30
+        assert len(data["clusters"]) == 1
+        mock_analytics_service.get_topic_clusters.assert_called_once_with(days=30, k=8)
+
+
+def test_get_analytics_config(client, mock_analytics_service):
+    with patch("searchat.api.dependencies.get_analytics_service", return_value=mock_analytics_service), \
+         patch("searchat.api.routers.stats.deps.get_config") as mock_get_config:
+        mock_get_config.return_value = Mock(analytics=Mock(enabled=True, retention_days=14))
+        response = client.get("/api/stats/analytics/config")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["enabled"] is True
+        assert data["retention_days"] == 14

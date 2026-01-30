@@ -45,7 +45,9 @@ def test_chat_rag_returns_answer_and_sources(client):
     generation = SimpleNamespace(answer="Final answer", results=[result], context_used=1)
 
     mock_generate = Mock(return_value=generation)
-    with patch("searchat.api.routers.chat.get_config", return_value=Mock()):
+    config = Mock()
+    config.chat = Mock(enable_rag=True, enable_citations=True)
+    with patch("searchat.api.routers.chat.get_config", return_value=config):
         with patch("searchat.api.routers.chat.generate_rag_response", mock_generate):
             resp = client.post(
                 "/api/chat-rag",
@@ -94,3 +96,25 @@ def test_chat_rag_temperature_validation(client):
         json={"query": "x", "model_provider": "ollama", "temperature": 9.9},
     )
     assert resp.status_code == 422
+
+
+def test_chat_rag_disabled_returns_404(client):
+    config = Mock()
+    config.chat = Mock(enable_rag=False, enable_citations=True)
+
+    with patch("searchat.api.routers.chat.get_config", return_value=config):
+        resp = client.post("/api/chat-rag", json={"query": "x", "model_provider": "ollama"})
+    assert resp.status_code == 404
+
+
+def test_chat_rag_citations_disabled_returns_no_sources(client):
+    generation = SimpleNamespace(answer="Final", results=[], context_used=0)
+    config = Mock()
+    config.chat = Mock(enable_rag=True, enable_citations=False)
+
+    with patch("searchat.api.routers.chat.get_config", return_value=config):
+        with patch("searchat.api.routers.chat.generate_rag_response", return_value=generation):
+            resp = client.post("/api/chat-rag", json={"query": "x", "model_provider": "ollama"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["sources"] == []
