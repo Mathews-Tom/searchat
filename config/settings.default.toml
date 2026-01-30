@@ -80,4 +80,4 @@ enable_tech_docs = false
 
 [dashboards]
 # Dashboard builder and widget rendering.
-enabled = false
+enabled = true
