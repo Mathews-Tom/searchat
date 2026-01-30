@@ -64,6 +64,8 @@ async def chat_rag(request: ChatRagRequest):
         return JSONResponse(status_code=503, content=warming_payload())
 
     config = get_config()
+    if not config.chat.enable_rag:
+        raise HTTPException(status_code=404, detail="RAG chat endpoint is disabled.")
     try:
         generation = generate_rag_response(
             query=request.query,
@@ -81,20 +83,24 @@ async def chat_rag(request: ChatRagRequest):
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
-    sources = [
-        ConversationSource(
-            conversation_id=r.conversation_id,
-            project_id=r.project_id,
-            title=r.title,
-            file_path=r.file_path,
-            updated_at=r.updated_at.isoformat(),
-            score=r.score,
-            snippet=r.snippet,
-            message_start_index=r.message_start_index,
-            message_end_index=r.message_end_index,
-            source=detect_source_from_path(r.file_path),
-            tool=detect_tool_from_path(r.file_path),
-        )
-        for r in generation.results
-    ]
+    sources: list[ConversationSource]
+    if not config.chat.enable_citations:
+        sources = []
+    else:
+        sources = [
+            ConversationSource(
+                conversation_id=r.conversation_id,
+                project_id=r.project_id,
+                title=r.title,
+                file_path=r.file_path,
+                updated_at=r.updated_at.isoformat(),
+                score=r.score,
+                snippet=r.snippet,
+                message_start_index=r.message_start_index,
+                message_end_index=r.message_end_index,
+                source=detect_source_from_path(r.file_path),
+                tool=detect_tool_from_path(r.file_path),
+            )
+            for r in generation.results
+        ]
     return RAGResponse(answer=generation.answer, sources=sources, context_used=generation.context_used)
