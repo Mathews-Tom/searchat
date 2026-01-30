@@ -36,3 +36,13 @@ METADATA_SCHEMA = pa.schema([
     ('message_end_index', pa.int32()),
     ('created_at', pa.timestamp('us'))
 ])
+
+FILE_STATE_SCHEMA = pa.schema([
+    ('file_path', pa.string()),
+    ('file_hash', pa.string()),
+    ('file_size', pa.int64()),
+    ('indexed_at', pa.timestamp('us')),
+    ('connector_name', pa.string()),
+    ('conversation_id', pa.string()),
+    ('project_id', pa.string()),
+])

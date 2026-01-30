@@ -49,12 +49,22 @@ class MockFaissIndex:
         self.d = dimension
         self.ntotal = 0
         self._vectors = []
+        self._id_map = {}
 
     def add(self, vectors):
         """Mock adding vectors to index."""
         if len(vectors) > 0:
             self._vectors.extend(vectors)
-            self.ntotal = len(self._vectors)
+            start = len(self._id_map)
+            for idx, vector in enumerate(vectors):
+                self._id_map[start + idx] = vector
+            self.ntotal = len(self._id_map)
+
+    def add_with_ids(self, vectors, ids):
+        """Mock adding vectors with explicit IDs."""
+        for vector, vector_id in zip(vectors, ids):
+            self._id_map[int(vector_id)] = vector
+        self.ntotal = len(self._id_map)
 
     def search(self, queries, k):
         """Mock search returning fake distances and indices."""
@@ -66,10 +76,26 @@ class MockFaissIndex:
         indices = np.random.randint(0, max(1, self.ntotal), (n_queries, k))
         return distances, indices
 
+    def remove_ids(self, selector):
+        """Mock removing vectors by IDs."""
+        ids = getattr(selector, "ids", [])
+        for vector_id in ids:
+            self._id_map.pop(int(vector_id), None)
+        self.ntotal = len(self._id_map)
+
+    def reconstruct(self, vector_id):
+        """Return stored vector by ID."""
+        return self._id_map[int(vector_id)]
+
     def reset(self):
         """Reset the index."""
         self.ntotal = 0
         self._vectors = []
+        self._id_map = {}
+
+
+class MockFaissIndexIDMap2(MockFaissIndex):
+    """Mock ID-mapped index wrapper."""
 
 
 def mock_index_flat_l2(dimension):
@@ -77,10 +103,41 @@ def mock_index_flat_l2(dimension):
     return MockFaissIndex(dimension)
 
 
+def mock_index_idmap2(base_index):
+    """Factory for creating mock IDMap2 index."""
+    return MockFaissIndexIDMap2(base_index.d)
+
+
+class MockIDSelectorBatch:
+    def __init__(self, *args):
+        if len(args) == 1:
+            self.ids = list(args[0])
+        elif len(args) == 2:
+            count, ptr = args
+            self.ids = list(np.ctypeslib.as_array(ptr, shape=(count,)))
+        else:
+            self.ids = []
+
+
 mock_faiss_module = MagicMock()
 mock_faiss_module.IndexFlatL2 = mock_index_flat_l2
-mock_faiss_module.read_index = MagicMock(return_value=MockFaissIndex())
-mock_faiss_module.write_index = MagicMock()
+mock_faiss_module.IndexIDMap2 = mock_index_idmap2
+mock_faiss_module.IDSelectorBatch = MockIDSelectorBatch
+mock_faiss_module._index_store = None
+
+
+def mock_write_index(index, _path):
+    mock_faiss_module._index_store = index
+
+
+def mock_read_index(_path):
+    if mock_faiss_module._index_store is None:
+        mock_faiss_module._index_store = MockFaissIndex()
+    return mock_faiss_module._index_store
+
+
+mock_faiss_module.read_index = MagicMock(side_effect=mock_read_index)
+mock_faiss_module.write_index = MagicMock(side_effect=mock_write_index)
 
 sys.modules['faiss'] = mock_faiss_module
 

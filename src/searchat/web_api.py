@@ -138,18 +138,33 @@ def on_new_conversations(file_paths: list[str]) -> None:
         indexing_state["files_total"] = len(file_paths)
         indexing_state["files_processed"] = 0
 
-        stats = indexer.index_append_only(file_paths)
+        enable_adaptive = False
+        try:
+            enable_adaptive = bool(
+                getattr(indexer, "config", None)
+                and getattr(indexer.config, "indexing", None)
+                and indexer.config.indexing.enable_adaptive_indexing
+            )
+        except Exception:
+            enable_adaptive = False
 
-        if stats.new_conversations > 0:
+        if enable_adaptive and hasattr(indexer, "index_adaptive"):
+            stats = indexer.index_adaptive(file_paths)
+        else:
+            stats = indexer.index_append_only(file_paths)
+
+        updated_conversations = getattr(stats, "updated_conversations", 0)
+        if stats.new_conversations > 0 or updated_conversations > 0:
             # Reload search engine to pick up new data
             search_engine.refresh_index()
             projects_cache = None  # Clear cache
 
-            watcher_stats["indexed_count"] += stats.new_conversations
+            watcher_stats["indexed_count"] += stats.new_conversations + updated_conversations
             watcher_stats["last_update"] = datetime.now().isoformat()
 
             logger.info(
-                f"Indexed {stats.new_conversations} new conversations "
+                f"Indexed {stats.new_conversations} new conversations and "
+                f"updated {updated_conversations} conversations "
                 f"in {stats.update_time_seconds:.2f}s"
             )
     except Exception as e:
