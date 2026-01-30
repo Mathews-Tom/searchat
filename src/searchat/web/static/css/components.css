@@ -784,6 +784,50 @@
     font-size: 13px;
 }
 
+.chat-advanced {
+    background: transparent;
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    padding: 6px 10px;
+    color: var(--text-muted);
+}
+
+.chat-advanced summary {
+    cursor: pointer;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.chat-advanced[open] {
+    background: var(--bg-elevated);
+}
+
+.chat-advanced-grid {
+    margin-top: 10px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(160px, 1fr));
+    gap: 10px 12px;
+}
+
+.chat-advanced-wide {
+    grid-column: 1 / -1;
+}
+
+.chat-system-prompt {
+    width: 100%;
+    min-height: 80px;
+    resize: vertical;
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 13px;
+}
+
 .chat-controls label {
     color: var(--text-muted);
     display: inline-flex;
@@ -905,4 +949,76 @@
     font-size: 14px;
     color: var(--text-primary);
     min-height: 60px;
+}
+
+.chat-sources {
+    margin-top: 10px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 13px;
+    color: var(--text-primary);
+}
+
+.chat-sources-title {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 600;
+    font-size: 13px;
+    margin-bottom: 8px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.chat-source-item {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 8px 0;
+    border-top: 1px solid var(--border-muted);
+}
+
+.chat-source-item:first-of-type {
+    border-top: none;
+    padding-top: 0;
+}
+
+.chat-source-main {
+    flex: 1;
+    min-width: 0;
+}
+
+.chat-source-title {
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--text-primary);
+    margin-bottom: 3px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.chat-source-meta {
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+.chat-source-open {
+    background: transparent;
+    color: var(--accent-primary);
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    padding: 6px 10px;
+    cursor: pointer;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    flex: 0 0 auto;
+}
+
+.chat-source-open:hover {
+    border-color: var(--accent-primary);
+    background: var(--bg-surface);
 }
