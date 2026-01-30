@@ -1,84 +1,94 @@
 import json
-import pytest
 from pathlib import Path
+
+import numpy as np
+import pytest
+
+from searchat.config import PathResolver
 from searchat.core import ConversationIndexer
-from searchat.models import UpdateStats
+
+
+def _write_jsonl(path: Path, lines: list[dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        for line in lines:
+            f.write(json.dumps(line) + "\n")
+
+
+def _fake_encode(self, chunks_with_meta, progress=None):
+    return np.zeros((len(chunks_with_meta), 2), dtype=np.float32)
 
 
 @pytest.fixture
-def test_project_dir(tmp_path):
-    claude_dir = tmp_path / ".claude" / "projects" / "test-project"
-    claude_dir.mkdir(parents=True)
+def claude_project_dir(tmp_path, monkeypatch):
+    claude_dir = tmp_path / ".claude" / "projects"
+    monkeypatch.setattr(PathResolver, "resolve_claude_dirs", lambda config=None: [claude_dir])
+    monkeypatch.setattr(PathResolver, "resolve_vibe_dirs", lambda: [])
+    monkeypatch.setattr(PathResolver, "resolve_opencode_dirs", lambda config=None: [])
     return claude_dir
 
 
-@pytest.fixture
-def indexer_with_initial_index(tmp_path, test_project_dir, monkeypatch):
-    """Create an indexer with an initial index (simulating existing data)."""
-    # Create initial conversation
-    conv1_lines = [
-        {"type": "user", "message": {"content": "Hello"}, "timestamp": "2025-09-01T10:00:00"},
-        {"type": "assistant", "message": {"content": "Hi!"}, "timestamp": "2025-09-01T10:00:30"}
-    ]
-    conv1_file = test_project_dir / "conv1.jsonl"
-    with open(conv1_file, 'w', encoding='utf-8') as f:
-        for line in conv1_lines:
-            f.write(json.dumps(line) + '\n')
+def test_adaptive_reindex_updates_vectors(tmp_path, claude_project_dir, monkeypatch):
+    monkeypatch.setattr(ConversationIndexer, "_batch_encode_chunks", _fake_encode)
+    search_dir = tmp_path / "search"
+    indexer = ConversationIndexer(search_dir)
 
-    monkeypatch.setattr(
-        'searchat.indexer.PathResolver.resolve_claude_dirs',
-        lambda self, config=None: [tmp_path / ".claude" / "projects"]
+    conv_path = claude_project_dir / "project-one" / "conv1.jsonl"
+    _write_jsonl(
+        conv_path,
+        [
+            {"type": "user", "message": {"content": "Hello"}, "timestamp": "2025-09-01T10:00:00"},
+            {"type": "assistant", "message": {"content": "Hi"}, "timestamp": "2025-09-01T10:00:30"},
+        ],
     )
 
-    # Create indexer - note: index_all() is blocked, so we need to work around this
-    # For testing, we'll monkeypatch to allow it
-    indexer = ConversationIndexer(tmp_path / "search")
+    indexer.index_all()
 
-    # Temporarily allow index_all for test setup
-    original_index_all = ConversationIndexer.index_all
-    def unblocked_index_all(self):
-        # Skip the RuntimeError and run the actual indexing
-        import time
-        start_time = time.time()
-        # ... simplified for test
-        return indexer._do_initial_index()
+    metadata_path = search_dir / "data" / "indices" / "embeddings.metadata.parquet"
+    metadata_table = metadata_path
+    assert metadata_table.exists()
 
-    # For now, manually create the index structure
-    indexer._ensure_directories()
-
-    return indexer, test_project_dir, conv1_file
-
-
-def test_append_only_skips_existing(tmp_path, test_project_dir, monkeypatch):
-    """Test that index_append_only skips files already in the index."""
-    # This test would require a fully set up index
-    # Marking as placeholder for now
-    pass
-
-
-def test_append_only_adds_new_files(tmp_path, test_project_dir, monkeypatch):
-    """Test that index_append_only adds new files."""
-    # This test would require a fully set up index
-    # Marking as placeholder for now
-    pass
-
-
-def test_append_only_never_deletes(tmp_path, test_project_dir, monkeypatch):
-    """Test that index_append_only never removes existing data."""
-    # This is the critical safety test
-    # Even if source files are deleted, indexed data should remain
-    pass
-
-
-def test_get_indexed_file_paths(tmp_path, monkeypatch):
-    """Test that get_indexed_file_paths returns correct set."""
-    monkeypatch.setattr(
-        'searchat.config.PathResolver.resolve_claude_dirs',
-        lambda self, config=None: [tmp_path / ".claude" / "projects"]
+    _write_jsonl(
+        conv_path,
+        [
+            {"type": "user", "message": {"content": "Hello again"}, "timestamp": "2025-09-02T10:00:00"},
+            {"type": "assistant", "message": {"content": "Hi again"}, "timestamp": "2025-09-02T10:00:30"},
+        ],
     )
 
-    indexer = ConversationIndexer(tmp_path / "search")
+    stats = indexer.index_adaptive([str(conv_path)])
+    assert stats.updated_conversations == 1
 
-    # With no parquet files, should return empty set
-    paths = indexer.get_indexed_file_paths()
-    assert paths == set()
+    import pyarrow.parquet as pq
+
+    updated_table = pq.read_table(metadata_path)
+    vector_ids = sorted(updated_table.column("vector_id").to_pylist())
+    assert vector_ids == [1]
+
+    with open(search_dir / "data" / "indices" / "index_metadata.json", "r", encoding="utf-8") as f:
+        metadata = json.load(f)
+    assert metadata["next_vector_id"] == 2
+
+    stats_skip = indexer.index_adaptive([str(conv_path)])
+    assert stats_skip.skipped_conversations == 1
+
+    conv2_path = claude_project_dir / "project-one" / "conv2.jsonl"
+    _write_jsonl(
+        conv2_path,
+        [
+            {"type": "user", "message": {"content": "New"}, "timestamp": "2025-09-03T10:00:00"},
+            {"type": "assistant", "message": {"content": "Conversation"}, "timestamp": "2025-09-03T10:00:30"},
+        ],
+    )
+
+    stats_new = indexer.index_adaptive([str(conv2_path)])
+    assert stats_new.new_conversations == 1
+
+    updated_table = pq.read_table(metadata_path)
+    vector_ids = sorted(updated_table.column("vector_id").to_pylist())
+    assert vector_ids == [1, 2]
+
+    file_state_path = search_dir / "data" / "indices" / "file_state.parquet"
+    assert file_state_path.exists()
+    file_state_table = pq.read_table(file_state_path)
+    assert len(file_state_table) == 2

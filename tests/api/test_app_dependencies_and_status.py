@@ -185,6 +185,30 @@ async def test_app_startup_event_initializes_services_and_schedules_watcher(monk
 
 
 @pytest.mark.asyncio
+async def test_app_startup_event_profile_logging(monkeypatch: pytest.MonkeyPatch) -> None:
+    api_app = _api_app_module()
+
+    monkeypatch.setenv("SEARCHAT_PROFILE_STARTUP", "1")
+    monkeypatch.setattr(api_app, "initialize_services", MagicMock())
+    monkeypatch.setattr(api_app, "start_background_warmup", MagicMock())
+    monkeypatch.setattr(api_app, "get_config", lambda: SimpleNamespace(logging=SimpleNamespace()))
+    monkeypatch.setattr(api_app, "setup_logging", MagicMock())
+
+    logger = MagicMock()
+    monkeypatch.setattr(api_app, "get_logger", lambda *_args, **_kwargs: logger)
+
+    def _fake_create_task(coro):
+        coro.close()
+        return MagicMock()
+
+    monkeypatch.setattr(api_app.asyncio, "create_task", _fake_create_task)
+
+    await api_app.startup_event()
+
+    assert logger.info.call_count >= 2
+
+
+@pytest.mark.asyncio
 async def test_app_root_and_conversation_page_serve_cached_html() -> None:
     api_app = _api_app_module()
 
@@ -208,6 +232,63 @@ def test_on_new_conversations_indexes_and_invalidates(monkeypatch: pytest.Monkey
     api_app.on_new_conversations(["a.jsonl", "b.jsonl"])
 
     assert api_app.indexing_state["in_progress"] is False
+    invalidate.assert_called_once()
+
+
+def test_on_new_conversations_uses_adaptive_when_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    api_app = _api_app_module()
+    import searchat.api.dependencies as deps
+
+    fake_stats = SimpleNamespace(new_conversations=0, updated_conversations=1, update_time_seconds=0.01)
+
+    class FakeIndexing:
+        enable_adaptive_indexing = True
+
+    class FakeConfig:
+        indexing = FakeIndexing()
+
+    indexer = SimpleNamespace(
+        config=FakeConfig(),
+        index_adaptive=MagicMock(return_value=fake_stats),
+        index_append_only=MagicMock(),
+    )
+
+    monkeypatch.setattr(api_app, "get_indexer", lambda: indexer)
+    monkeypatch.setattr(api_app, "get_search_engine", lambda: object())
+    invalidate = MagicMock()
+    monkeypatch.setattr(deps, "invalidate_search_index", invalidate)
+
+    api_app.on_new_conversations(["a.jsonl"])
+
+    indexer.index_adaptive.assert_called_once()
+    indexer.index_append_only.assert_not_called()
+    invalidate.assert_called_once()
+
+
+def test_on_new_conversations_handles_config_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    api_app = _api_app_module()
+    import searchat.api.dependencies as deps
+
+    fake_stats = SimpleNamespace(new_conversations=1, update_time_seconds=0.01)
+
+    class BadIndexer:
+        def __init__(self):
+            self.index_append_only = MagicMock(return_value=fake_stats)
+
+        @property
+        def config(self):
+            raise RuntimeError("boom")
+
+    indexer = BadIndexer()
+
+    monkeypatch.setattr(api_app, "get_indexer", lambda: indexer)
+    monkeypatch.setattr(api_app, "get_search_engine", lambda: object())
+    invalidate = MagicMock()
+    monkeypatch.setattr(deps, "invalidate_search_index", invalidate)
+
+    api_app.on_new_conversations(["a.jsonl"])
+
+    indexer.index_append_only.assert_called_once()
     invalidate.assert_called_once()
 
 
@@ -275,6 +356,15 @@ def test_app_main_invalid_port_prints_and_returns(monkeypatch: pytest.MonkeyPatc
     assert "Invalid" in out or "invalid" in out
 
 
+def test_app_main_invalid_port_out_of_range(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    api_app = _api_app_module()
+
+    monkeypatch.setenv(api_app.ENV_PORT, "70000")
+    api_app.main()
+    out = capsys.readouterr().out
+    assert "Invalid" in out or "invalid" in out
+
+
 def test_app_main_scans_for_available_port_and_calls_uvicorn(monkeypatch: pytest.MonkeyPatch) -> None:
     api_app = _api_app_module()
 
@@ -307,6 +397,37 @@ def test_app_main_scans_for_available_port_and_calls_uvicorn(monkeypatch: pytest
 
     api_app.main()
     fake_uvicorn.run.assert_called_once()
+
+
+def test_app_main_port_scan_exhausted(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    api_app = _api_app_module()
+
+    monkeypatch.delenv(api_app.ENV_PORT, raising=False)
+    monkeypatch.setenv(api_app.ENV_HOST, "127.0.0.1")
+    monkeypatch.setattr(api_app, "PORT_SCAN_RANGE", (54321, 54321))
+
+    class FailingSocket:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def bind(self, addr):
+            raise OSError("port in use")
+
+    import types
+
+    fake_socket_mod = types.SimpleNamespace(AF_INET=0, SOCK_STREAM=0, socket=lambda *a, **k: FailingSocket())
+    fake_uvicorn = types.SimpleNamespace(run=MagicMock())
+
+    monkeypatch.setitem(sys.modules, "socket", fake_socket_mod)
+    monkeypatch.setitem(sys.modules, "uvicorn", fake_uvicorn)
+
+    api_app.main()
+    out = capsys.readouterr().out
+    assert "ports" in out or "ports" in out.lower()
+    fake_uvicorn.run.assert_not_called()
 
 
 def test_chat_rejects_invalid_provider() -> None:
