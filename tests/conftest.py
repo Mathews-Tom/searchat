@@ -13,6 +13,8 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
+# Pre-import duckdb SQL types to avoid coverage import edge cases.
+
 
 # ============================================================================
 # IMPORT-TIME MOCKING (must happen before any searchat imports)
@@ -96,7 +98,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import Any
 
-from searchat.core import ConversationIndexer, SearchEngine
+from searchat.core import ConversationIndexer
 from searchat.services import BackupManager
 from searchat.config import Config
 
@@ -207,6 +209,8 @@ def indexer(temp_data_dir):
 def search_engine(temp_data_dir):
     """SearchEngine instance with temporary directory."""
     config = Config.load()
+    from searchat.core.search_engine import SearchEngine
+
     return SearchEngine(temp_data_dir, config)
 
 

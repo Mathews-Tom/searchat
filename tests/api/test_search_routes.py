@@ -137,15 +137,21 @@ class TestSearchEndpoint:
             # Should default to HYBRID
             assert call_args[1]['mode'] == SearchMode.HYBRID
 
-    def test_search_mode_invalid_fallsback_to_hybrid(self, client, mock_search_engine):
-        """Test that invalid mode falls back to hybrid."""
+    def test_search_mode_invalid_returns_400(self, client, mock_search_engine):
+        """Test that invalid mode is rejected."""
         with patch('searchat.api.routers.search.get_search_engine', return_value=mock_search_engine):
             response = client.get("/api/search?q=test&mode=invalid")
 
-            assert response.status_code == 200
-            call_args = mock_search_engine.search.call_args
-            # Should fallback to HYBRID for invalid mode
-            assert call_args[1]['mode'] == SearchMode.HYBRID
+            assert response.status_code == 400
+            assert response.json()["detail"] == "Invalid search mode"
+
+    def test_search_highlight_requires_provider(self, client, mock_search_engine):
+        """Test that highlight requests require explicit provider."""
+        with patch('searchat.api.routers.search.get_search_engine', return_value=mock_search_engine):
+            response = client.get("/api/search?q=test&highlight=true")
+
+            assert response.status_code == 400
+            assert response.json()["detail"] == "Highlight provider is required"
 
     def test_search_with_project_filter(self, client, mock_search_engine):
         """Test search with project filter."""
@@ -612,3 +618,22 @@ class TestProjectsEndpoint:
                 # Should return cached value (not from DataFrame)
                 assert projects == ["cached-project"]
                 assert projects != ["project-a", "project-b", "project-c"]
+
+    def test_get_projects_summary(self, client, mock_duckdb_store):
+        """Test getting project summaries."""
+        mock_duckdb_store.list_project_summaries.return_value = [
+            {
+                "project_id": "project-a",
+                "conversation_count": 3,
+                "message_count": 42,
+                "updated_at": "2025-01-01T00:00:00",
+            }
+        ]
+        with patch('searchat.api.routers.search.deps.get_duckdb_store', return_value=mock_duckdb_store):
+            with patch('searchat.api.routers.search.deps.projects_summary_cache', None):
+                response = client.get("/api/projects/summary")
+
+                assert response.status_code == 200
+                data = response.json()
+                assert isinstance(data, list)
+                assert data[0]["project_id"] == "project-a"
