@@ -23,12 +23,19 @@ class LLMService:
         messages: list[dict[str, str]],
         provider: str,
         model_name: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
     ) -> Iterator[str]:
         from litellm import completion
 
         model = self._resolve_model(provider, model_name)
+        extra: dict[str, Any] = {}
+        if temperature is not None:
+            extra["temperature"] = temperature
+        if max_tokens is not None:
+            extra["max_tokens"] = max_tokens
         try:
-            response = completion(model=model, messages=messages, stream=True)
+            response = completion(model=model, messages=messages, stream=True, **extra)
         except Exception as exc:
             raise self._wrap_error(provider, exc) from exc
 
@@ -43,12 +50,19 @@ class LLMService:
         messages: list[dict[str, str]],
         provider: str,
         model_name: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
     ) -> str:
         from litellm import completion
 
         model = self._resolve_model(provider, model_name)
+        extra: dict[str, Any] = {}
+        if temperature is not None:
+            extra["temperature"] = temperature
+        if max_tokens is not None:
+            extra["max_tokens"] = max_tokens
         try:
-            response = completion(model=model, messages=messages, stream=False)
+            response = completion(model=model, messages=messages, stream=False, **extra)
         except Exception as exc:
             raise self._wrap_error(provider, exc) from exc
 

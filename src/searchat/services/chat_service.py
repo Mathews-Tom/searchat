@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from dataclasses import dataclass
 
 from searchat.api.dependencies import get_search_engine
 from searchat.config import Config
@@ -53,6 +54,107 @@ def generate_answer_stream(
         provider=provider,
         model_name=model_name,
     )
+
+
+@dataclass(frozen=True)
+class RAGGeneration:
+    """Generated non-streaming RAG response with source results."""
+
+    answer: str
+    results: list[SearchResult]
+    context_used: int
+
+
+def generate_rag_response(
+    query: str,
+    provider: str,
+    model_name: str | None,
+    *,
+    config: Config,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
+    system_prompt: str | None = None,
+) -> RAGGeneration:
+    """Generate a grounded answer with structured sources (non-streaming)."""
+
+    search_engine = get_search_engine()
+    results = search_engine.search(query, mode=SearchMode.HYBRID, filters=SearchFilters())
+
+    top_k = _select_top_k(query)
+    top_results = results.results[:top_k]
+    if not top_results:
+        return RAGGeneration(
+            answer="I cannot find the information in the archives.",
+            results=[],
+            context_used=0,
+        )
+
+    context_data = _format_context(top_results)
+    system_content = SYSTEM_PROMPT.format(context_data=context_data)
+    if system_prompt is not None and system_prompt.strip():
+        system_content = system_prompt.strip() + "\n\nContext Chunks:\n" + context_data
+    messages = [
+        {"role": "system", "content": system_content},
+        {"role": "user", "content": query},
+    ]
+
+    llm_service = LLMService(config.llm)
+    answer = llm_service.completion(
+        messages=messages,
+        provider=provider,
+        model_name=model_name,
+        temperature=temperature,
+        max_tokens=max_tokens,
+    )
+
+    return RAGGeneration(
+        answer=answer,
+        results=top_results,
+        context_used=len(top_results),
+    )
+
+
+def _select_top_k(query: str) -> int:
+    """Select number of context chunks based on query complexity."""
+
+    q = query.strip().lower()
+    if not q:
+        return 8
+
+    words = q.split()
+    if len(words) <= 4:
+        return 6
+
+    complexity_terms = (
+        "summarize",
+        "summary",
+        "compare",
+        "difference",
+        "timeline",
+        "history",
+        "root cause",
+        "postmortem",
+        "design",
+        "architecture",
+        "plan",
+        "steps",
+        "why",
+        "how",
+        "tradeoff",
+        "trade-off",
+        "proposal",
+    )
+
+    is_complex = (
+        len(words) >= 18
+        or "\n" in query
+        or any(term in q for term in complexity_terms)
+        or q.count("?") >= 2
+    )
+
+    if is_complex:
+        return 16
+    return 8
 
 
 def _format_context(results: list[SearchResult]) -> str:
