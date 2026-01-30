@@ -41,6 +41,7 @@ def reset_dependency_singletons(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(deps, "_platform_manager", None)
     monkeypatch.setattr(deps, "_bookmarks_service", None)
     monkeypatch.setattr(deps, "_saved_queries_service", None)
+    monkeypatch.setattr(deps, "_dashboards_service", None)
     monkeypatch.setattr(deps, "_analytics_service", None)
     monkeypatch.setattr(deps, "_watcher", None)
     monkeypatch.setattr(deps, "_duckdb_store", None)
@@ -55,7 +56,11 @@ def test_initialize_services_sets_components_ready(monkeypatch: pytest.MonkeyPat
     readiness = FakeReadiness()
     monkeypatch.setattr(deps, "get_readiness", lambda: readiness)
 
-    cfg = SimpleNamespace(performance=SimpleNamespace(memory_limit_mb=123), analytics=SimpleNamespace(enabled=False))
+    cfg = SimpleNamespace(
+        performance=SimpleNamespace(memory_limit_mb=123),
+        analytics=SimpleNamespace(enabled=False),
+        paths=SimpleNamespace(search_directory=str(tmp_path)),
+    )
     monkeypatch.setattr(deps.Config, "load", staticmethod(lambda: cfg))
     monkeypatch.setattr(deps.PathResolver, "get_shared_search_dir", staticmethod(lambda _cfg: tmp_path))
 
@@ -65,7 +70,7 @@ def test_initialize_services_sets_components_ready(monkeypatch: pytest.MonkeyPat
     class _DuckDBStore:
         def __init__(self, path: Path, *, memory_limit_mb: int):
             self.path = path
-            self.memory_limit_mb = memory_limit_mb
+            self.memory_limit_mb: int = memory_limit_mb
 
         def validate_parquet_scan(self) -> None:
             return None
@@ -78,6 +83,10 @@ def test_initialize_services_sets_components_ready(monkeypatch: pytest.MonkeyPat
         def __init__(self, _cfg):
             self.cfg = _cfg
 
+    class _DashboardsService:
+        def __init__(self, _cfg):
+            self.cfg = _cfg
+
     class _AnalyticsService:
         def __init__(self, _cfg):
             self.cfg = _cfg
@@ -85,6 +94,7 @@ def test_initialize_services_sets_components_ready(monkeypatch: pytest.MonkeyPat
     monkeypatch.setitem(sys.modules, "searchat.api.duckdb_store", types.SimpleNamespace(DuckDBStore=_DuckDBStore))
     monkeypatch.setitem(sys.modules, "searchat.services.bookmarks", types.SimpleNamespace(BookmarksService=_BookmarksService))
     monkeypatch.setitem(sys.modules, "searchat.services.saved_queries", types.SimpleNamespace(SavedQueriesService=_SavedQueriesService))
+    monkeypatch.setitem(sys.modules, "searchat.services.dashboards", types.SimpleNamespace(DashboardsService=_DashboardsService))
     monkeypatch.setitem(sys.modules, "searchat.services.analytics", types.SimpleNamespace(SearchAnalyticsService=_AnalyticsService))
 
     deps.initialize_services()
@@ -93,9 +103,10 @@ def test_initialize_services_sets_components_ready(monkeypatch: pytest.MonkeyPat
     assert deps.get_search_dir() == tmp_path
     assert deps.get_backup_manager() is not None
     assert deps.get_platform_manager() is not None
-    assert deps.get_duckdb_store().memory_limit_mb == 123
+    assert getattr(deps.get_duckdb_store(), "memory_limit_mb") == 123
     assert deps.get_bookmarks_service() is not None
     assert deps.get_saved_queries_service() is not None
+    assert deps.get_dashboards_service() is not None
     assert deps.get_analytics_service() is not None
 
     assert readiness.components["services"] == "ready"

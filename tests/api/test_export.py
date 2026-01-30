@@ -258,7 +258,7 @@ def test_bulk_export_invalid_format(client):
         "/api/conversations/bulk-export",
         json={
             "conversation_ids": ["conv-1"],
-            "format": "pdf"
+            "format": "xml"
         }
     )
 

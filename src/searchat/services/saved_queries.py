@@ -44,6 +44,10 @@ class SavedQueriesService:
         query_list.sort(key=lambda q: q["created_at"], reverse=True)
         return query_list
 
+    def get_query(self, query_id: str) -> dict[str, Any] | None:
+        queries = self._load_queries()
+        return queries.get(query_id)
+
     def create_query(self, payload: dict[str, Any]) -> dict[str, Any]:
         name = payload.get("name")
         if not isinstance(name, str) or not name.strip():

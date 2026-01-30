@@ -71,3 +71,13 @@ ollama_model = "ollama/gemma3"
 # Controls the non-streaming RAG endpoint and citation/source output.
 enable_rag = true
 enable_citations = true
+
+[export]
+# Export feature flags. Keep disabled by default until stabilized.
+enable_ipynb = false
+enable_pdf = false
+enable_tech_docs = false
+
+[dashboards]
+# Dashboard builder and widget rendering.
+enabled = false

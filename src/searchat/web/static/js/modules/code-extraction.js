@@ -106,9 +106,10 @@ export async function loadCodeBlocks(conversationId, container) {
         data.code_blocks.forEach((block, index) => {
             const roleClass = block.role === 'user' ? 'user' : 'assistant';
             const roleLabel = block.role === 'user' ? 'USER' : 'ASSISTANT';
+            const languageSource = block.language_source || 'detected';
 
             html += `
-                <div class="code-block-item" data-language="${block.language}" style="
+                <div class="code-block-item" data-language="${block.language}" data-language-source="${languageSource}" style="
                     background: var(--bg-elevated);
                     border: 1px solid var(--border-default);
                     border-radius: 8px;
@@ -164,7 +165,7 @@ export async function loadCodeBlocks(conversationId, container) {
                         padding: 16px;
                         background: var(--bg-primary);
                         overflow-x: auto;
-                    "><code style="
+                    "><code class="pygments" style="
                         font-family: 'JetBrains Mono', monospace;
                         font-size: 13px;
                         line-height: 1.5;
@@ -177,6 +178,14 @@ export async function loadCodeBlocks(conversationId, container) {
         html += '</div>';
 
         container.innerHTML = html;
+
+        // Apply hybrid syntax highlighting:
+        // 1) highlight blocks with explicit fence language
+        // 2) then attempt guessing for the remaining blocks
+        await highlightBlocks(container, data.code_blocks, { mode: 'fence' });
+        scheduleIdle(async () => {
+            await highlightBlocks(container, data.code_blocks, { mode: 'guess' });
+        });
 
         // Add event listeners to filter buttons
         container.querySelectorAll('.lang-filter').forEach(btn => {
@@ -210,6 +219,72 @@ export async function loadCodeBlocks(conversationId, container) {
     } catch (error) {
         container.innerHTML = `<div style="color: #f44336;">Error: ${error.message}</div>`;
     }
+}
+
+async function highlightBlocks(container, blocks, { mode }) {
+    const items = Array.from(container.querySelectorAll('.code-block-item'));
+    const targets = [];
+
+    for (let i = 0; i < blocks.length; i++) {
+        const block = blocks[i];
+        const item = items[i];
+        if (!block || !item) continue;
+
+        const source = item.dataset.languageSource || block.language_source || 'detected';
+        const isFence = source === 'fence';
+        if (mode === 'fence' && !isFence) continue;
+        if (mode === 'guess' && isFence) continue;
+
+        targets.push({
+            index: i,
+            code: block.code,
+            language: isFence ? block.language : null,
+            language_source: isFence ? 'fence' : 'detected',
+        });
+    }
+
+    if (targets.length === 0) return;
+
+    try {
+        const response = await fetch('/api/code/highlight', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ blocks: targets.map(t => ({
+                code: t.code,
+                language: t.language,
+                language_source: t.language_source,
+            })) }),
+        });
+        if (!response.ok) {
+            return;
+        }
+        const payload = await response.json();
+        const results = Array.isArray(payload.results) ? payload.results : [];
+
+        for (let j = 0; j < targets.length; j++) {
+            const t = targets[j];
+            const r = results[j];
+            if (!r || typeof r.html !== 'string') continue;
+            const pre = container.querySelector(`#code-${t.index}`);
+            const codeEl = pre ? pre.querySelector('code') : null;
+            if (!codeEl) continue;
+            codeEl.classList.add('pygments');
+            codeEl.innerHTML = r.html;
+        }
+    } catch (error) {
+        // Ignore highlighting failures; code is already visible as plain text.
+        return;
+    }
+}
+
+function scheduleIdle(callback) {
+    if (typeof window.requestIdleCallback === 'function') {
+        window.requestIdleCallback(() => {
+            callback();
+        }, { timeout: 1500 });
+        return;
+    }
+    setTimeout(() => { callback(); }, 0);
 }
 
 /**

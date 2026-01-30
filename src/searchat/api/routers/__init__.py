@@ -9,6 +9,9 @@ from searchat.api.routers.admin import router as admin_router
 from searchat.api.routers.status import router as status_router
 from searchat.api.routers.chat import router as chat_router
 from searchat.api.routers.queries import router as queries_router
+from searchat.api.routers.code import router as code_router
+from searchat.api.routers.docs import router as docs_router
+from searchat.api.routers.dashboards import router as dashboards_router
 
 __all__ = [
     "search_router",
@@ -21,4 +24,7 @@ __all__ = [
     "status_router",
     "chat_router",
     "queries_router",
+    "code_router",
+    "docs_router",
+    "dashboards_router",
 ]
