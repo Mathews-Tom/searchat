@@ -4,8 +4,43 @@ function _sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+let _projectSummaries = [];
+let _projectSummaryInitialized = false;
+
+export function getProjectSummaries() {
+    return _projectSummaries;
+}
+
+function _renderProjectSummary(projectId) {
+    const summaryDiv = document.getElementById('projectSummary');
+    if (!summaryDiv) return;
+
+    if (!projectId) {
+        summaryDiv.style.display = 'none';
+        summaryDiv.innerHTML = '';
+        return;
+    }
+
+    const match = _projectSummaries.find((item) => item.project_id === projectId);
+    if (!match) {
+        summaryDiv.style.display = 'none';
+        summaryDiv.innerHTML = '';
+        return;
+    }
+
+    summaryDiv.style.display = 'block';
+    summaryDiv.innerHTML = `
+        <div class="project-summary-title">Project Summary</div>
+        <div class="project-summary-details">
+            <span><strong>${match.conversation_count}</strong> conversations</span>
+            <span><strong>${match.message_count}</strong> messages</span>
+            <span>Updated ${new Date(match.updated_at).toLocaleDateString()}</span>
+        </div>
+    `;
+}
+
 export async function loadProjects() {
-    const response = await fetch('/api/projects');
+    const response = await fetch('/api/projects/summary');
 
     if (response.status === 503) {
         const payload = await response.json();
@@ -29,21 +64,31 @@ export async function loadProjects() {
     const select = document.getElementById('project');
     const currentValue = select.value;
 
-    projects.forEach(p => {
+    _projectSummaries = Array.isArray(projects) ? projects : [];
+
+    _projectSummaries.forEach(p => {
         const option = document.createElement('option');
-        option.value = p;
-        if (p.startsWith('opencode-')) {
-            option.textContent = `OpenCode • ${p}`;
-        } else if (p.startsWith('vibe-')) {
-            option.textContent = `Vibe • ${p}`;
+        option.value = p.project_id;
+        const label = `${p.project_id} (${p.conversation_count})`;
+        if (p.project_id.startsWith('opencode-')) {
+            option.textContent = `OpenCode • ${label}`;
+        } else if (p.project_id.startsWith('vibe-')) {
+            option.textContent = `Vibe • ${label}`;
         } else {
-            option.textContent = `Claude Code • ${p}`;
+            option.textContent = `Claude Code • ${label}`;
         }
         select.appendChild(option);
     });
 
     // Restore previous value if it exists
     if (currentValue) select.value = currentValue;
+
+    if (!_projectSummaryInitialized) {
+        select.addEventListener('change', () => _renderProjectSummary(select.value));
+        _projectSummaryInitialized = true;
+    }
+
+    _renderProjectSummary(select.value);
 }
 
 export async function indexMissing() {

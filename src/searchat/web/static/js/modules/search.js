@@ -7,14 +7,300 @@ import { createStarIcon } from './bookmarks.js';
 import { loadSimilarConversations } from './similar.js';
 import { addCheckboxToResult } from './bulk-export.js';
 import { renderPagination, setTotalResults, getOffset, resetPagination } from './pagination.js';
+import { getProjectSummaries } from './api.js';
 
 let _searchNonce = 0;
+const _snippetCodeMap = new Map();
+let _snippetCodeCounter = 0;
+let _resultsHandlersBound = false;
+
+function findProjectSuggestion(query) {
+    const summaries = getProjectSummaries();
+    if (!Array.isArray(summaries) || summaries.length === 0) return null;
+
+    const trimmed = query.trim().toLowerCase();
+    if (trimmed.length < 3) return null;
+
+    const tokens = trimmed.split(/[^a-z0-9_-]+/).filter(token => token.length >= 3);
+    if (tokens.length === 0) return null;
+
+    let bestMatch = null;
+    let bestScore = 0;
+
+    summaries.forEach((summary) => {
+        const projectId = String(summary.project_id || '').toLowerCase();
+        if (!projectId) return;
+
+        if (trimmed.includes(projectId)) {
+            if (projectId.length > bestScore) {
+                bestScore = projectId.length;
+                bestMatch = summary;
+            }
+            return;
+        }
+
+        tokens.forEach((token) => {
+            if (projectId.includes(token) && token.length > bestScore) {
+                bestScore = token.length;
+                bestMatch = summary;
+            }
+        });
+    });
+
+    return bestMatch;
+}
+
+export function initProjectSuggestion() {
+    const searchBox = document.getElementById('search');
+    const suggestion = document.getElementById('projectSuggestion');
+    const projectSelect = document.getElementById('project');
+    if (!searchBox || !suggestion || !projectSelect) return;
+
+    function hideSuggestion() {
+        suggestion.style.display = 'none';
+        suggestion.innerHTML = '';
+    }
+
+    function updateSuggestion() {
+        const match = findProjectSuggestion(searchBox.value);
+        if (!match) {
+            hideSuggestion();
+            return;
+        }
+
+        if (projectSelect.value === match.project_id) {
+            hideSuggestion();
+            return;
+        }
+
+        suggestion.style.display = 'flex';
+        suggestion.innerHTML = `
+            <span>Search within <strong>${escapeHtml(match.project_id)}</strong>?</span>
+            <button type="button" data-project-id="${escapeHtml(match.project_id)}">Scope to project</button>
+        `;
+    }
+
+    searchBox.addEventListener('input', updateSuggestion);
+    projectSelect.addEventListener('change', updateSuggestion);
+
+    suggestion.addEventListener('click', (event) => {
+        const button = event.target.closest('button');
+        if (!button) return;
+        const projectId = button.dataset.projectId;
+        if (!projectId) return;
+        projectSelect.value = projectId;
+        hideSuggestion();
+        if (window.search) window.search();
+    });
+
+    updateSuggestion();
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function escapeRegExp(value) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function normalizeHighlightTerms(terms) {
+    if (!Array.isArray(terms)) return [];
+    return terms
+        .map(term => (typeof term === 'string' ? term.trim() : ''))
+        .filter(term => term.length > 1);
+}
+
+function highlightText(text, query, semanticTerms) {
+    if (!text) return '';
+    let output = escapeHtml(text);
+
+    const trimmedQuery = (query || '').trim();
+    if (trimmedQuery.length >= 2 && trimmedQuery !== '*') {
+        const exactRegex = new RegExp(`(${escapeRegExp(trimmedQuery)})`, 'gi');
+        output = output.replace(exactRegex, '<mark class="mark-exact">$1</mark>');
+    }
+
+    const terms = normalizeHighlightTerms(semanticTerms);
+    terms.forEach(term => {
+        if (!term || term.toLowerCase() === trimmedQuery.toLowerCase()) return;
+        const termRegex = new RegExp(`(${escapeRegExp(term)})`, 'gi');
+        output = output.replace(termRegex, '<mark class="mark-semantic">$1</mark>');
+    });
+
+    return output;
+}
+
+function renderCodeBlock(code, language) {
+    const codeId = `snippet-code-${_snippetCodeCounter++}`;
+    _snippetCodeMap.set(codeId, code);
+
+    const escaped = escapeHtml(code);
+    const lineCount = code.split('\n').length;
+    const isCollapsed = lineCount > 30;
+
+    return {
+        html: `
+            <div class="snippet-code-block" data-code-id="${codeId}" data-collapsed="${isCollapsed}">
+                <div class="snippet-code-header">
+                    <span class="snippet-code-lang">${escapeHtml(language || 'plaintext')}</span>
+                    <span class="snippet-code-lines">${lineCount} lines</span>
+                    <div class="snippet-code-actions">
+                        <button class="snippet-copy" data-code-id="${codeId}">Copy</button>
+                        ${isCollapsed ? '<button class="snippet-toggle">Expand</button>' : ''}
+                    </div>
+                </div>
+                <pre class="snippet-code ${isCollapsed ? 'collapsed' : ''}"><code>${escaped}</code></pre>
+            </div>
+        `,
+        collapsed: isCollapsed,
+    };
+}
+
+function formatSnippet(snippet, query, semanticTerms) {
+    if (!snippet) return '';
+    const codePattern = /```(\w+)?\n([\s\S]*?)```/g;
+    let lastIndex = 0;
+    let match;
+    let html = '';
+
+    while ((match = codePattern.exec(snippet)) !== null) {
+        const before = snippet.slice(lastIndex, match.index);
+        if (before) {
+            html += `<div class="snippet-text">${highlightText(before, query, semanticTerms)}</div>`;
+        }
+
+        const language = match[1] || 'plaintext';
+        const code = match[2] || '';
+        const rendered = renderCodeBlock(code.trim(), language);
+        html += rendered.html;
+        lastIndex = match.index + match[0].length;
+    }
+
+    const after = snippet.slice(lastIndex);
+    if (after) {
+        html += `<div class="snippet-text">${highlightText(after, query, semanticTerms)}</div>`;
+    }
+
+    if (!html) {
+        html = `<div class="snippet-text">${highlightText(snippet, query, semanticTerms)}</div>`;
+    }
+
+    return html;
+}
+
+function renderDiffPreview(payload) {
+    const summary = payload.summary || { added: 0, removed: 0, unchanged: 0 };
+    const added = payload.added || [];
+    const removed = payload.removed || [];
+    const unchanged = payload.unchanged || [];
+
+    return `
+        <div class="diff-summary">
+            <span class="diff-count added">+${summary.added}</span>
+            <span class="diff-count removed">-${summary.removed}</span>
+            <span class="diff-count unchanged">${summary.unchanged} unchanged</span>
+        </div>
+        <div class="diff-section">
+            <div class="diff-title">Added</div>
+            <pre class="diff-block diff-added">${escapeHtml(added.join('\n'))}</pre>
+        </div>
+        <div class="diff-section">
+            <div class="diff-title">Removed</div>
+            <pre class="diff-block diff-removed">${escapeHtml(removed.join('\n'))}</pre>
+        </div>
+        <details class="diff-section">
+            <summary class="diff-title">Unchanged</summary>
+            <pre class="diff-block diff-unchanged">${escapeHtml(unchanged.join('\n'))}</pre>
+        </details>
+    `;
+}
+
+function ensureResultsHandlers(resultsDiv) {
+    if (_resultsHandlersBound) return;
+    resultsDiv.addEventListener('click', async (event) => {
+        const target = event.target;
+
+        if (target.classList.contains('snippet-copy')) {
+            event.stopPropagation();
+            const codeId = target.dataset.codeId;
+            const code = _snippetCodeMap.get(codeId) || '';
+            if (!code) return;
+            try {
+                await navigator.clipboard.writeText(code);
+                const original = target.textContent;
+                target.textContent = 'Copied';
+                setTimeout(() => {
+                    target.textContent = original;
+                }, 1500);
+            } catch (error) {
+                console.error('Failed to copy snippet code:', error);
+            }
+            return;
+        }
+
+        if (target.classList.contains('snippet-toggle')) {
+            event.stopPropagation();
+            const block = target.closest('.snippet-code-block');
+            if (!block) return;
+            const pre = block.querySelector('.snippet-code');
+            if (!pre) return;
+            const isCollapsed = pre.classList.contains('collapsed');
+            pre.classList.toggle('collapsed');
+            target.textContent = isCollapsed ? 'Collapse' : 'Expand';
+            return;
+        }
+
+        if (target.classList.contains('diff-btn')) {
+            event.stopPropagation();
+            const resultCard = target.closest('.result');
+            if (!resultCard) return;
+            const diffContainer = resultCard.querySelector('.result-diff');
+            if (!diffContainer) return;
+
+            const isOpen = diffContainer.classList.toggle('open');
+            if (!isOpen) {
+                return;
+            }
+
+            if (diffContainer.dataset.loaded === 'true') {
+                return;
+            }
+
+            const conversationId = resultCard.dataset.conversationId;
+            const sourceStart = resultCard.dataset.messageStart;
+            const sourceEnd = resultCard.dataset.messageEnd;
+            const params = new URLSearchParams();
+            if (sourceStart) params.append('source_start', sourceStart);
+            if (sourceEnd) params.append('source_end', sourceEnd);
+
+            diffContainer.innerHTML = '<div class="loading">Loading diff...</div>';
+            try {
+                const response = await fetch(`/api/conversation/${conversationId}/diff?${params.toString()}`);
+                if (!response.ok) {
+                    const payload = await response.json().catch(() => null);
+                    const msg = payload && payload.detail ? payload.detail : 'Failed to load diff';
+                    diffContainer.innerHTML = `<div class="diff-error">${msg}</div>`;
+                    return;
+                }
+                const payload = await response.json();
+                diffContainer.innerHTML = renderDiffPreview(payload);
+                diffContainer.dataset.loaded = 'true';
+            } catch (error) {
+                diffContainer.innerHTML = `<div class="diff-error">Error: ${error.message}</div>`;
+            }
+        }
+    });
+    _resultsHandlersBound = true;
+}
 
 function _sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-export async function search(resetPage = true) {
+export async function search(resetPage = true, attempt = 0) {
     _searchNonce += 1;
     const nonce = _searchNonce;
 
@@ -36,6 +322,8 @@ export async function search(resetPage = true) {
 
     const resultsDiv = document.getElementById('results');
     resultsDiv.innerHTML = '<div class="loading">Searching...</div>';
+    _snippetCodeMap.clear();
+    _snippetCodeCounter = 0;
 
     const params = new URLSearchParams({
         q: query || '*',  // Use wildcard if no query
@@ -46,6 +334,18 @@ export async function search(resetPage = true) {
         sort_by: document.getElementById('sortBy').value,
         offset: getOffset()
     });
+
+    const highlightProvider = document.getElementById('chatProvider')?.value;
+    const highlightModel = document.getElementById('chatModel')?.value;
+    const highlightToggle = document.getElementById('semanticHighlights');
+    const shouldHighlight = highlightToggle?.checked
+        && query.trim().length >= 4
+        && document.getElementById('mode').value !== 'keyword';
+    if (shouldHighlight && highlightProvider) {
+        params.append('highlight', 'true');
+        params.append('highlight_provider', highlightProvider);
+        if (highlightModel) params.append('highlight_model', highlightModel);
+    }
 
     // Add custom date range if selected
     if (document.getElementById('date').value === 'custom') {
@@ -69,11 +369,29 @@ export async function search(resetPage = true) {
     if (response.status === 503) {
         const payload = await response.json();
         if (payload && payload.status === 'warming') {
-            const delay = payload.retry_after_ms || 500;
-            resultsDiv.innerHTML = '<div class="loading">Warming up search engine (first run)...</div>';
+            const baseDelay = payload.retry_after_ms || 500;
+            const delay = Math.min(baseDelay * Math.pow(2, attempt), 5000);
+            if (attempt >= 6) {
+                const details = payload.errors ? JSON.stringify(payload.errors) : 'No warmup details available.';
+                resultsDiv.innerHTML = `
+                    <div style="color: #f44336; margin-bottom: 8px;">Search warmup is taking too long.</div>
+                    <div style="font-size: 12px; color: #888; margin-bottom: 10px;">${details}</div>
+                    <button id="fallbackKeyword" style="background: #2196F3; padding: 6px 10px; border: none; border-radius: 6px; color: white; cursor: pointer;">Switch to Keyword Mode</button>
+                `;
+                const button = document.getElementById('fallbackKeyword');
+                if (button) {
+                    button.addEventListener('click', () => {
+                        document.getElementById('mode').value = 'keyword';
+                        return search();
+                    });
+                }
+                return;
+            }
+
+            resultsDiv.innerHTML = `<div class="loading">Warming up search engine (first run)... retrying in ${Math.round(delay / 100) / 10}s</div>`;
             await _sleep(delay);
             if (nonce === _searchNonce) {
-                return search();
+                return search(false, attempt + 1);
             }
             return;
         }
@@ -104,6 +422,8 @@ export async function search(resetPage = true) {
         return;
     }
 
+    const highlightTerms = Array.isArray(data.highlight_terms) ? data.highlight_terms : [];
+
     const paginationInfo = data.total > 20 ? ` (page ${Math.floor(getOffset() / 20) + 1})` : '';
     resultsDiv.innerHTML = `<div class="results-header">Found ${data.total} results in ${Math.round(data.search_time_ms)}ms${paginationInfo}</div>`;
 
@@ -113,6 +433,12 @@ export async function search(resetPage = true) {
         div.className = `result ${isWSL ? 'wsl' : 'windows'}`;
         div.id = `result-${index}`;
         div.dataset.conversationId = r.conversation_id;
+        if (typeof r.message_start_index === 'number') {
+            div.dataset.messageStart = String(r.message_start_index);
+        }
+        if (typeof r.message_end_index === 'number') {
+            div.dataset.messageEnd = String(r.message_end_index);
+        }
         // Get last segment of conversation ID
         const shortId = r.conversation_id.split('-').pop();
 
@@ -120,8 +446,11 @@ export async function search(resetPage = true) {
         let tool = r.tool || 'claude';
         let toolLabel = tool === 'opencode' ? 'OpenCode' : (tool === 'vibe' ? 'Vibe' : 'Claude Code');
 
+        const highlightedTitle = highlightText(r.title, query, highlightTerms);
+        const formattedSnippet = formatSnippet(r.snippet, query, highlightTerms);
+
         div.innerHTML = `
-            <div class="result-title">${r.title}</div>
+            <div class="result-title">${highlightedTitle}</div>
             <div class="result-meta">
                 <span class="tool-badge ${tool}">${toolLabel}</span> •
                 <span class="conv-id">...${shortId}</span> •
@@ -129,12 +458,16 @@ export async function search(resetPage = true) {
                 ${r.message_count} msgs •
                 ${new Date(r.updated_at).toLocaleDateString()}
             </div>
-            <div class="result-snippet">${r.snippet}</div>
+            <div class="result-snippet">${formattedSnippet}</div>
             <div class="result-actions">
                 <button class="resume-btn" data-conversation-id="${r.conversation_id}">
                     ⚡ Resume Session
                 </button>
+                <button class="diff-btn" data-conversation-id="${r.conversation_id}">
+                    View Diff
+                </button>
             </div>
+            <div class="result-diff" data-loaded="false"></div>
         `;
 
         // Add checkbox if bulk mode is active
@@ -164,6 +497,8 @@ export async function search(resetPage = true) {
 
     // Render pagination controls
     renderPagination(resultsDiv, search);
+
+    ensureResultsHandlers(resultsDiv);
 
     // Add search to history
     addToHistory({
@@ -255,6 +590,8 @@ export async function resumeSession(conversationId, buttonElement) {
 export async function showAllConversations() {
     const resultsDiv = document.getElementById('results');
     resultsDiv.innerHTML = '<div class="loading">Loading all conversations...</div>';
+    _snippetCodeMap.clear();
+    _snippetCodeCounter = 0;
 
     const sortBy = document.getElementById('sortBy').value;
     const project = document.getElementById('project').value;
@@ -332,8 +669,10 @@ export async function showAllConversations() {
             let tool = r.tool || 'claude';
             let toolLabel = tool === 'opencode' ? 'OpenCode' : (tool === 'vibe' ? 'Vibe' : 'Claude Code');
 
+            const formattedSnippet = formatSnippet(r.snippet, '', []);
+
             div.innerHTML = `
-                <div class="result-title">${r.title}</div>
+                <div class="result-title">${escapeHtml(r.title)}</div>
                 <div class="result-meta">
                     <span class="tool-badge ${tool}">${toolLabel}</span> •
                     <span class="conv-id">...${shortId}</span> •
@@ -341,12 +680,16 @@ export async function showAllConversations() {
                     ${r.message_count} msgs •
                     ${new Date(r.updated_at).toLocaleDateString()}
                 </div>
-                <div class="result-snippet">${r.snippet}</div>
+                <div class="result-snippet">${formattedSnippet}</div>
                 <div class="result-actions">
                     <button class="resume-btn" data-conversation-id="${r.conversation_id}">
                         ⚡ Resume Session
                     </button>
+                    <button class="diff-btn" data-conversation-id="${r.conversation_id}">
+                        View Diff
+                    </button>
                 </div>
+                <div class="result-diff" data-loaded="false"></div>
             `;
 
             // Add checkbox if bulk mode is active
@@ -374,6 +717,7 @@ export async function showAllConversations() {
             resultsDiv.appendChild(div);
         });
         saveAllConversationsState();
+        ensureResultsHandlers(resultsDiv);
     } catch (error) {
         resultsDiv.innerHTML = `<div style="color: #f44336;">Error: ${error.message}</div>`;
     }
