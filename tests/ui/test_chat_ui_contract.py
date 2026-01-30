@@ -39,3 +39,4 @@ def test_chat_js_targets_rag_endpoint_and_persists_options():
     assert "localStorage.setItem('chatTemperature'" in content
     assert "localStorage.setItem('chatMaxTokens'" in content
     assert "localStorage.setItem('chatSystemPrompt'" in content
+    assert "event.key === 'Enter'" in content
