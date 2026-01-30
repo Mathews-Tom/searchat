@@ -21,7 +21,12 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler, FileCreatedEvent, FileModifiedEvent
 
 from searchat.config import Config
-from searchat.core.connectors import discover_watch_dirs, supported_extensions
+from searchat.core.connectors import (
+    detect_connector,
+    discover_watch_dirs,
+    get_connectors,
+    supported_extensions,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +48,12 @@ class ConversationEventHandler(FileSystemEventHandler):
         """Check if file should be processed (debounce rapid events)."""
         # Check for supported extensions
         if not any(path.endswith(ext) for ext in self.SUPPORTED_EXTENSIONS):
+            return False
+
+        # Ensure the file is actually supported by a connector (avoid indexing noise)
+        try:
+            detect_connector(Path(path))
+        except Exception:
             return False
 
         current_time = time.time()
@@ -152,10 +163,19 @@ class ConversationWatcher:
         if observer is None:
             raise RuntimeError("Failed to initialize file watcher")
 
+        scheduled_dirs: list[Path] = []
         for watch_dir in self.watched_dirs:
-            if watch_dir.exists():
-                logger.info(f"Watching directory: {watch_dir}")
-                observer.schedule(handler, str(watch_dir), recursive=True)
+            if not watch_dir.exists():
+                continue
+            scheduled_dirs.append(watch_dir)
+            logger.debug("Watching directory: %s", watch_dir)
+            observer.schedule(handler, str(watch_dir), recursive=True)
+
+        details = _summarize_watch_targets(self.config)
+        if details:
+            logger.info("Watching %d directories (%s)", len(scheduled_dirs), details)
+        else:
+            logger.info("Watching %d directories", len(scheduled_dirs))
 
         observer.start()
 
@@ -262,3 +282,39 @@ class ConversationWatcher:
     def get_watched_directories(self) -> list[Path]:
         """Get list of directories being watched."""
         return self.watched_dirs.copy()
+
+
+def _summarize_watch_targets(config: Config) -> str:
+    parts: list[str] = []
+
+    for connector in get_connectors():
+        watch_dirs = getattr(connector, "watch_dirs", None)
+        if not callable(watch_dirs):
+            continue
+
+        try:
+            dirs_obj = watch_dirs(config)
+        except Exception:
+            continue
+
+        if not isinstance(dirs_obj, list):
+            continue
+
+        roots = [p for p in dirs_obj if isinstance(p, Path) and p.exists()]
+        if not roots:
+            continue
+
+        watch_stats = getattr(connector, "watch_stats", None)
+        if callable(watch_stats):
+            try:
+                stats_obj = watch_stats(config)
+            except Exception:
+                stats_obj = {}
+            if isinstance(stats_obj, dict):
+                for key, value in stats_obj.items():
+                    parts.append(f"{connector.name} {key}: {int(value)}")
+                continue
+
+        parts.append(f"{connector.name} roots: {len(roots)}")
+
+    return ", ".join(parts)

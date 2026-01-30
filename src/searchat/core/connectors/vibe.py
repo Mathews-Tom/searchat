@@ -22,6 +22,18 @@ class VibeConnector:
             files.extend(vibe_dir.glob("*.json"))
         return files
 
+    def watch_dirs(self, _config: Config) -> list[Path]:
+        return [p for p in PathResolver.resolve_vibe_dirs() if p.exists()]
+
+    def watch_stats(self, _config: Config) -> dict[str, int]:
+        session_count = 0
+        for root in self.watch_dirs(_config):
+            try:
+                session_count += sum(1 for p in root.glob("*.json") if p.is_file())
+            except OSError:
+                continue
+        return {"sessions": session_count}
+
     def can_parse(self, path: Path) -> bool:
         if path.suffix != ".json":
             return False

@@ -23,6 +23,26 @@ class OpenCodeConnector:
             files.extend(storage_session_dir.glob("*/*.json"))
         return files
 
+    def watch_dirs(self, config: Config) -> list[Path]:
+        dirs: list[Path] = []
+        for opencode_dir in PathResolver.resolve_opencode_dirs(config):
+            storage_dir = opencode_dir / "storage"
+            if storage_dir.exists():
+                dirs.append(storage_dir)
+        return dirs
+
+    def watch_stats(self, config: Config) -> dict[str, int]:
+        project_count = 0
+        for root in self.watch_dirs(config):
+            session_root = root / "session"
+            if not session_root.exists():
+                continue
+            try:
+                project_count += sum(1 for p in session_root.iterdir() if p.is_dir())
+            except OSError:
+                continue
+        return {"projects": project_count}
+
     def can_parse(self, path: Path) -> bool:
         if path.suffix != ".json":
             return False
