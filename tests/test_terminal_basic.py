@@ -89,7 +89,7 @@ def main():
     print("  Tests Complete")
     print("="*60)
     print("\nBasic tests passed. Platform detection and path translation working.")
-    print("To test actual terminal launching, run: python tests/test_terminal_launch.py")
+    print("To test actual terminal launching, run: python scripts/terminal_launch_smoketest.py")
 
 
 if __name__ == '__main__':
