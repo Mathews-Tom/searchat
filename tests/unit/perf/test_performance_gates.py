@@ -13,6 +13,9 @@ from searchat.config import Config
 from searchat.models import SearchResult, SearchResults
 from searchat.services.analytics import SearchAnalyticsService
 from searchat.services.chat_service import generate_rag_response
+from searchat.services.export_service import export_conversation
+from searchat.api.models.responses import ConversationMessage, ConversationResponse
+from searchat.models import SearchMode
 
 
 def _make_config(tmp_path: Path, *, analytics_enabled: bool = True) -> Mock:
@@ -107,3 +110,131 @@ def test_rag_internal_overhead_under_200ms(tmp_path: Path, monkeypatch: pytest.M
     assert gen.answer == "ok"
     assert gen.context_used == 16
     assert elapsed_ms < 200.0
+
+
+def test_export_100_conversations_under_5s() -> None:
+    messages: list[ConversationMessage] = []
+    now = datetime.now(timezone.utc).isoformat()
+    for i in range(10):
+        messages.append(ConversationMessage(role="user", content=f"Question {i}\n\n```python\nprint({i})\n```", timestamp=now))
+        messages.append(ConversationMessage(role="assistant", content=f"Answer {i}\n\n```python\nprint({i})\n```", timestamp=now))
+
+    start = time.perf_counter()
+    for n in range(100):
+        conv = ConversationResponse(
+            conversation_id=f"conv-{n}",
+            title=f"Conversation {n}",
+            project_id="proj",
+            project_path=None,
+            file_path=f"/tmp/conv-{n}.jsonl",
+            message_count=len(messages),
+            tool="claude",
+            messages=messages,
+        )
+        out = export_conversation(conv, format="markdown")
+        assert out.content
+    elapsed_s = time.perf_counter() - start
+    assert elapsed_s < 5.0
+
+
+def test_dashboard_render_10_widgets_under_2s(monkeypatch: pytest.MonkeyPatch) -> None:
+    from fastapi.testclient import TestClient
+    from types import SimpleNamespace
+
+    from searchat.api.app import app
+    import searchat.api.routers.dashboards as dashboards_router
+    from searchat.models import SearchResult, SearchResults
+
+    class _DashboardsService:
+        def __init__(self, dashboard: dict) -> None:
+            self._dashboard = dashboard
+
+        def get_dashboard(self, dashboard_id: str):
+            if dashboard_id == self._dashboard["id"]:
+                return self._dashboard
+            return None
+
+    class _SavedQueriesService:
+        def __init__(self, queries: dict[str, dict]) -> None:
+            self._queries = queries
+
+        def get_query(self, query_id: str):
+            return self._queries.get(query_id)
+
+    class _Engine:
+        def __init__(self, results: SearchResults) -> None:
+            self._results = results
+
+        def search(self, q: str, mode: SearchMode, filters) -> SearchResults:
+            return self._results
+
+    widgets = []
+    queries = {}
+    for i in range(10):
+        qid = f"q-{i}"
+        widgets.append({"id": f"w-{i}", "query_id": qid, "limit": 5})
+        queries[qid] = {
+            "id": qid,
+            "name": f"Query {i}",
+            "query": "deployment",
+            "filters": {"project": "proj", "tool": "claude", "sort_by": "relevance"},
+            "mode": "keyword",
+        }
+
+    dashboard = {
+        "id": "dash-1",
+        "name": "Perf",
+        "description": None,
+        "queries": list(queries.keys()),
+        "layout": {"widgets": widgets},
+        "refresh_interval": None,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    now = datetime.now(timezone.utc)
+    results = SearchResults(
+        results=[
+            SearchResult(
+                conversation_id="conv-1",
+                project_id="proj",
+                title="Deploy log",
+                created_at=now,
+                updated_at=now,
+                message_count=4,
+                file_path="/tmp/conv.jsonl",
+                score=1.0,
+                snippet="Deployment steps",
+                message_start_index=0,
+                message_end_index=1,
+            )
+        ],
+        total_count=1,
+        search_time_ms=1.0,
+        mode_used="keyword",
+    )
+
+    monkeypatch.setattr(
+        dashboards_router.deps,
+        "get_config",
+        lambda: SimpleNamespace(dashboards=SimpleNamespace(enabled=True)),
+    )
+    monkeypatch.setattr(
+        dashboards_router.deps,
+        "get_dashboards_service",
+        lambda: _DashboardsService(dashboard),
+    )
+    monkeypatch.setattr(
+        dashboards_router.deps,
+        "get_saved_queries_service",
+        lambda: _SavedQueriesService(queries),
+    )
+    monkeypatch.setattr(dashboards_router, "get_or_create_search_engine", lambda: _Engine(results))
+
+    client = TestClient(app)
+    start = time.perf_counter()
+    response = client.get("/api/dashboards/dash-1/render")
+    elapsed_ms = (time.perf_counter() - start) * 1000.0
+
+    assert response.status_code == 200
+    assert elapsed_ms < 2000.0
