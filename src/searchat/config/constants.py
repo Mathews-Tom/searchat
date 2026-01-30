@@ -99,7 +99,7 @@ DEFAULT_ENABLE_EXPORT_PDF = False
 DEFAULT_ENABLE_EXPORT_TECH_DOCS = False
 
 # Dashboards feature flag
-DEFAULT_ENABLE_DASHBOARDS = False
+DEFAULT_ENABLE_DASHBOARDS = True
 
 # ============================================================================
 # UI Defaults

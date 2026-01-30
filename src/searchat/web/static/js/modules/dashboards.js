@@ -4,6 +4,18 @@ import { loadConversationView, showSearchView } from './search.js';
 import { restoreSearchState } from './session.js';
 
 let _handlersBound = false;
+let _refreshTimer = null;
+let _activeDashboardId = null;
+let _activeRefreshInterval = null;
+
+function _clearAutoRefresh() {
+    if (_refreshTimer) {
+        clearInterval(_refreshTimer);
+        _refreshTimer = null;
+    }
+    _activeDashboardId = null;
+    _activeRefreshInterval = null;
+}
 
 function _escapeHtml(text) {
     const div = document.createElement('div');
@@ -84,6 +96,8 @@ async function _renderDashboard(dashboardId, container) {
     const dashboard = data.dashboard || {};
     const widgets = Array.isArray(data.widgets) ? data.widgets : [];
 
+    const refreshInterval = Number.isFinite(dashboard.refresh_interval) ? dashboard.refresh_interval : null;
+
     const cards = widgets.map(widget => {
         const results = Array.isArray(widget.results) ? widget.results : [];
         const list = results.length
@@ -118,6 +132,7 @@ async function _renderDashboard(dashboardId, container) {
             <div>
                 <h2>${_escapeHtml(dashboard.name || 'Dashboard')}</h2>
                 <p>${_escapeHtml(dashboard.description || '')}</p>
+                ${refreshInterval ? `<p style="margin-top: 6px; font-size: 12px; color: var(--text-muted);">Auto-refresh: every ${refreshInterval}s</p>` : ''}
             </div>
             <div class="dashboard-view-actions">
                 <button class="secondary" data-action="refresh" data-dashboard-id="${dashboardId}">Refresh</button>
@@ -126,6 +141,33 @@ async function _renderDashboard(dashboardId, container) {
         </div>
         <div class="dashboard-grid">${cards || '<div class="dashboard-empty">No widgets configured.</div>'}</div>
     `;
+
+    _configureAutoRefresh(dashboardId, refreshInterval, container);
+}
+
+function _configureAutoRefresh(dashboardId, refreshInterval, container) {
+    const interval = Number.isFinite(refreshInterval) ? refreshInterval : null;
+    if (!interval || interval <= 0) {
+        _clearAutoRefresh();
+        return;
+    }
+
+    if (_activeDashboardId === dashboardId && _activeRefreshInterval === interval && _refreshTimer) {
+        return;
+    }
+
+    _clearAutoRefresh();
+    _activeDashboardId = dashboardId;
+    _activeRefreshInterval = interval;
+    _refreshTimer = setInterval(async () => {
+        if (_activeDashboardId !== dashboardId) return;
+        try {
+            await _renderDashboard(dashboardId, container);
+        } catch (error) {
+            // If refresh fails, stop looping to avoid spamming the server.
+            _clearAutoRefresh();
+        }
+    }, interval * 1000);
 }
 
 function _renderPage(container, dashboards, savedQueries) {
@@ -233,8 +275,13 @@ export async function showDashboards() {
             const dashboardId = target.dataset.dashboardId;
 
             if (action === 'back') {
+                _clearAutoRefresh();
                 showSearchView();
-                await restoreSearchState();
+                const restored = await restoreSearchState();
+                if (!restored) {
+                    sessionStorage.removeItem('lastView');
+                    showSearchView();
+                }
                 return;
             }
 
