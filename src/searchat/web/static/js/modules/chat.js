@@ -278,7 +278,13 @@ export function initChat() {
 
     if (queryEl) {
         queryEl.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+            if (event.isComposing) {
+                return;
+            }
+
+            const isEnter = event.key === 'Enter';
+            const isSubmit = (event.metaKey || event.ctrlKey) || (!event.shiftKey && !event.altKey);
+            if (isEnter && isSubmit) {
                 event.preventDefault();
                 runChatRag();
             }
