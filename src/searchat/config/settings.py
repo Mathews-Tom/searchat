@@ -39,6 +39,10 @@ from .constants import (
     DEFAULT_MEMORY_LIMIT_MB,
     DEFAULT_QUERY_CACHE_SIZE,
     DEFAULT_ENABLE_PROFILING,
+    DEFAULT_ANALYTICS_ENABLED,
+    DEFAULT_ANALYTICS_RETENTION_DAYS,
+    DEFAULT_ENABLE_RAG_CHAT,
+    DEFAULT_ENABLE_CHAT_CITATIONS,
     DEFAULT_THEME,
     DEFAULT_FONT_FAMILY,
     DEFAULT_FONT_SIZE,
@@ -54,6 +58,10 @@ from .constants import (
     ENV_PROFILING,
     ENV_ENABLE_CONNECTORS,
     ENV_ENABLE_ADAPTIVE_INDEXING,
+    ENV_ENABLE_ANALYTICS,
+    ENV_ANALYTICS_RETENTION_DAYS,
+    ENV_ENABLE_RAG_CHAT,
+    ENV_ENABLE_CHAT_CITATIONS,
     ERROR_NO_CONFIG,
 )
 
@@ -351,6 +359,44 @@ class PerformanceConfig:
 
 
 @dataclass
+class AnalyticsConfig:
+    enabled: bool
+    retention_days: int
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "AnalyticsConfig":
+        return cls(
+            enabled=_get_env_bool(
+                ENV_ENABLE_ANALYTICS,
+                data.get("enabled", DEFAULT_ANALYTICS_ENABLED),
+            ),
+            retention_days=_get_env_int(
+                ENV_ANALYTICS_RETENTION_DAYS,
+                data.get("retention_days", DEFAULT_ANALYTICS_RETENTION_DAYS),
+            ),
+        )
+
+
+@dataclass
+class ChatConfig:
+    enable_rag: bool
+    enable_citations: bool
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "ChatConfig":
+        return cls(
+            enable_rag=_get_env_bool(
+                ENV_ENABLE_RAG_CHAT,
+                data.get("enable_rag", DEFAULT_ENABLE_RAG_CHAT),
+            ),
+            enable_citations=_get_env_bool(
+                ENV_ENABLE_CHAT_CITATIONS,
+                data.get("enable_citations", DEFAULT_ENABLE_CHAT_CITATIONS),
+            ),
+        )
+
+
+@dataclass
 class Config:
     paths: PathsConfig
     indexing: IndexingConfig
@@ -359,6 +405,8 @@ class Config:
     llm: LLMConfig
     ui: UIConfig
     performance: PerformanceConfig
+    analytics: AnalyticsConfig
+    chat: ChatConfig
     logging: LogConfig
 
     @classmethod
@@ -426,5 +474,7 @@ class Config:
             llm=LLMConfig.from_dict(data.get("llm", {})),
             ui=UIConfig.from_dict(data.get("ui", {})),
             performance=PerformanceConfig.from_dict(data.get("performance", {})),
+            analytics=AnalyticsConfig.from_dict(data.get("analytics", {})),
+            chat=ChatConfig.from_dict(data.get("chat", {})),
             logging=LogConfig(**data.get("logging", {})),
         )
