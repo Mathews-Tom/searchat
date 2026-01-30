@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter
 
+import searchat.api.dependencies as deps
 from searchat.api.readiness import get_readiness
 
 
@@ -17,4 +18,27 @@ async def get_status():
         "components": snap.components,
         "watcher": snap.watcher,
         "errors": snap.errors,
+    }
+
+
+@router.get("/status/features")
+async def get_features():
+    """Return feature flag snapshot for the UI."""
+    config = deps.get_config()
+    return {
+        "analytics": {
+            "enabled": config.analytics.enabled,
+        },
+        "chat": {
+            "enable_rag": config.chat.enable_rag,
+            "enable_citations": config.chat.enable_citations,
+        },
+        "export": {
+            "enable_ipynb": config.export.enable_ipynb,
+            "enable_pdf": config.export.enable_pdf,
+            "enable_tech_docs": config.export.enable_tech_docs,
+        },
+        "dashboards": {
+            "enabled": config.dashboards.enabled,
+        },
     }
