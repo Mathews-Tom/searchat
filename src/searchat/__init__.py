@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 __version__ = "0.2.0"
 __author__ = "Searchat Contributors"
 
@@ -9,10 +11,7 @@ from searchat.models import (
     SearchMode,
     SearchFilters,
 )
-from searchat.core import (
-    SearchEngine,
-    ConversationIndexer,
-)
+from searchat.core import ConversationIndexer
 
 __all__ = [
     "ConversationRecord",
@@ -24,3 +23,11 @@ __all__ = [
     "SearchEngine",
     "ConversationIndexer",
 ]
+
+
+def __getattr__(name: str):
+    if name == "SearchEngine":
+        from searchat.core.search_engine import SearchEngine
+
+        return SearchEngine
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
