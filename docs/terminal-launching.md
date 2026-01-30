@@ -134,11 +134,11 @@ osascript -e 'tell application "Terminal" to do script "cd /Users/name/projects 
    - CWD translation preview
    - Run: `python tests/test_terminal_basic.py`
 
-2. **Interactive Test** (`tests/test_terminal_launch.py`)
+2. **Interactive Test** (`scripts/terminal_launch_smoketest.py`)
    - Manual terminal launching tests
    - Tests native paths, foreign paths, no path scenarios
    - Prompts before each launch for verification
-   - Run: `python tests/test_terminal_launch.py`
+   - Run: `python scripts/terminal_launch_smoketest.py`
 
 ### Test Matrix
 

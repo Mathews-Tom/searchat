@@ -6,12 +6,8 @@ Tests terminal launching independently before integrating with session resume.
 Run this manually to verify terminal launching works on your platform.
 
 Usage:
-    python tests/test_terminal_launch.py
+    python scripts/terminal_launch_smoketest.py
 """
-
-import pytest
-
-pytest.skip("Manual terminal-launch script (not a pytest suite)", allow_module_level=True)
 
 import sys
 import os

@@ -74,3 +74,72 @@ async def get_dead_end_queries(
     except Exception as e:
         logger.error(f"Failed to get dead-end queries: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/stats/analytics/config")
+async def get_analytics_config():
+    """Get analytics config snapshot."""
+    try:
+        config = deps.get_config()
+        return {
+            "enabled": config.analytics.enabled,
+            "retention_days": config.analytics.retention_days,
+        }
+    except Exception as e:
+        logger.error(f"Failed to get analytics config: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/stats/analytics/trends")
+async def get_analytics_trends(
+    days: int = Query(30, description="Number of days to analyze (1-90)", ge=1, le=90)
+):
+    """Get daily search trends."""
+    try:
+        analytics = deps.get_analytics_service()
+        return {"days": days, "points": analytics.get_trends(days=days)}
+    except Exception as e:
+        logger.error(f"Failed to get analytics trends: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/stats/analytics/heatmap")
+async def get_analytics_heatmap(
+    days: int = Query(30, description="Number of days to analyze (1-90)", ge=1, le=90)
+):
+    """Get hour-of-day by day-of-week heatmap."""
+    try:
+        analytics = deps.get_analytics_service()
+        return analytics.get_heatmap(days=days)
+    except Exception as e:
+        logger.error(f"Failed to get analytics heatmap: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/stats/analytics/agent-comparison")
+async def get_analytics_agent_comparison(
+    days: int = Query(30, description="Number of days to analyze (1-90)", ge=1, le=90)
+):
+    """Get tool filter comparison for searches."""
+    try:
+        analytics = deps.get_analytics_service()
+        return {"days": days, "tools": analytics.get_agent_comparison(days=days)}
+    except Exception as e:
+        logger.error(f"Failed to get analytics agent comparison: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/stats/analytics/topics")
+async def get_analytics_topics(
+    days: int = Query(30, description="Number of days to analyze (1-90)", ge=1, le=90),
+    k: int = Query(8, description="Number of clusters (2-20)", ge=2, le=20),
+):
+    """Get topic clusters for recent queries."""
+    try:
+        analytics = deps.get_analytics_service()
+        return {"days": days, "clusters": analytics.get_topic_clusters(days=days, k=k)}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to get analytics topics: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")

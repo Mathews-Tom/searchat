@@ -114,18 +114,21 @@ async def search(
 
                 _highlight_cache[cache_key] = highlight_terms
 
-        # Log search analytics
-        try:
-            analytics = get_analytics_service()
-            analytics.log_search(
-                query=q,
-                result_count=len(results.results),
-                search_mode=mode,
-                search_time_ms=int(results.search_time_ms)
-            )
-        except Exception:
-            # Don't fail the search if analytics logging fails
-            pass
+        # Log search analytics (opt-in)
+        config = deps.get_config()
+        if config.analytics.enabled:
+            try:
+                analytics = get_analytics_service()
+                analytics.log_search(
+                    query=q,
+                    result_count=len(results.results),
+                    search_mode=mode,
+                    search_time_ms=int(results.search_time_ms),
+                    tool_filter=tool,
+                )
+            except Exception:
+                # Don't fail the search if analytics logging fails
+                pass
 
         # Sort results based on sort_by parameter
         sorted_results = results.results.copy()

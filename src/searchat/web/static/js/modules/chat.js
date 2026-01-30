@@ -1,5 +1,7 @@
 // Chat UI handler
 
+import { loadConversationView } from './search.js';
+
 function setStatus(message, isError = false) {
     const status = document.getElementById('chatStatus');
     if (!status) return;
@@ -20,10 +22,52 @@ function setAnswer(text) {
     answer.textContent = text;
 }
 
-function appendAnswer(text) {
-    const answer = document.getElementById('chatAnswer');
-    if (!answer) return;
-    answer.textContent += text;
+function setSources(sources) {
+    const sourcesEl = document.getElementById('chatSources');
+    if (!sourcesEl) return;
+
+    if (!sources || sources.length === 0) {
+        sourcesEl.style.display = 'none';
+        sourcesEl.innerHTML = '';
+        return;
+    }
+
+    sourcesEl.style.display = 'block';
+    const items = sources.map((s) => {
+        const range = (s.message_start_index != null && s.message_end_index != null)
+            ? `messages ${s.message_start_index}-${s.message_end_index}`
+            : 'full conversation';
+
+        const updated = s.updated_at ? new Date(s.updated_at).toLocaleString() : '';
+        const tool = s.tool ? String(s.tool).toUpperCase() : '';
+        const project = s.project_id ? s.project_id : '';
+        const title = s.title ? s.title : s.conversation_id;
+
+        return `
+            <div class="chat-source-item">
+                <div class="chat-source-main">
+                    <div class="chat-source-title">${escapeHtml(title)}</div>
+                    <div class="chat-source-meta">
+                        ${escapeHtml([tool, project, updated, range].filter(Boolean).join(' · '))}
+                    </div>
+                </div>
+                <button class="chat-source-open" data-conversation-id="${escapeHtml(s.conversation_id)}">Open</button>
+            </div>
+        `;
+    }).join('');
+
+    sourcesEl.innerHTML = `
+        <div class="chat-sources-title">Sources</div>
+        ${items}
+    `;
+
+    for (const btn of sourcesEl.querySelectorAll('button[data-conversation-id]')) {
+        btn.addEventListener('click', (event) => {
+            const id = event.currentTarget.getAttribute('data-conversation-id');
+            if (!id) return;
+            loadConversationView(id);
+        });
+    }
 }
 
 let _chatController = null;
@@ -31,17 +75,33 @@ let _chatController = null;
 function saveChatPreferences() {
     const providerEl = document.getElementById('chatProvider');
     const modelEl = document.getElementById('chatModel');
+    const temperatureEl = document.getElementById('chatTemperature');
+    const maxTokensEl = document.getElementById('chatMaxTokens');
+    const systemPromptEl = document.getElementById('chatSystemPrompt');
     if (providerEl) {
         localStorage.setItem('chatProvider', providerEl.value);
     }
     if (modelEl) {
         localStorage.setItem('chatModel', modelEl.value.trim());
     }
+
+    if (temperatureEl) {
+        localStorage.setItem('chatTemperature', temperatureEl.value.trim());
+    }
+    if (maxTokensEl) {
+        localStorage.setItem('chatMaxTokens', maxTokensEl.value.trim());
+    }
+    if (systemPromptEl) {
+        localStorage.setItem('chatSystemPrompt', systemPromptEl.value);
+    }
 }
 
 function restoreChatPreferences() {
     const providerEl = document.getElementById('chatProvider');
     const modelEl = document.getElementById('chatModel');
+    const temperatureEl = document.getElementById('chatTemperature');
+    const maxTokensEl = document.getElementById('chatMaxTokens');
+    const systemPromptEl = document.getElementById('chatSystemPrompt');
     if (providerEl) {
         const storedProvider = localStorage.getItem('chatProvider');
         if (storedProvider) {
@@ -54,12 +114,36 @@ function restoreChatPreferences() {
             modelEl.value = storedModel;
         }
     }
+
+    if (temperatureEl) {
+        const storedTemp = localStorage.getItem('chatTemperature');
+        if (storedTemp) {
+            temperatureEl.value = storedTemp;
+        }
+    }
+
+    if (maxTokensEl) {
+        const storedMaxTokens = localStorage.getItem('chatMaxTokens');
+        if (storedMaxTokens) {
+            maxTokensEl.value = storedMaxTokens;
+        }
+    }
+
+    if (systemPromptEl) {
+        const storedSystemPrompt = localStorage.getItem('chatSystemPrompt');
+        if (storedSystemPrompt) {
+            systemPromptEl.value = storedSystemPrompt;
+        }
+    }
 }
 
-async function streamChat() {
+async function runChatRag() {
     const queryEl = document.getElementById('chatQuery');
     const providerEl = document.getElementById('chatProvider');
     const modelEl = document.getElementById('chatModel');
+    const temperatureEl = document.getElementById('chatTemperature');
+    const maxTokensEl = document.getElementById('chatMaxTokens');
+    const systemPromptEl = document.getElementById('chatSystemPrompt');
     const sendBtn = document.getElementById('chatSend');
     const stopBtn = document.getElementById('chatStop');
 
@@ -81,6 +165,7 @@ async function streamChat() {
     setSpinner(true);
     setStatus('Contacting model...');
     setAnswer('');
+    setSources([]);
 
     const payload = {
         query: query,
@@ -92,10 +177,31 @@ async function streamChat() {
         payload.model_name = modelName;
     }
 
+    if (temperatureEl) {
+        const t = _parseOptionalFloat(temperatureEl.value);
+        if (t != null) {
+            payload.temperature = t;
+        }
+    }
+
+    if (maxTokensEl) {
+        const mt = _parseOptionalInt(maxTokensEl.value);
+        if (mt != null) {
+            payload.max_tokens = mt;
+        }
+    }
+
+    if (systemPromptEl) {
+        const sp = systemPromptEl.value.trim();
+        if (sp) {
+            payload.system_prompt = sp;
+        }
+    }
+
     saveChatPreferences();
 
     try {
-        const response = await fetch('/api/chat', {
+        const response = await fetch('/api/chat-rag', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
@@ -104,7 +210,9 @@ async function streamChat() {
 
         if (response.status === 503) {
             const payload = await response.json().catch(() => null);
-            const msg = payload && payload.detail ? payload.detail : 'Search engine warming, please retry.';
+            const msg = payload && payload.status === 'warming'
+                ? 'Search engine warming, please retry.'
+                : (payload && payload.detail ? payload.detail : 'Search engine warming, please retry.');
             setStatus(msg, true);
             return;
         }
@@ -116,26 +224,13 @@ async function streamChat() {
             return;
         }
 
-        if (!response.body) {
-            setStatus('Streaming is not supported by the browser.', true);
-            return;
-        }
-
+        const data = await response.json();
         setStatus('');
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let done = false;
-
-        while (!done) {
-            const result = await reader.read();
-            done = result.done;
-            if (result.value) {
-                appendAnswer(decoder.decode(result.value, { stream: !done }));
-            }
-        }
+        setAnswer(data && data.answer ? data.answer : '');
+        setSources(data && data.sources ? data.sources : []);
     } catch (error) {
         if (error.name === 'AbortError') {
-            setStatus('Streaming stopped.');
+            setStatus('Request stopped.');
         } else {
             setStatus(error.message || 'Chat request failed.', true);
         }
@@ -170,8 +265,11 @@ export function initChat() {
     const queryEl = document.getElementById('chatQuery');
     const providerEl = document.getElementById('chatProvider');
     const modelEl = document.getElementById('chatModel');
+    const temperatureEl = document.getElementById('chatTemperature');
+    const maxTokensEl = document.getElementById('chatMaxTokens');
+    const systemPromptEl = document.getElementById('chatSystemPrompt');
 
-    if (sendBtn) sendBtn.addEventListener('click', streamChat);
+    if (sendBtn) sendBtn.addEventListener('click', runChatRag);
     if (stopBtn) {
         stopBtn.addEventListener('click', stopChat);
         stopBtn.disabled = true;
@@ -182,7 +280,7 @@ export function initChat() {
         queryEl.addEventListener('keydown', (event) => {
             if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
                 event.preventDefault();
-                streamChat();
+                runChatRag();
             }
         });
     }
@@ -195,5 +293,39 @@ export function initChat() {
         modelEl.addEventListener('change', saveChatPreferences);
     }
 
+    if (temperatureEl) {
+        temperatureEl.addEventListener('change', saveChatPreferences);
+    }
+
+    if (maxTokensEl) {
+        maxTokensEl.addEventListener('change', saveChatPreferences);
+    }
+
+    if (systemPromptEl) {
+        systemPromptEl.addEventListener('change', saveChatPreferences);
+    }
+
     restoreChatPreferences();
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function _parseOptionalFloat(value) {
+    const trimmed = String(value || '').trim();
+    if (!trimmed) return null;
+    const parsed = Number.parseFloat(trimmed);
+    if (!Number.isFinite(parsed)) return null;
+    return parsed;
+}
+
+function _parseOptionalInt(value) {
+    const trimmed = String(value || '').trim();
+    if (!trimmed) return null;
+    const parsed = Number.parseInt(trimmed, 10);
+    if (!Number.isFinite(parsed)) return null;
+    return parsed;
 }

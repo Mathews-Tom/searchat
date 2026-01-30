@@ -48,6 +48,11 @@ memory_limit_mb = 3000
 query_cache_size = 100
 enable_profiling = false
 
+[analytics]
+# Opt-in analytics tracking. When disabled, searches are NOT logged.
+enabled = false
+retention_days = 30
+
 [logging]
 level = "INFO"
 file_enabled = true
@@ -61,3 +66,8 @@ use_rich_console = true
 default_provider = "ollama"
 openai_model = "gpt-4.1-mini"
 ollama_model = "ollama/gemma3"
+
+[chat]
+# Controls the non-streaming RAG endpoint and citation/source output.
+enable_rag = true
+enable_citations = true

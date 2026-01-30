@@ -68,3 +68,27 @@ class BackupRestoreResponse(BaseModel):
     message: str
     backup_name: str
     restored_files: int
+
+
+class ConversationSource(BaseModel):
+    """Source metadata for a RAG answer."""
+
+    conversation_id: str
+    project_id: str
+    title: str
+    file_path: str
+    updated_at: str
+    score: float
+    snippet: str
+    message_start_index: int | None = None
+    message_end_index: int | None = None
+    source: str
+    tool: str
+
+
+class RAGResponse(BaseModel):
+    """Non-streaming chat response with sources."""
+
+    answer: str
+    sources: list[ConversationSource]
+    context_used: int
