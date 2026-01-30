@@ -63,6 +63,23 @@
                 </div>
             </div>
 
+            <div class="saved-queries-panel">
+                <div class="saved-queries-header">
+                    <h3>Saved Queries</h3>
+                    <button id="saveQueryButton" type="button">Save Current</button>
+                </div>
+                <div class="saved-queries-status" id="savedQueriesStatus"></div>
+                <div class="saved-queries-form" id="savedQueriesForm">
+                    <input type="text" id="savedQueryName" placeholder="Query name" />
+                    <input type="text" id="savedQueryDescription" placeholder="Description (optional)" />
+                    <div class="saved-queries-actions">
+                        <button id="savedQuerySave" type="button">Save</button>
+                        <button id="savedQueryCancel" type="button" class="secondary">Cancel</button>
+                    </div>
+                </div>
+                <div id="savedQueriesList"></div>
+            </div>
+
             <!-- Backup & Restore Section -->
             <div style="margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border-muted);">
                 <h3 style="color: var(--warning); margin-bottom: 16px;">🔒 Backup & Restore</h3>
@@ -98,6 +115,7 @@
             <h1 id="heroTitle" style="margin-bottom: 4px;"><span style="color: #4a9eff">sear</span><span style="background: linear-gradient(to right, #4a9eff, #ff9500); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">ch</span><span style="color: #ff9500">at</span></h1>
             <p id="heroSubtitle" style="margin: 0 0 20px 0; font-size: 13px; color: #888;">Semantic search for AI coding agent conversations — Claude Code + Mistral Vibe + OpenCode</p>
             <input type="text" id="search" class="search-box" placeholder="Search conversations..." />
+            <div id="projectSuggestion" class="project-suggestion" style="display: none;"></div>
 
             <div class="filters" id="filters">
         <label>Mode: 
@@ -146,8 +164,14 @@
                 <option value="messages">Message count</option>
             </select>
         </label>
+
+        <label style="display: inline-flex; align-items: center; gap: 6px;">
+            <input type="checkbox" id="semanticHighlights" />
+            Semantic highlights (LLM)
+        </label>
         
         <button onclick="search()">Search</button>
+        <button id="saveQueryButtonInline" type="button" style="background: #7c3aed; margin-left: 10px;">Save Query</button>
         <button onclick="showAllConversations()" style="background: #2196F3; margin-left: 10px;">Show All</button>
         <button onclick="showBookmarks()" style="background: #FFA500; margin-left: 10px;" title="View your bookmarked conversations">⭐ Bookmarks</button>
         <button onclick="showAnalytics()" style="background: #00BCD4; margin-left: 10px;" title="View search analytics and patterns">📊 Analytics</button>
@@ -155,6 +179,8 @@
         <button onclick="indexMissing()" style="background: #4CAF50; margin-left: 10px;" title="Safely add conversations that aren't in the index yet">Add Missing Conversations</button>
         <button onclick="shutdownServer()" style="background: #f44336; margin-left: 10px;" title="Stop the search server">Stop Server</button>
     </div>
+
+    <div id="projectSummary" class="project-summary" style="display: none;"></div>
 
     <div class="chat-panel" id="chatPanel">
         <div class="chat-header">

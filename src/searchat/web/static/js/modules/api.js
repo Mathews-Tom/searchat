@@ -1,11 +1,54 @@
 // API Client Functions
 
 function _sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise(function (resolve) {
+        setTimeout(resolve, ms);
+    });
+}
+
+let _projectSummaries = [];
+let _projectSummaryInitialized = false;
+
+export function getProjectSummaries() {
+    return _projectSummaries;
+}
+
+function _renderProjectSummary(projectId) {
+    const summaryDiv = document.getElementById('projectSummary');
+    if (!summaryDiv) return;
+
+    if (!projectId) {
+        summaryDiv.style.display = 'none';
+        summaryDiv.innerHTML = '';
+        return;
+    }
+
+    let match = null;
+    for (const item of _projectSummaries) {
+        if (item.project_id === projectId) {
+            match = item;
+            break;
+        }
+    }
+    if (!match) {
+        summaryDiv.style.display = 'none';
+        summaryDiv.innerHTML = '';
+        return;
+    }
+
+    summaryDiv.style.display = 'block';
+    summaryDiv.innerHTML = `
+        <div class="project-summary-title">Project Summary</div>
+        <div class="project-summary-details">
+            <span><strong>${match.conversation_count}</strong> conversations</span>
+            <span><strong>${match.message_count}</strong> messages</span>
+            <span>Updated ${new Date(match.updated_at).toLocaleDateString()}</span>
+        </div>
+    `;
 }
 
 export async function loadProjects() {
-    const response = await fetch('/api/projects');
+    const response = await fetch('/api/projects/summary');
 
     if (response.status === 503) {
         const payload = await response.json();
@@ -20,7 +63,7 @@ export async function loadProjects() {
     }
 
     if (!response.ok) {
-        const payload = await response.json().catch(() => null);
+        const payload = await response.json().catch(function () { return null; });
         console.error('Failed to load projects:', payload);
         return;
     }
@@ -29,21 +72,35 @@ export async function loadProjects() {
     const select = document.getElementById('project');
     const currentValue = select.value;
 
-    projects.forEach(p => {
+    _projectSummaries = Array.isArray(projects) ? projects : [];
+
+    for (const project of _projectSummaries) {
         const option = document.createElement('option');
-        option.value = p;
-        if (p.startsWith('opencode-')) {
-            option.textContent = `OpenCode • ${p}`;
-        } else if (p.startsWith('vibe-')) {
-            option.textContent = `Vibe • ${p}`;
+        option.value = project.project_id;
+        const label = `${project.project_id} (${project.conversation_count})`;
+        if (project.project_id.startsWith('opencode-')) {
+            option.textContent = `OpenCode • ${label}`;
+        } else if (project.project_id.startsWith('vibe-')) {
+            option.textContent = `Vibe • ${label}`;
         } else {
-            option.textContent = `Claude Code • ${p}`;
+            option.textContent = `Claude Code • ${label}`;
         }
         select.appendChild(option);
-    });
+    }
 
     // Restore previous value if it exists
     if (currentValue) select.value = currentValue;
+
+    if (!_projectSummaryInitialized) {
+        function handleProjectChange() {
+            _renderProjectSummary(select.value);
+        }
+
+        select.addEventListener('change', handleProjectChange);
+        _projectSummaryInitialized = true;
+    }
+
+    _renderProjectSummary(select.value);
 }
 
 export async function indexMissing() {
@@ -55,16 +112,18 @@ export async function indexMissing() {
         const data = await response.json();
 
         if (data.success) {
-            const failedInfo = data.failed_conversations > 0
-                ? ` | <span style="color: #d32f2f; font-weight: 700;">⚠ ${data.failed_conversations} failed</span>`
-                : '';
+            let failedInfo = '';
+            if (data.failed_conversations > 0) {
+                failedInfo = ` | <span style="color: #d32f2f; font-weight: 700;">⚠ ${data.failed_conversations} failed</span>`;
+            }
 
             if (data.new_conversations === 0) {
                 const bgColor = data.failed_conversations > 0 ? '#fff3e0' : '#e3f2fd';
                 const borderColor = data.failed_conversations > 0 ? '#ff9800' : '#2196f3';
-                const statusText = data.failed_conversations > 0
-                    ? `✓ All valid conversations indexed (${data.failed_conversations} corrupt files skipped)`
-                    : '✓ All conversations are already indexed';
+                let statusText = '✓ All conversations are already indexed';
+                if (data.failed_conversations > 0) {
+                    statusText = `✓ All valid conversations indexed (${data.failed_conversations} corrupt files skipped)`;
+                }
 
                 resultsDiv.innerHTML = `
                     <div class="results-header" style="background: ${bgColor}; padding: 15px; color: #000; border-left: 4px solid ${borderColor};">
@@ -120,13 +179,12 @@ export async function shutdownServer(force = false) {
         const data = await response.json();
 
         if (data.success) {
-            const warningStyle = data.forced ?
-                'background: #ff9800; border-left-color: #ff5722;' :
-                'background: #f44336;';
-
-            const warningMsg = data.forced ?
-                '<div style="margin-top: 8px; color: #fff; font-weight: 600;">⚠ FORCED SHUTDOWN - Indexing was interrupted. Index may be inconsistent.</div>' :
-                '';
+            let warningStyle = 'background: #f44336;';
+            let warningMsg = '';
+            if (data.forced) {
+                warningStyle = 'background: #ff9800; border-left-color: #ff5722;';
+                warningMsg = '<div style="margin-top: 8px; color: #fff; font-weight: 600;">⚠ FORCED SHUTDOWN - Indexing was interrupted. Index may be inconsistent.</div>';
+            }
 
             resultsDiv.innerHTML = `
                 <div class="results-header" style="${warningStyle} padding: 15px;">

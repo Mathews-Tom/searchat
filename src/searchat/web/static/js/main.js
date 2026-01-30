@@ -3,7 +3,7 @@
 import { initTheme, setTheme } from './modules/theme.js';
 import { restoreSearchState } from './modules/session.js';
 import { loadProjects } from './modules/api.js';
-import { search, toggleCustomDate, loadConversationView, showSearchView } from './modules/search.js';
+import { search, toggleCustomDate, loadConversationView, showSearchView, initProjectSuggestion } from './modules/search.js';
 import { initChat } from './modules/chat.js';
 import { initShortcuts, toggleHelpModal } from './modules/shortcuts.js';
 import { initSearchHistory, restoreSearchFromHistory, clearHistory } from './modules/search-history.js';
@@ -13,6 +13,7 @@ import { initBookmarks, showBookmarks } from './modules/bookmarks.js';
 import { initBulkExport, toggleBulkMode } from './modules/bulk-export.js';
 import { showAnalytics } from './modules/analytics.js';
 import { goToPage } from './modules/pagination.js';
+import { initSavedQueries } from './modules/saved-queries.js';
 
 // Initialize theme, shortcuts, search history, suggestions, bookmarks, and bulk export on page load
 initTheme();
@@ -22,6 +23,8 @@ initSearchHistory();
 initSuggestions();
 initBookmarks();
 initBulkExport();
+initSavedQueries();
+initProjectSuggestion();
 
 // Make functions globally available for inline event handlers
 window.setTheme = setTheme;

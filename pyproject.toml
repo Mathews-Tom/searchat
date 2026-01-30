@@ -21,7 +21,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "duckdb>=0.10.0",
+    "duckdb==1.4.3",
     "pyarrow>=14.0.0",
     "faiss-cpu>=1.7.4",
     "sentence-transformers>=2.3.0",
@@ -29,7 +29,7 @@ dependencies = [
     "uvicorn>=0.20.0",
     "rich>=13.0.0",
     "tomli>=2.0.1",
-    "numpy>=1.24.0",
+    "numpy<2",
     "pandas>=2.0.0",
     "python-dotenv>=1.0.0",
     "watchdog>=3.0.0",

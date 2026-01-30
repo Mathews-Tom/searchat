@@ -275,6 +275,15 @@ def mock_platform_manager():
     return mock
 
 
+def test_conversation_diff_requires_search_engine(client):
+    """Test diff endpoint returns 503 when search engine not ready."""
+    with patch('searchat.api.routers.conversations.deps.get_search_engine', side_effect=RuntimeError("Search engine not ready")):
+        response = client.get("/api/conversation/conv-1/diff")
+
+        assert response.status_code == 503
+        assert response.json()["detail"] == "Search engine not ready"
+
+
 @pytest.mark.unit
 class TestGetAllConversationsEndpoint:
     """Tests for GET /api/conversations/all endpoint."""
