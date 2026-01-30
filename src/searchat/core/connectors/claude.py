@@ -27,6 +27,18 @@ class ClaudeConnector:
                 files.append(json_file)
         return files
 
+    def watch_dirs(self, config: Config) -> list[Path]:
+        return [p for p in PathResolver.resolve_claude_dirs(config) if p.exists()]
+
+    def watch_stats(self, config: Config) -> dict[str, int]:
+        project_count = 0
+        for root in self.watch_dirs(config):
+            try:
+                project_count += sum(1 for p in root.iterdir() if p.is_dir())
+            except OSError:
+                continue
+        return {"projects": project_count}
+
     def can_parse(self, path: Path) -> bool:
         return path.suffix == ".jsonl"
 
