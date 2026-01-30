@@ -21,33 +21,44 @@ function findProjectSuggestion(query) {
     const trimmed = query.trim().toLowerCase();
     if (trimmed.length < 3) return null;
 
-    const tokens = trimmed.split(/[^a-z0-9_-]+/).filter(token => token.length >= 3);
+    const tokens = tokenizeQuery(trimmed);
     if (tokens.length === 0) return null;
 
     let bestMatch = null;
     let bestScore = 0;
 
-    summaries.forEach((summary) => {
+    for (const summary of summaries) {
         const projectId = String(summary.project_id || '').toLowerCase();
-        if (!projectId) return;
+        if (!projectId) continue;
 
         if (trimmed.includes(projectId)) {
             if (projectId.length > bestScore) {
                 bestScore = projectId.length;
                 bestMatch = summary;
             }
-            return;
+            continue;
         }
 
-        tokens.forEach((token) => {
+        for (const token of tokens) {
             if (projectId.includes(token) && token.length > bestScore) {
                 bestScore = token.length;
                 bestMatch = summary;
             }
-        });
-    });
+        }
+    }
 
     return bestMatch;
+}
+
+function tokenizeQuery(value) {
+    const tokens = [];
+    const parts = value.split(/[^a-z0-9_-]+/);
+    for (const part of parts) {
+        if (part.length >= 3) {
+            tokens.push(part);
+        }
+    }
+    return tokens;
 }
 
 export function initProjectSuggestion() {
@@ -80,10 +91,15 @@ export function initProjectSuggestion() {
         `;
     }
 
-    searchBox.addEventListener('input', updateSuggestion);
-    projectSelect.addEventListener('change', updateSuggestion);
+    function handleInput() {
+        updateSuggestion();
+    }
 
-    suggestion.addEventListener('click', (event) => {
+    function handleProjectChange() {
+        updateSuggestion();
+    }
+
+    function handleSuggestionClick(event) {
         const button = event.target.closest('button');
         if (!button) return;
         const projectId = button.dataset.projectId;
@@ -91,7 +107,11 @@ export function initProjectSuggestion() {
         projectSelect.value = projectId;
         hideSuggestion();
         if (window.search) window.search();
-    });
+    }
+
+    searchBox.addEventListener('input', handleInput);
+    projectSelect.addEventListener('change', handleProjectChange);
+    suggestion.addEventListener('click', handleSuggestionClick);
 
     updateSuggestion();
 }
@@ -102,15 +122,41 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+function getToolLabel(tool) {
+    if (tool === 'opencode') {
+        return 'OpenCode';
+    }
+    if (tool === 'vibe') {
+        return 'Vibe';
+    }
+    return 'Claude Code';
+}
+
 function escapeRegExp(value) {
     return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function resolveErrorMessage(payload, fallback) {
+    if (payload && payload.detail) {
+        return payload.detail;
+    }
+    if (payload && payload.errors) {
+        return JSON.stringify(payload.errors);
+    }
+    return fallback;
+}
+
 function normalizeHighlightTerms(terms) {
     if (!Array.isArray(terms)) return [];
-    return terms
-        .map(term => (typeof term === 'string' ? term.trim() : ''))
-        .filter(term => term.length > 1);
+    const normalized = [];
+    for (const term of terms) {
+        if (typeof term !== 'string') continue;
+        const trimmed = term.trim();
+        if (trimmed.length > 1) {
+            normalized.push(trimmed);
+        }
+    }
+    return normalized;
 }
 
 function highlightText(text, query, semanticTerms) {
@@ -124,11 +170,11 @@ function highlightText(text, query, semanticTerms) {
     }
 
     const terms = normalizeHighlightTerms(semanticTerms);
-    terms.forEach(term => {
-        if (!term || term.toLowerCase() === trimmedQuery.toLowerCase()) return;
+    for (const term of terms) {
+        if (!term || term.toLowerCase() === trimmedQuery.toLowerCase()) continue;
         const termRegex = new RegExp(`(${escapeRegExp(term)})`, 'gi');
         output = output.replace(termRegex, '<mark class="mark-semantic">$1</mark>');
-    });
+    }
 
     return output;
 }
@@ -220,7 +266,7 @@ function renderDiffPreview(payload) {
 
 function ensureResultsHandlers(resultsDiv) {
     if (_resultsHandlersBound) return;
-    resultsDiv.addEventListener('click', async (event) => {
+    async function handleResultsClick(event) {
         const target = event.target;
 
         if (target.classList.contains('snippet-copy')) {
@@ -232,7 +278,7 @@ function ensureResultsHandlers(resultsDiv) {
                 await navigator.clipboard.writeText(code);
                 const original = target.textContent;
                 target.textContent = 'Copied';
-                setTimeout(() => {
+                setTimeout(function () {
                     target.textContent = original;
                 }, 1500);
             } catch (error) {
@@ -292,12 +338,16 @@ function ensureResultsHandlers(resultsDiv) {
                 diffContainer.innerHTML = `<div class="diff-error">Error: ${error.message}</div>`;
             }
         }
-    });
+    }
+
+    resultsDiv.addEventListener('click', handleResultsClick);
     _resultsHandlersBound = true;
 }
 
 function _sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise(function (resolve) {
+        setTimeout(resolve, ms);
+    });
 }
 
 export async function search(resetPage = true, attempt = 0) {
@@ -380,7 +430,7 @@ export async function search(resetPage = true, attempt = 0) {
                 `;
                 const button = document.getElementById('fallbackKeyword');
                 if (button) {
-                    button.addEventListener('click', () => {
+                    button.addEventListener('click', function () {
                         document.getElementById('mode').value = 'keyword';
                         return search();
                     });
@@ -396,16 +446,14 @@ export async function search(resetPage = true, attempt = 0) {
             return;
         }
 
-        const msg = payload && payload.detail
-            ? payload.detail
-            : (payload && payload.errors ? JSON.stringify(payload.errors) : 'Search warming failed');
+        const msg = resolveErrorMessage(payload, 'Search warming failed');
         resultsDiv.innerHTML = `<div style="color: #f44336;">${msg}</div>`;
         return;
     }
 
     if (!response.ok) {
         const payload = await response.json().catch(() => null);
-        const msg = payload && payload.detail ? payload.detail : (payload && payload.errors ? JSON.stringify(payload.errors) : 'Search failed');
+        const msg = resolveErrorMessage(payload, 'Search failed');
         resultsDiv.innerHTML = `<div style="color: #f44336;">${msg}</div>`;
         return;
     }
@@ -444,7 +492,7 @@ export async function search(resetPage = true, attempt = 0) {
 
         // Detect tool from API field
         let tool = r.tool || 'claude';
-        let toolLabel = tool === 'opencode' ? 'OpenCode' : (tool === 'vibe' ? 'Vibe' : 'Claude Code');
+        const toolLabel = getToolLabel(tool);
 
         const highlightedTitle = highlightText(r.title, query, highlightTerms);
         const formattedSnippet = formatSnippet(r.snippet, query, highlightTerms);
@@ -667,7 +715,7 @@ export async function showAllConversations() {
 
             // Detect tool from API field
             let tool = r.tool || 'claude';
-            let toolLabel = tool === 'opencode' ? 'OpenCode' : (tool === 'vibe' ? 'Vibe' : 'Claude Code');
+            const toolLabel = getToolLabel(tool);
 
             const formattedSnippet = formatSnippet(r.snippet, '', []);
 
@@ -785,7 +833,7 @@ export async function loadConversationView(conversationId, pushState = true) {
         const data = await response.json();
         debug.textContent = `Loaded ${conversationId} | messages: ${Array.isArray(data.messages) ? data.messages.length : 0}`;
         const tool = data.tool || (data.file_path.endsWith('.jsonl') ? 'claude' : 'vibe');
-        const toolLabel = tool === 'opencode' ? 'OpenCode' : (tool === 'vibe' ? 'Vibe' : 'Claude Code');
+        const toolLabel = getToolLabel(tool);
         const projectPath = data.project_path || '';
         const headerMeta = projectPath
             ? `Project: ${projectPath}`

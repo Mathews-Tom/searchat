@@ -69,13 +69,14 @@ function _renderSavedQueries() {
         return;
     }
 
-    list.innerHTML = _savedQueries.map((query) => {
+    const items = [];
+    for (const query of _savedQueries) {
         const desc = query.description ? ` - ${_escapeHtml(query.description)}` : '';
         const modeLabel = query.mode ? _escapeHtml(query.mode) : '';
         const projectLabel = query.filters?.project ? ` • ${_escapeHtml(query.filters.project)}` : '';
         const meta = `${modeLabel}${projectLabel}`;
         const syncLabel = query.synced === false ? ' (local only)' : '';
-        return `
+        items.push(`
             <div class="saved-query-item" data-query-id="${query.id}">
                 <div class="saved-query-title">${_escapeHtml(query.name)}${syncLabel}</div>
                 <div class="saved-query-meta">${meta}${desc}</div>
@@ -85,8 +86,9 @@ function _renderSavedQueries() {
                     <button class="saved-query-delete" data-query-id="${query.id}">Delete</button>
                 </div>
             </div>
-        `;
-    }).join('');
+        `);
+    }
+    list.innerHTML = items.join('');
 }
 
 function _openForm(state) {
@@ -109,11 +111,18 @@ async function _fetchSavedQueries() {
     try {
         const response = await fetch('/api/queries');
         if (!response.ok) {
-            const payload = await response.json().catch(() => null);
+            const payload = await response.json().catch(function () { return null; });
             throw new Error(payload?.detail || 'Failed to load saved queries');
         }
         const data = await response.json();
-        return Array.isArray(data.queries) ? data.queries.map(q => ({ ...q, synced: true })) : [];
+        if (!Array.isArray(data.queries)) {
+            return [];
+        }
+        const results = [];
+        for (const query of data.queries) {
+            results.push({ ...query, synced: true });
+        }
+        return results;
     } catch (error) {
         _setStatus('Saved queries are available locally only.');
         return null;
@@ -121,13 +130,13 @@ async function _fetchSavedQueries() {
 }
 
 async function _createBackendQuery(payload) {
-    const response = await fetch('/api/queries', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-    });
+        const response = await fetch('/api/queries', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
     if (!response.ok) {
-        const payloadError = await response.json().catch(() => null);
+        const payloadError = await response.json().catch(function () { return null; });
         throw new Error(payloadError?.detail || 'Failed to save query');
     }
     const data = await response.json();
@@ -141,7 +150,7 @@ async function _updateBackendQuery(queryId, payload) {
         body: JSON.stringify(payload)
     });
     if (!response.ok) {
-        const payloadError = await response.json().catch(() => null);
+        const payloadError = await response.json().catch(function () { return null; });
         throw new Error(payloadError?.detail || 'Failed to update query');
     }
     const data = await response.json();
@@ -151,7 +160,7 @@ async function _updateBackendQuery(queryId, payload) {
 async function _deleteBackendQuery(queryId) {
     const response = await fetch(`/api/queries/${queryId}`, { method: 'DELETE' });
     if (!response.ok) {
-        const payloadError = await response.json().catch(() => null);
+        const payloadError = await response.json().catch(function () { return null; });
         throw new Error(payloadError?.detail || 'Failed to delete query');
     }
 }
@@ -167,7 +176,12 @@ function _syncLocal(queries) {
 }
 
 function _findQuery(queryId) {
-    return _savedQueries.find(query => query.id === queryId);
+    for (const query of _savedQueries) {
+        if (query.id === queryId) {
+            return query;
+        }
+    }
+    return null;
 }
 
 export async function initSavedQueries() {
@@ -181,22 +195,27 @@ export async function initSavedQueries() {
         _syncLocal(localQueries);
     }
 
-    const saveButtons = [
-        document.getElementById('saveQueryButton'),
-        document.getElementById('saveQueryButtonInline')
-    ].filter(Boolean);
+    const saveButtons = [];
+    const headerButton = document.getElementById('saveQueryButton');
+    const inlineButton = document.getElementById('saveQueryButtonInline');
+    if (headerButton) saveButtons.push(headerButton);
+    if (inlineButton) saveButtons.push(inlineButton);
 
-    saveButtons.forEach(btn => {
-        btn.addEventListener('click', () => {
-            _openForm(_getCurrentSearchState());
-        });
-    });
+    function handleSaveButtonClick() {
+        _openForm(_getCurrentSearchState());
+    }
 
-    document.getElementById('savedQueryCancel').addEventListener('click', () => {
+    for (const button of saveButtons) {
+        button.addEventListener('click', handleSaveButtonClick);
+    }
+
+    function handleCancelClick() {
         _closeForm();
-    });
+    }
 
-    document.getElementById('savedQuerySave').addEventListener('click', async () => {
+    document.getElementById('savedQueryCancel').addEventListener('click', handleCancelClick);
+
+    async function handleSaveClick() {
         const name = document.getElementById('savedQueryName').value.trim();
         if (!name) {
             _setStatus('Name is required to save a query.');
@@ -217,7 +236,14 @@ export async function initSavedQueries() {
         try {
             if (baseState.id) {
                 const updated = await _updateBackendQuery(baseState.id, payload);
-                const updatedList = _savedQueries.map(q => q.id === baseState.id ? { ...updated, synced: true } : q);
+                const updatedList = [];
+                for (const query of _savedQueries) {
+                    if (query.id === baseState.id) {
+                        updatedList.push({ ...updated, synced: true });
+                    } else {
+                        updatedList.push(query);
+                    }
+                }
                 _syncLocal(updatedList);
             } else {
                 const localId = `local-${Date.now()}`;
@@ -225,7 +251,14 @@ export async function initSavedQueries() {
                 _syncLocal([localEntry, ..._savedQueries]);
 
                 const created = await _createBackendQuery(payload);
-                const merged = _savedQueries.map(q => q.id === localId ? { ...created, synced: true } : q);
+                const merged = [];
+                for (const query of _savedQueries) {
+                    if (query.id === localId) {
+                        merged.push({ ...created, synced: true });
+                    } else {
+                        merged.push(query);
+                    }
+                }
                 _syncLocal(merged);
             }
             _setStatus('');
@@ -233,9 +266,11 @@ export async function initSavedQueries() {
         } catch (error) {
             _setStatus(error.message);
         }
-    });
+    }
 
-    document.getElementById('savedQueriesList').addEventListener('click', async (event) => {
+    document.getElementById('savedQuerySave').addEventListener('click', handleSaveClick);
+
+    async function handleSavedQueriesClick(event) {
         const target = event.target;
         if (!target.dataset.queryId) return;
         const queryId = target.dataset.queryId;
@@ -245,17 +280,21 @@ export async function initSavedQueries() {
         if (target.classList.contains('saved-query-run')) {
             _applyQueryToForm(savedQuery);
             window.search();
-            const updatedList = _savedQueries.map(q => {
-                if (q.id !== queryId) return q;
-                return {
-                    ...q,
-                    last_used: new Date().toISOString(),
-                    use_count: (q.use_count || 0) + 1
-                };
-            });
+            const updatedList = [];
+            for (const query of _savedQueries) {
+                if (query.id === queryId) {
+                    updatedList.push({
+                        ...query,
+                        last_used: new Date().toISOString(),
+                        use_count: (query.use_count || 0) + 1
+                    });
+                } else {
+                    updatedList.push(query);
+                }
+            }
             _syncLocal(updatedList);
             if (!queryId.startsWith('local-')) {
-                _recordBackendRun(queryId).catch(() => null);
+                _recordBackendRun(queryId).catch(function () { return null; });
             }
         }
 
@@ -265,7 +304,12 @@ export async function initSavedQueries() {
         }
 
         if (target.classList.contains('saved-query-delete')) {
-            const updatedList = _savedQueries.filter(q => q.id !== queryId);
+            const updatedList = [];
+            for (const query of _savedQueries) {
+                if (query.id !== queryId) {
+                    updatedList.push(query);
+                }
+            }
             _syncLocal(updatedList);
             if (!queryId.startsWith('local-')) {
                 try {
@@ -275,5 +319,7 @@ export async function initSavedQueries() {
                 }
             }
         }
-    });
+    }
+
+    document.getElementById('savedQueriesList').addEventListener('click', handleSavedQueriesClick);
 }
