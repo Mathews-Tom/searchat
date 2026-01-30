@@ -45,6 +45,8 @@ def test_get_conversation_code_with_python(client):
 
         block = data["code_blocks"][0]
         assert block["language"] == "python"
+        assert block["fence_language"] == "python"
+        assert block["language_source"] == "fence"
         assert block["role"] == "assistant"
         assert block["message_index"] == 1
         assert block["block_index"] == 0
@@ -104,6 +106,8 @@ def test_get_conversation_code_no_language_specified(client):
         assert data["total_blocks"] == 1
         # Should auto-detect as Python
         assert data["code_blocks"][0]["language"] == "python"
+        assert data["code_blocks"][0]["fence_language"] is None
+        assert data["code_blocks"][0]["language_source"] == "detected"
 
 
 def test_get_conversation_code_empty_blocks_filtered(client):
