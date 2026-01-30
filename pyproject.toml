@@ -35,6 +35,8 @@ dependencies = [
     "watchdog>=3.0.0",
     "rank-bm25>=0.2.2",
     "litellm>=1.81.3",
+    "pygments>=2.17.0",
+    "reportlab>=4.2.0",
 ]
 
 [project.optional-dependencies]

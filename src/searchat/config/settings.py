@@ -43,6 +43,10 @@ from .constants import (
     DEFAULT_ANALYTICS_RETENTION_DAYS,
     DEFAULT_ENABLE_RAG_CHAT,
     DEFAULT_ENABLE_CHAT_CITATIONS,
+    DEFAULT_ENABLE_EXPORT_IPYNB,
+    DEFAULT_ENABLE_EXPORT_PDF,
+    DEFAULT_ENABLE_EXPORT_TECH_DOCS,
+    DEFAULT_ENABLE_DASHBOARDS,
     DEFAULT_THEME,
     DEFAULT_FONT_FAMILY,
     DEFAULT_FONT_SIZE,
@@ -62,6 +66,10 @@ from .constants import (
     ENV_ANALYTICS_RETENTION_DAYS,
     ENV_ENABLE_RAG_CHAT,
     ENV_ENABLE_CHAT_CITATIONS,
+    ENV_ENABLE_EXPORT_IPYNB,
+    ENV_ENABLE_EXPORT_PDF,
+    ENV_ENABLE_EXPORT_TECH_DOCS,
+    ENV_ENABLE_DASHBOARDS,
     ERROR_NO_CONFIG,
 )
 
@@ -397,6 +405,44 @@ class ChatConfig:
 
 
 @dataclass
+class ExportConfig:
+    enable_ipynb: bool
+    enable_pdf: bool
+    enable_tech_docs: bool
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "ExportConfig":
+        return cls(
+            enable_ipynb=_get_env_bool(
+                ENV_ENABLE_EXPORT_IPYNB,
+                data.get("enable_ipynb", DEFAULT_ENABLE_EXPORT_IPYNB),
+            ),
+            enable_pdf=_get_env_bool(
+                ENV_ENABLE_EXPORT_PDF,
+                data.get("enable_pdf", DEFAULT_ENABLE_EXPORT_PDF),
+            ),
+            enable_tech_docs=_get_env_bool(
+                ENV_ENABLE_EXPORT_TECH_DOCS,
+                data.get("enable_tech_docs", DEFAULT_ENABLE_EXPORT_TECH_DOCS),
+            ),
+        )
+
+
+@dataclass
+class DashboardsConfig:
+    enabled: bool
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "DashboardsConfig":
+        return cls(
+            enabled=_get_env_bool(
+                ENV_ENABLE_DASHBOARDS,
+                data.get("enabled", DEFAULT_ENABLE_DASHBOARDS),
+            )
+        )
+
+
+@dataclass
 class Config:
     paths: PathsConfig
     indexing: IndexingConfig
@@ -407,6 +453,8 @@ class Config:
     performance: PerformanceConfig
     analytics: AnalyticsConfig
     chat: ChatConfig
+    export: ExportConfig
+    dashboards: DashboardsConfig
     logging: LogConfig
 
     @classmethod
@@ -476,5 +524,7 @@ class Config:
             performance=PerformanceConfig.from_dict(data.get("performance", {})),
             analytics=AnalyticsConfig.from_dict(data.get("analytics", {})),
             chat=ChatConfig.from_dict(data.get("chat", {})),
+            export=ExportConfig.from_dict(data.get("export", {})),
+            dashboards=DashboardsConfig.from_dict(data.get("dashboards", {})),
             logging=LogConfig(**data.get("logging", {})),
         )
