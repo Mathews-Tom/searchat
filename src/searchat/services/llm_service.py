@@ -37,6 +37,26 @@ class LLMService:
             if content:
                 yield content
 
+    def completion(
+        self,
+        *,
+        messages: list[dict[str, str]],
+        provider: str,
+        model_name: str | None = None,
+    ) -> str:
+        from litellm import completion
+
+        model = self._resolve_model(provider, model_name)
+        try:
+            response = completion(model=model, messages=messages, stream=False)
+        except Exception as exc:
+            raise self._wrap_error(provider, exc) from exc
+
+        content = _extract_response_text(response)
+        if not content:
+            raise LLMServiceError("LLM response contained no content.")
+        return content
+
     def _resolve_model(self, provider: str, model_name: str | None) -> str:
         provider_value = provider.lower()
         if provider_value not in ("openai", "ollama"):
@@ -81,4 +101,24 @@ def _extract_chunk_text(chunk: Any) -> str:
     delta = getattr(first, "delta", None) or getattr(first, "message", None)
     if delta is not None:
         return getattr(delta, "content", "") or ""
+    return getattr(first, "text", "") or ""
+
+
+def _extract_response_text(response: Any) -> str:
+    if isinstance(response, dict):
+        choices = response.get("choices") or []
+    else:
+        choices = getattr(response, "choices", []) or []
+
+    if not choices:
+        return ""
+
+    first = choices[0]
+    if isinstance(first, dict):
+        message = first.get("message") or {}
+        return message.get("content") or first.get("text") or ""
+
+    message = getattr(first, "message", None)
+    if message is not None:
+        return getattr(message, "content", "") or ""
     return getattr(first, "text", "") or ""

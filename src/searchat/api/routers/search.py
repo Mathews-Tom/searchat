@@ -6,6 +6,8 @@ from fastapi.responses import JSONResponse
 
 from searchat.models import SearchMode, SearchFilters
 from searchat.api.models import SearchResultResponse
+from searchat.services.highlight_service import extract_highlight_terms
+from searchat.services.llm_service import LLMServiceError
 from searchat.api.utils import detect_tool_from_path, detect_source_from_path, parse_date_filter
 import searchat.api.dependencies as deps
 
@@ -19,6 +21,7 @@ from searchat.api.readiness import get_readiness, warming_payload, error_payload
 
 
 router = APIRouter()
+_highlight_cache: dict[tuple[str, str, str | None], list[str]] = {}
 
 
 @router.get("/search")
@@ -32,7 +35,10 @@ async def search(
     tool: str | None = Query(None, description="Filter by tool: claude, vibe, opencode"),
     sort_by: str = Query("relevance", description="Sort by: relevance, date_newest, date_oldest, messages"),
     limit: int = Query(20, description="Max results per page (1-100)", ge=1, le=100),
-    offset: int = Query(0, description="Number of results to skip for pagination", ge=0)
+    offset: int = Query(0, description="Number of results to skip for pagination", ge=0),
+    highlight: bool = Query(False, description="Enable semantic highlight term extraction"),
+    highlight_provider: str | None = Query(None, description="LLM provider for highlights (openai, ollama)"),
+    highlight_model: str | None = Query(None, description="LLM model override for highlights"),
 ):
     """Search conversations with filters and sorting."""
     try:
@@ -42,7 +48,9 @@ async def search(
             "semantic": SearchMode.SEMANTIC,
             "keyword": SearchMode.KEYWORD
         }
-        search_mode = mode_map.get(mode, SearchMode.HYBRID)
+        if mode not in mode_map:
+            raise HTTPException(status_code=400, detail="Invalid search mode")
+        search_mode = mode_map[mode]
 
         # Treat wildcard as keyword-only browsing.
         if q.strip() == "*":
@@ -78,6 +86,33 @@ async def search(
 
         # Execute search
         results = search_engine.search(q, mode=search_mode, filters=filters)
+
+        highlight_terms = None
+        if highlight and len(q.strip()) >= 4 and mode != "keyword":
+            config = deps.get_config()
+            if highlight_provider is None:
+                raise HTTPException(status_code=400, detail="Highlight provider is required")
+            provider = highlight_provider.lower()
+            if provider not in ("openai", "ollama"):
+                raise HTTPException(status_code=400, detail="Invalid highlight provider")
+
+            cache_key = (q, provider, highlight_model)
+            if cache_key in _highlight_cache:
+                highlight_terms = _highlight_cache[cache_key]
+            else:
+                try:
+                    highlight_terms = extract_highlight_terms(
+                        query=q,
+                        provider=provider,
+                        model_name=highlight_model,
+                        config=config,
+                    )
+                except LLMServiceError as exc:
+                    raise HTTPException(status_code=503, detail=str(exc)) from exc
+                except ValueError as exc:
+                    raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+                _highlight_cache[cache_key] = highlight_terms
 
         # Log search analytics
         try:
@@ -131,9 +166,12 @@ async def search(
             "search_time_ms": results.search_time_ms,
             "limit": limit,
             "offset": offset,
-            "has_more": (offset + limit) < total_results
+            "has_more": (offset + limit) < total_results,
+            "highlight_terms": highlight_terms,
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -146,6 +184,16 @@ async def get_projects():
     if deps.projects_cache is None:
         deps.projects_cache = store.list_projects()
     return deps.projects_cache
+
+
+@router.get("/projects/summary")
+async def get_projects_summary():
+    """Get summary stats for all projects in the index."""
+    store = deps.get_duckdb_store()
+
+    if deps.projects_summary_cache is None:
+        deps.projects_summary_cache = store.list_project_summaries()
+    return deps.projects_summary_cache
 
 
 @router.get("/search/suggestions")

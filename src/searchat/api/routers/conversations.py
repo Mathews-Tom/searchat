@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import difflib
 import json
 import logging
 import re
@@ -261,6 +262,35 @@ def _load_vibe_project_path(session_file_path: str) -> str | None:
     if isinstance(working_dir, str) and working_dir.strip():
         return working_dir
     return None
+
+
+def _slice_messages(
+    messages: list[ConversationMessage],
+    start: int | None,
+    end: int | None,
+) -> list[ConversationMessage]:
+    if start is None or end is None:
+        return messages
+
+    start_index = max(start, 0)
+    end_index = min(end, len(messages) - 1)
+    if start_index > end_index:
+        return []
+    return messages[start_index:end_index + 1]
+
+
+def _messages_to_lines(messages: list[ConversationMessage]) -> list[str]:
+    lines: list[str] = []
+    for idx, message in enumerate(messages, start=1):
+        role_label = (message.role or "unknown").upper()
+        lines.append(f"{role_label} #{idx}")
+        content = message.content or ""
+        if content:
+            lines.extend(content.splitlines())
+        else:
+            lines.append("")
+        lines.append("")
+    return lines
 
 
 @router.get("/conversations/all")
@@ -707,7 +737,7 @@ async def get_similar_conversations(
             # Search for similar vectors
             # Request more than needed to filter out the original conversation
             k = limit + 10
-            distances, labels = faiss_index.search(  # type: ignore[call-arg,arg-type]
+            distances, labels = faiss_index.search(  # type: ignore
                 query_embedding.reshape(1, -1),
                 k
             )
@@ -805,6 +835,72 @@ async def get_similar_conversations(
         raise
     except Exception as e:
         logger.error(f"Failed to find similar conversations for {conversation_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.get("/conversation/{conversation_id}/diff")
+async def get_conversation_diff(
+    conversation_id: str,
+    target_id: str | None = Query(None, description="Target conversation to diff against"),
+    source_start: int | None = Query(None, description="Source message start index"),
+    source_end: int | None = Query(None, description="Source message end index"),
+):
+    """Compute a line diff between two conversations."""
+    try:
+        if target_id is None:
+            try:
+                deps.get_search_engine()
+            except RuntimeError as exc:
+                raise HTTPException(status_code=503, detail=str(exc)) from exc
+            similar_payload = await get_similar_conversations(conversation_id, limit=1)
+            similar_list = similar_payload.get("similar_conversations", [])
+            if not similar_list:
+                raise HTTPException(status_code=404, detail="No similar conversation found")
+            target_id = similar_list[0]["conversation_id"]
+
+        if target_id is None:
+            raise HTTPException(status_code=404, detail="Target conversation not found")
+        if not isinstance(target_id, str):
+            raise HTTPException(status_code=400, detail="Invalid target conversation id")
+
+        source_conv = await get_conversation(conversation_id)
+        target_conv = await get_conversation(target_id)
+
+        source_messages = _slice_messages(source_conv.messages, source_start, source_end)
+        target_messages = _slice_messages(target_conv.messages, None, None)
+
+        source_lines = _messages_to_lines(source_messages)
+        target_lines = _messages_to_lines(target_messages)
+
+        added: list[str] = []
+        removed: list[str] = []
+        unchanged: list[str] = []
+
+        for line in difflib.ndiff(source_lines, target_lines):
+            if line.startswith("+ "):
+                added.append(line[2:])
+            elif line.startswith("- "):
+                removed.append(line[2:])
+            elif line.startswith("  "):
+                unchanged.append(line[2:])
+
+        return {
+            "source_conversation_id": conversation_id,
+            "target_conversation_id": target_id,
+            "summary": {
+                "added": len(added),
+                "removed": len(removed),
+                "unchanged": len(unchanged),
+            },
+            "added": added,
+            "removed": removed,
+            "unchanged": unchanged,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to build diff for {conversation_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 

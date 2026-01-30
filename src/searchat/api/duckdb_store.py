@@ -62,6 +62,40 @@ class DuckDBStore:
         finally:
             con.close()
 
+    def list_project_summaries(self) -> list[dict]:
+        parquets = self._conversation_parquets()
+        if not parquets:
+            return []
+
+        con = self._connect()
+        try:
+            query = """
+            SELECT
+              project_id,
+              COUNT(*)::BIGINT AS conversation_count,
+              COALESCE(SUM(message_count), 0)::BIGINT AS message_count,
+              MAX(updated_at) AS updated_at
+            FROM parquet_scan(?)
+            WHERE message_count > 0
+            GROUP BY project_id
+            ORDER BY project_id
+            """
+            rows = con.execute(query, [str(self._conversations_dir / "*.parquet")]).fetchall()
+            summaries = []
+            for project_id, conv_count, msg_count, updated_at in rows:
+                updated_at_str = updated_at.isoformat() if isinstance(updated_at, datetime) else str(updated_at)
+                summaries.append(
+                    {
+                        "project_id": project_id,
+                        "conversation_count": int(conv_count),
+                        "message_count": int(msg_count),
+                        "updated_at": updated_at_str,
+                    }
+                )
+            return summaries
+        finally:
+            con.close()
+
     def list_conversations(
         self,
         *,
