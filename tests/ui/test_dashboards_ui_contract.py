@@ -18,6 +18,10 @@ def test_dashboards_ui_references_expected_endpoints() -> None:
     assert "/api/status/features" in content
     assert "/api/dashboards" in content
     assert "/render" in content
+    assert "method: 'PUT'" in content
+    assert "builder-save" in content
+    assert "dashboard-builder" in content
+    assert "dashboard-grid" in content
 
 
 def test_index_html_exposes_dashboards_entry_point() -> None:

@@ -918,6 +918,90 @@ button.link {
     gap: 8px;
 }
 
+.dashboard-builder {
+    display: grid;
+    gap: 14px;
+}
+
+.dashboard-builder-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.dashboard-builder-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.dashboard-builder-subtitle {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+
+.dashboard-builder-form {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 10px;
+}
+
+.dashboard-builder-form input {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    padding: 8px 10px;
+    color: var(--text-primary);
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 13px;
+}
+
+.dashboard-builder-widgets {
+    display: grid;
+    gap: 10px;
+}
+
+.dashboard-builder-widget {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
+    border-radius: 12px;
+    padding: 12px;
+    display: grid;
+    gap: 10px;
+}
+
+.dashboard-builder-widget-grid {
+    display: grid;
+    grid-template-columns: 2fr 1.2fr 0.6fr 0.9fr;
+    gap: 10px;
+}
+
+.dashboard-builder-widget-grid input,
+.dashboard-builder-widget-grid select {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    padding: 8px 10px;
+    color: var(--text-primary);
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 13px;
+}
+
+.dashboard-builder-widget-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+.dashboard-builder-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+}
+
 .dashboard-view-actions .secondary {
     background: transparent;
     border: 1px solid var(--border-default);
