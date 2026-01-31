@@ -205,6 +205,89 @@ def test_load_opencode_and_vibe_project_paths(tmp_path: Path):
     assert conv._load_vibe_project_path(str(vibe_path)) == "/vibe/project"
 
 
+def test_resolve_opencode_data_root_falls_back_to_parent(tmp_path: Path):
+    from searchat.api.routers import conversations as conv
+
+    assert conv._resolve_opencode_data_root("session.json") == Path(".")
+
+
+def test_load_opencode_project_path_invalid_inputs_return_none(tmp_path: Path):
+    from searchat.api.routers import conversations as conv
+
+    bad_json = tmp_path / "bad.json"
+    bad_json.write_text("not-json")
+    assert conv._load_opencode_project_path(str(bad_json)) is None
+
+    missing_project_id = tmp_path / "missing_project_id.json"
+    missing_project_id.write_text("{}")
+    assert conv._load_opencode_project_path(str(missing_project_id)) is None
+
+
+def test_load_opencode_project_path_missing_or_invalid_project_file_returns_none(tmp_path: Path):
+    from searchat.api.routers import conversations as conv
+
+    session_path = tmp_path / "storage" / "session" / "proj" / "session.json"
+    session_path.parent.mkdir(parents=True)
+    session_path.write_text(json.dumps({"projectID": "proj-1"}))
+
+    assert conv._load_opencode_project_path(str(session_path)) is None
+
+    project_path = tmp_path / "storage" / "project" / "proj-1.json"
+    project_path.parent.mkdir(parents=True)
+    project_path.write_text("not-json")
+    assert conv._load_opencode_project_path(str(session_path)) is None
+
+    project_path.write_text(json.dumps({"worktree": "   "}))
+    assert conv._load_opencode_project_path(str(session_path)) is None
+
+
+def test_load_vibe_project_path_missing_or_invalid_returns_none(tmp_path: Path):
+    from searchat.api.routers import conversations as conv
+
+    bad_json = tmp_path / "bad.json"
+    bad_json.write_text("not-json")
+    assert conv._load_vibe_project_path(str(bad_json)) is None
+
+    missing = tmp_path / "missing.json"
+    missing.write_text(json.dumps({"metadata": {"environment": {}}}))
+    assert conv._load_vibe_project_path(str(missing)) is None
+
+    empty = tmp_path / "empty.json"
+    empty.write_text(json.dumps({"metadata": {"environment": {"working_directory": "  "}}}))
+    assert conv._load_vibe_project_path(str(empty)) is None
+
+
+def test_messages_to_lines_includes_blank_lines() -> None:
+    from searchat.api.routers import conversations as conv
+    from searchat.api.models import ConversationMessage
+
+    lines = conv._messages_to_lines([
+        ConversationMessage(role="user", content="", timestamp=""),
+        ConversationMessage(role="assistant", content="a\n\n", timestamp=""),
+    ])
+    assert "USER #1" in lines[0]
+    assert "ASSISTANT #2" in lines
+    assert "" in lines
+
+
+def test_detect_language_various() -> None:
+    from searchat.api.routers import conversations as conv
+
+    assert conv._detect_language("SELECT 1") == "sql"
+    assert conv._detect_language("def hi():\n  return 1\n") == "python"
+    assert conv._detect_language("function x() { console.log('hi') }") == "javascript"
+    assert conv._detect_language("type X = { a: string };\nconst x: X = { a: 'b' };") == "typescript"
+    assert conv._detect_language("#!/bin/bash\necho hi\n") == "bash"
+    assert conv._detect_language('{"a": 1}') == "json"
+    assert conv._detect_language("{bad: 1}") == "plaintext"
+    assert conv._detect_language("<div>hi</div>") == "html"
+    assert conv._detect_language(".a { color: red; }") == "css"
+    assert conv._detect_language("package main\nfunc main(){}\n") == "go"
+    assert conv._detect_language("fn main() { println!(\"hi\"); }\n") == "rust"
+    assert conv._detect_language("public static void main(String[] args) {}") == "java"
+    assert conv._detect_language("hello") == "plaintext"
+
+
 @pytest.mark.asyncio
 async def test_load_opencode_messages_from_storage(tmp_path: Path):
     from searchat.api.routers import conversations as conv
