@@ -44,6 +44,8 @@ def _reset_dependencies_singletons(monkeypatch: pytest.MonkeyPatch) -> None:
     deps._platform_manager = None
     deps._watcher = None
     deps._duckdb_store = None
+    deps._duckdb_store_by_dir.clear()
+    deps._search_engine_by_dir.clear()
     deps._warmup_task = None
     deps.projects_cache = None
     deps.stats_cache = None
@@ -613,3 +615,295 @@ def test_chat_returns_500_on_generate_unexpected_error(monkeypatch: pytest.Monke
     resp = client.post("/api/chat", json={"query": "hello", "model_provider": "openai"})
     assert resp.status_code == 500
     assert resp.json()["detail"] == "boom"
+
+
+def test_dependencies_is_valid_snapshot_name() -> None:
+    import searchat.api.dependencies as deps
+
+    assert deps._is_valid_snapshot_name("backup_20250101_000000") is True
+    assert deps._is_valid_snapshot_name("") is False
+    assert deps._is_valid_snapshot_name(".") is False
+    assert deps._is_valid_snapshot_name("..") is False
+    assert deps._is_valid_snapshot_name("a/b") is False
+    assert deps._is_valid_snapshot_name("a\\b") is False
+    assert deps._is_valid_snapshot_name("..x") is False
+
+
+def test_resolve_dataset_search_dir_snapshot_mode_disabled(tmp_path) -> None:
+    import searchat.api.dependencies as deps
+
+    deps._search_dir = tmp_path
+    deps._config = SimpleNamespace(snapshots=SimpleNamespace(enabled=False))
+    deps._backup_manager = SimpleNamespace(backup_dir=tmp_path, validate_backup=lambda _p: True)
+
+    try:
+        deps.resolve_dataset_search_dir("backup_20250101_000000")
+        raise AssertionError("expected ValueError")
+    except ValueError as exc:
+        assert str(exc) == "Snapshot mode is disabled"
+
+
+def test_resolve_dataset_search_dir_invalid_name(tmp_path) -> None:
+    import searchat.api.dependencies as deps
+
+    deps._search_dir = tmp_path
+    deps._config = SimpleNamespace(snapshots=SimpleNamespace(enabled=True))
+    deps._backup_manager = SimpleNamespace(backup_dir=tmp_path, validate_backup=lambda _p: True)
+
+    try:
+        deps.resolve_dataset_search_dir("../nope")
+        raise AssertionError("expected ValueError")
+    except ValueError as exc:
+        assert str(exc) == "Invalid snapshot name"
+
+
+def test_resolve_dataset_search_dir_invalid_snapshot_path_symlink(tmp_path) -> None:
+    import searchat.api.dependencies as deps
+
+    backup_root = tmp_path / "backups"
+    backup_root.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (backup_root / "snap").symlink_to(outside, target_is_directory=True)
+
+    deps._search_dir = tmp_path
+    deps._config = SimpleNamespace(snapshots=SimpleNamespace(enabled=True))
+    deps._backup_manager = SimpleNamespace(backup_dir=backup_root, validate_backup=lambda _p: True)
+
+    try:
+        deps.resolve_dataset_search_dir("snap")
+        raise AssertionError("expected ValueError")
+    except ValueError as exc:
+        assert str(exc) == "Invalid snapshot path"
+
+
+def test_resolve_dataset_search_dir_not_found(tmp_path) -> None:
+    import searchat.api.dependencies as deps
+
+    backup_root = tmp_path / "backups"
+    backup_root.mkdir()
+
+    deps._search_dir = tmp_path
+    deps._config = SimpleNamespace(snapshots=SimpleNamespace(enabled=True))
+    deps._backup_manager = SimpleNamespace(backup_dir=backup_root, validate_backup=lambda _p: True)
+
+    try:
+        deps.resolve_dataset_search_dir("missing")
+        raise AssertionError("expected ValueError")
+    except ValueError as exc:
+        assert str(exc) == "Snapshot not found"
+
+
+def test_resolve_dataset_search_dir_validation_failed(tmp_path) -> None:
+    import searchat.api.dependencies as deps
+
+    backup_root = tmp_path / "backups"
+    backup_root.mkdir()
+    (backup_root / "snap").mkdir()
+
+    deps._search_dir = tmp_path
+    deps._config = SimpleNamespace(snapshots=SimpleNamespace(enabled=True))
+    deps._backup_manager = SimpleNamespace(backup_dir=backup_root, validate_backup=lambda _p: False)
+
+    try:
+        deps.resolve_dataset_search_dir("snap")
+        raise AssertionError("expected ValueError")
+    except ValueError as exc:
+        assert str(exc) == "Snapshot validation failed"
+
+
+def test_resolve_dataset_search_dir_returns_snapshot_dir(tmp_path) -> None:
+    import searchat.api.dependencies as deps
+
+    backup_root = tmp_path / "backups"
+    backup_root.mkdir()
+    snapshot_dir = backup_root / "snap"
+    snapshot_dir.mkdir()
+
+    deps._search_dir = tmp_path
+    deps._config = SimpleNamespace(snapshots=SimpleNamespace(enabled=True))
+    deps._backup_manager = SimpleNamespace(backup_dir=backup_root, validate_backup=lambda _p: True)
+
+    resolved, name = deps.resolve_dataset_search_dir("snap")
+    assert resolved == snapshot_dir
+    assert name == "snap"
+
+
+@pytest.mark.asyncio
+async def test_start_background_warmup_schedules_once(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    import searchat.api.dependencies as deps
+
+    deps._config = object()
+    deps._search_dir = tmp_path
+    deps._warmup_task = None
+
+    started = {"count": 0}
+    block = asyncio.Event()
+
+    async def _fake_warmup_all() -> None:
+        started["count"] += 1
+        await block.wait()
+
+    monkeypatch.setattr(deps, "_warmup_all", _fake_warmup_all)
+
+    deps.start_background_warmup()
+    await asyncio.sleep(0)
+    assert deps._warmup_task is not None
+    task1: asyncio.Task[None] = deps._warmup_task  # type: ignore[assignment]
+    assert task1.done() is False
+
+    deps.start_background_warmup()
+    assert deps._warmup_task is task1
+
+    assert started["count"] == 1
+    task1.cancel()
+    try:
+        await task1  # type: ignore[misc]
+    except asyncio.CancelledError:
+        pass
+
+
+def test_warmup_duckdb_parquet_sets_error(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    import searchat.api.dependencies as deps
+    from searchat.api.readiness import get_readiness
+
+    class BoomStore:
+        def validate_parquet_scan(self):
+            raise RuntimeError("boom")
+
+    deps._duckdb_store = BoomStore()
+    deps._config = object()
+    deps._search_dir = tmp_path
+
+    deps._warmup_duckdb_parquet()
+    snap = get_readiness().snapshot()
+    assert snap.components["duckdb"] == "error"
+    assert snap.components["parquet"] == "error"
+
+
+def test_warmup_semantic_components_sets_error_only_for_not_ready(monkeypatch: pytest.MonkeyPatch) -> None:
+    import searchat.api.dependencies as deps
+    from searchat.api.readiness import get_readiness
+
+    class FakeEngine:
+        def ensure_metadata_ready(self):
+            raise RuntimeError("boom")
+
+        def ensure_faiss_loaded(self):
+            raise AssertionError("should not be called")
+
+        def ensure_embedder_loaded(self):
+            raise AssertionError("should not be called")
+
+    monkeypatch.setattr(deps, "_ensure_search_engine", lambda: FakeEngine())
+
+    readiness = get_readiness()
+    readiness.set_component("metadata", "idle")
+    readiness.set_component("faiss", "ready")
+    readiness.set_component("embedder", "idle")
+
+    deps._warmup_semantic_components()
+    snap = readiness.snapshot()
+    assert snap.components["metadata"] == "error"
+    assert snap.components["faiss"] == "ready"
+    assert snap.components["embedder"] == "error"
+
+
+def test_get_duckdb_store_for_caches_per_dataset(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    import searchat.api.dependencies as deps
+    import searchat.api.duckdb_store as store_mod
+
+    base = tmp_path / "base"
+    base.mkdir()
+    other = tmp_path / "other"
+    other.mkdir()
+
+    deps._search_dir = base
+    deps._duckdb_store = object()
+    deps._config = SimpleNamespace(performance=SimpleNamespace(memory_limit_mb=123))
+
+    created: list[object] = []
+
+    class FakeStore:
+        def __init__(self, search_dir, memory_limit_mb=None):
+            created.append((search_dir, memory_limit_mb))
+
+    monkeypatch.setattr(store_mod, "DuckDBStore", FakeStore)
+
+    assert deps.get_duckdb_store_for(base) is deps._duckdb_store
+
+    s1 = deps.get_duckdb_store_for(other)
+    s2 = deps.get_duckdb_store_for(other)
+    assert s1 is s2
+    assert created == [(other, 123)]
+
+
+def test_get_or_create_search_engine_for_caches_per_dataset(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    import searchat.api.dependencies as deps
+    import searchat.core.search_engine as se_mod
+
+    base = tmp_path / "base"
+    base.mkdir()
+    other = tmp_path / "other"
+    other.mkdir()
+
+    deps._search_dir = base
+    deps._config = object()
+    deps._search_engine = object()
+
+    created: list[object] = []
+
+    class FakeEngine:
+        def __init__(self, search_dir, _config):
+            created.append(search_dir)
+
+    monkeypatch.setattr(se_mod, "SearchEngine", FakeEngine)
+
+    assert deps.get_or_create_search_engine_for(base) is deps._search_engine
+
+    e1 = deps.get_or_create_search_engine_for(other)
+    e2 = deps.get_or_create_search_engine_for(other)
+    assert e1 is e2
+    assert created == [other]
+
+
+def test_ensure_search_engine_sets_readiness_error_on_failure(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    import searchat.api.dependencies as deps
+    from searchat.api.readiness import get_readiness
+    import searchat.core.search_engine as se_mod
+
+    deps._config = object()
+    deps._search_dir = tmp_path
+    deps._search_engine = None
+
+    class BoomEngine:
+        def __init__(self, *_a, **_k):
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr(se_mod, "SearchEngine", BoomEngine)
+
+    with pytest.raises(RuntimeError):
+        deps.get_or_create_search_engine()
+
+    assert get_readiness().snapshot().components["search_engine"] == "error"
+
+
+def test_ensure_indexer_sets_readiness_error_on_failure(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    import searchat.api.dependencies as deps
+    from searchat.api.readiness import get_readiness
+    import searchat.core.indexer as indexer_mod
+
+    deps._config = object()
+    deps._search_dir = tmp_path
+    deps._indexer = None
+
+    class BoomIndexer:
+        def __init__(self, *_a, **_k):
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr(indexer_mod, "ConversationIndexer", BoomIndexer)
+
+    with pytest.raises(RuntimeError):
+        deps.get_indexer()
+
+    assert get_readiness().snapshot().components["indexer"] == "error"
