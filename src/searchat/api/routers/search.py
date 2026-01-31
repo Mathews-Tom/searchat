@@ -16,7 +16,7 @@ from searchat.api.readiness import get_readiness, warming_payload, error_payload
 
 
 router = APIRouter()
-_highlight_cache: dict[tuple[str, str, str | None], list[str]] = {}
+_highlight_cache: dict[tuple[str, str, str, str | None], list[str]] = {}
 
 
 @router.get("/search")
@@ -104,7 +104,8 @@ async def search(
             if provider not in ("openai", "ollama"):
                 raise HTTPException(status_code=400, detail="Invalid highlight provider")
 
-            cache_key = (q, provider, highlight_model)
+            dataset_cache_key = str(search_dir)
+            cache_key = (dataset_cache_key, q, provider, highlight_model)
             if cache_key in _highlight_cache:
                 highlight_terms = _highlight_cache[cache_key]
             else:
