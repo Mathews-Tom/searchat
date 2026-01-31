@@ -2,79 +2,168 @@
 
 Base URL: `http://localhost:8000`
 
+All API routes are prefixed with `/api` unless otherwise noted.
+
+## Error Format
+
+Errors are returned as:
+
+```json
+{"detail": "Error message"}
+```
+
+## Dataset Snapshots (Read-only Backups)
+
+Many read endpoints accept an optional `snapshot` query parameter:
+
+- `snapshot` (string): Backup directory name, e.g. `backup_YYYYMMDD_HHMMSS`
+
+When `snapshot` is provided, the endpoint reads from the backup dataset without modifying the active index.
+
+Notes:
+- Snapshot mode is feature-flagged via `[snapshots] enabled`.
+- Write-like operations are blocked in snapshot mode (typically `403`).
+- If semantic components are not warmed up, some endpoints return `503` with a warming payload.
+
+---
+
+## Status
+
+### GET /api/status
+
+Server status and readiness information.
+
+### GET /api/status/features
+
+Feature flags and enabled/disabled capabilities.
+
+---
+
 ## Search
 
 ### GET /api/search
 
-Search conversations using hybrid, semantic, or keyword modes.
+Search conversations.
 
-**Parameters:**
+Parameters:
 ```
-q          string   Search query (required)
-mode       string   Search mode: hybrid|semantic|keyword (default: hybrid)
-project    string   Filter by project ID
-date       string   Filter: today|week|month|custom
-date_start string   Custom date range start (ISO 8601)
-date_end   string   Custom date range end (ISO 8601)
-limit      int      Max results (1-100, default: 100)
-sort_by    string   Sort: relevance|date_newest|date_oldest|messages
+q                  string   Search query (required). Use "*" for keyword-only browsing.
+mode               string   hybrid|semantic|keyword (default: hybrid)
+project            string   Filter by project ID
+tool               string   claude|vibe|opencode
+date               string   today|week|month|custom
+date_from           string   Custom date start (YYYY-MM-DD)
+date_to             string   Custom date end (YYYY-MM-DD)
+sort_by            string   relevance|date_newest|date_oldest|messages (default: relevance)
+limit              int      1-100 (default: 20)
+offset             int      0+ (default: 0)
+highlight          bool     Enable highlight term extraction (default: false)
+highlight_provider string   openai|ollama (required when highlight=true)
+highlight_model    string   Optional model override
+snapshot           string   Optional snapshot dataset (read-only)
 ```
 
-**Response:**
+Response:
 ```json
 {
   "results": [
     {
       "conversation_id": "string",
-      "title": "string",
-      "score": 0.95,
-      "snippet": "string",
       "project_id": "string",
-      "created_at": "2025-01-20T10:00:00",
+      "title": "string",
+      "created_at": "2026-01-31T07:04:00",
+      "updated_at": "2026-01-31T07:04:00",
       "message_count": 42,
-      "file_path": "/path/to/conversation.jsonl"
+      "file_path": "/path/to/conversation.jsonl",
+      "snippet": "string",
+      "score": 0.95,
+      "message_start_index": 0,
+      "message_end_index": 12,
+      "source": "local",
+      "tool": "claude"
     }
   ],
-  "total_count": 10,
+  "total": 10,
   "search_time_ms": 45.2,
-  "mode_used": "hybrid"
+  "limit": 20,
+  "offset": 0,
+  "has_more": false,
+  "highlight_terms": ["term1", "term2"]
 }
 ```
 
-**Search Modes:**
-- `hybrid` - Combines BM25 keyword + FAISS semantic with RRF fusion (best for general queries)
-- `semantic` - Meaning-based vector similarity (best for conceptual queries)
-- `keyword` - Exact text matching (best for code, identifiers)
+Notes:
+- If `mode=keyword`, search can succeed without semantic warmup.
+- If semantic components are not ready, the endpoint returns `503` with a warming payload.
 
-**Examples:**
+Examples:
 ```bash
 # Hybrid search
 curl "http://localhost:8000/api/search?q=authentication&mode=hybrid"
 
-# Filter by project and date
-curl "http://localhost:8000/api/search?q=bug+fix&project=myapp&date=week"
+# Filter by tool + project
+curl "http://localhost:8000/api/search?q=auth&tool=claude&project=myapp"
 
-# Custom date range
-curl "http://localhost:8000/api/search?q=refactor&date=custom&date_start=2025-01-01&date_end=2025-01-31"
+# Pagination
+curl "http://localhost:8000/api/search?q=api&limit=20&offset=20"
 
-# Sort by newest
-curl "http://localhost:8000/api/search?q=api&sort_by=date_newest&limit=10"
+# Snapshot search
+curl "http://localhost:8000/api/search?q=auth&snapshot=backup_YYYYMMDD_HHMMSS"
+
+# Highlight terms (LLM)
+curl "http://localhost:8000/api/search?q=auth&highlight=true&highlight_provider=ollama"
+```
+
+---
+
+### GET /api/search/suggestions
+
+Autocomplete suggestions based on conversation titles.
+
+Parameters:
+```
+q      string  Prefix (required)
+limit  int     1-20 (default: 10)
 ```
 
 ---
 
 ### GET /api/projects
 
-List all unique project IDs in the index.
+List projects in the index.
 
-**Response:**
-```json
-{
-  "projects": ["project-a", "project-b", "project-c"]
-}
+Parameters:
+```
+snapshot  string  Optional snapshot dataset (read-only)
 ```
 
-**Caching:** Results cached for 5 minutes to improve performance.
+Response:
+```json
+["project-a", "project-b"]
+```
+
+---
+
+### GET /api/projects/summary
+
+Project summaries (conversation/message counts).
+
+Parameters:
+```
+snapshot  string  Optional snapshot dataset (read-only)
+```
+
+Response:
+```json
+[
+  {
+    "project_id": "myapp",
+    "conversation_count": 150,
+    "message_count": 4500,
+    "updated_at": "2026-01-31T07:04:00"
+  }
+]
+```
 
 ---
 
@@ -82,30 +171,41 @@ List all unique project IDs in the index.
 
 ### GET /api/conversations/all
 
-List all conversations with optional filtering and sorting.
+List conversations with optional filtering and pagination.
 
-**Parameters:**
+Parameters:
 ```
-project    string   Filter by project ID
-sort_by    string   Sort: date_newest|date_oldest|messages (default: date_newest)
-limit      int      Max results (1-1000, default: 100)
+sort_by   string  length|date_newest|date_oldest|title (default: length)
+project   string  Filter by project ID
+tool      string  claude|vibe|opencode
+date      string  today|week|month|custom
+date_from  string  Custom date start (YYYY-MM-DD)
+date_to    string  Custom date end (YYYY-MM-DD)
+limit     int     1-5000 (optional)
+offset    int     0+ (default: 0)
+snapshot  string  Optional snapshot dataset (read-only)
 ```
 
-**Response:**
+Response:
 ```json
 {
-  "conversations": [
+  "results": [
     {
       "conversation_id": "string",
-      "title": "string",
       "project_id": "string",
-      "created_at": "2025-01-20T10:00:00",
-      "updated_at": "2025-01-20T15:30:00",
+      "title": "string",
+      "created_at": "2026-01-31T07:04:00",
+      "updated_at": "2026-01-31T07:04:00",
       "message_count": 42,
-      "file_path": "/path/to/conversation.jsonl"
+      "file_path": "/path/to/conversation.jsonl",
+      "snippet": "string",
+      "score": 0.0,
+      "source": "local",
+      "tool": "claude"
     }
   ],
-  "total_count": 156
+  "total": 123,
+  "search_time_ms": 12
 }
 ```
 
@@ -113,72 +213,400 @@ limit      int      Max results (1-1000, default: 100)
 
 ### GET /api/conversation/{conversation_id}
 
-Get conversation metadata and messages.
+Get a conversation and its messages.
 
-**Response:**
+Parameters:
+```
+snapshot  string  Optional snapshot dataset (read-only)
+```
+
+Response (shape):
 ```json
 {
   "conversation_id": "string",
   "title": "string",
   "project_id": "string",
-  "created_at": "2025-01-20T10:00:00",
-  "updated_at": "2025-01-20T15:30:00",
-  "message_count": 42,
+  "project_path": "/path/to/project",
   "file_path": "/path/to/conversation.jsonl",
+  "message_count": 42,
+  "tool": "claude",
   "messages": [
+    {"role": "user", "content": "string", "timestamp": "2026-01-31T07:04:00"}
+  ]
+}
+```
+
+Notes:
+- When reading the active dataset, if the source file is missing, the server may fall back to the indexed Parquet record.
+
+---
+
+### GET /api/conversation/{conversation_id}/code
+
+Extract fenced code blocks from a conversation.
+
+Parameters:
+```
+snapshot  string  Optional snapshot dataset (read-only)
+```
+
+Response (shape):
+```json
+{
+  "conversation_id": "string",
+  "title": "string",
+  "total_blocks": 3,
+  "code_blocks": [
     {
-      "type": "user|assistant",
-      "content": "string",
-      "timestamp": "2025-01-20T10:00:00"
+      "message_index": 0,
+      "block_index": 0,
+      "role": "assistant",
+      "fence_language": "python",
+      "language": "python",
+      "language_source": "fence",
+      "code": "print(123)",
+      "timestamp": "2026-01-31T07:04:00",
+      "lines": 1
     }
   ]
 }
 ```
 
-**Errors:**
-- `404` - Conversation not found in index
-- `404` - Conversation file not found on disk
-- `500` - File parsing error
+---
+
+### GET /api/conversation/{conversation_id}/similar
+
+Find similar conversations using FAISS embeddings.
+
+Parameters:
+```
+limit     int     1-20 (default: 5)
+snapshot  string  Optional snapshot dataset (read-only)
+```
+
+---
+
+### GET /api/conversation/{conversation_id}/diff
+
+Compute a line-oriented diff between conversations.
+
+Parameters:
+```
+target_id     string  Optional explicit target conversation ID (defaults to top similar conversation)
+source_start  int     Optional source message start index
+source_end    int     Optional source message end index
+snapshot      string  Optional snapshot dataset (read-only)
+```
+
+Response (shape):
+```json
+{
+  "source_conversation_id": "abc",
+  "target_conversation_id": "def",
+  "summary": {"added": 10, "removed": 3, "unchanged": 120},
+  "added": ["..."],
+  "removed": ["..."],
+  "unchanged": ["..."]
+}
+```
+
+---
+
+### GET /api/conversation/{conversation_id}/export
+
+Export a conversation as a downloadable file.
+
+Parameters:
+```
+format    string  json|markdown|text|ipynb|pdf (default: json)
+snapshot  string  Optional snapshot dataset (read-only)
+```
+
+Notes:
+- `ipynb` and `pdf` exports are feature-flagged. If disabled, the endpoint returns `404`.
+
+---
+
+### POST /api/conversations/bulk-export
+
+Export multiple conversations as a ZIP archive.
+
+Parameters:
+```
+snapshot  string  Optional snapshot dataset (read-only)
+```
+
+Request:
+```json
+{"conversation_ids": ["id1", "id2"], "format": "markdown"}
+```
+
+Notes:
+- `conversation_ids` must be 1-100.
+- `ipynb` and `pdf` exports are feature-flagged. If disabled, the endpoint returns `404`.
 
 ---
 
 ### POST /api/resume
 
-Resume conversation in terminal (Claude Code or Mistral Vibe).
+Resume a conversation in a terminal (Claude/Vibe).
 
-**Parameters:**
-```
-conversation_id   string   Conversation ID (required)
+Request:
+```json
+{"conversation_id": "string"}
 ```
 
-**Response:**
+Response (shape):
 ```json
 {
   "success": true,
-  "message": "Launching terminal session for conversation...",
-  "conversation_id": "string",
-  "platform": "windows|wsl|linux|macos",
-  "agent": "claude|vibe"
+  "tool": "claude",
+  "cwd": "/path",
+  "command": "claude resume ...",
+  "platform": "windows|wsl|linux|macos"
 }
 ```
-
-**Behavior:**
-- **Claude Code:** Launches terminal with `claude resume {conversation_id}`
-- **Mistral Vibe:** Launches terminal in session directory
-- **Platform Detection:** Auto-detects Windows/WSL/Linux/macOS
-- **Terminal Selection:** Uses default terminal (PowerShell, Windows Terminal, gnome-terminal, etc.)
-
-**Errors:**
-- `404` - Conversation not found
-- `500` - Terminal launch failed
 
 ---
 
 ### GET /conversation/{conversation_id}
 
-Serve conversation as formatted HTML page.
+Serve the web UI HTML (client-side routing handles the conversation view).
 
-**Response:** HTML page with conversation messages rendered.
+Response: HTML.
+
+---
+
+## Code
+
+### POST /api/code/highlight
+
+Server-side code highlighting using Pygments.
+
+Request:
+```json
+{
+  "blocks": [
+    {"code": "print(123)", "language": "python", "language_source": "fence"},
+    {"code": "SELECT 1", "language": null, "language_source": "detected"}
+  ]
+}
+```
+
+Response:
+```json
+{
+  "results": [
+    {"html": "<span class=...>", "used_language": "python", "guessed": false}
+  ]
+}
+```
+
+Errors:
+- `500` if Pygments is not installed: `{"detail":"Pygments is required for code highlighting"}`
+
+---
+
+## Saved Queries
+
+### GET /api/queries
+
+List saved queries.
+
+Response:
+```json
+{"total": 1, "queries": [{"id": "q_...", "name": "...", "query": "...", "filters": {}, "mode": "hybrid"}]}
+```
+
+---
+
+### POST /api/queries
+
+Create a saved query.
+
+Request:
+```json
+{"name": "Auth", "description": "...", "query": "jwt refresh", "filters": {"project": "myapp"}, "mode": "hybrid"}
+```
+
+Response:
+```json
+{"success": true, "query": {"id": "q_..."}}
+```
+
+---
+
+### PUT /api/queries/{query_id}
+
+Update a saved query.
+
+Request:
+```json
+{"name": "New name", "query": "...", "filters": {}, "mode": "keyword"}
+```
+
+---
+
+### DELETE /api/queries/{query_id}
+
+Delete a saved query.
+
+---
+
+### POST /api/queries/{query_id}/run
+
+Record a query run / usage (used by the UI).
+
+---
+
+## Dashboards
+
+Dashboards are feature-flagged via `[dashboards] enabled`.
+
+### GET /api/dashboards
+
+List dashboards.
+
+Response:
+```json
+{"total": 1, "dashboards": [{"id": "d_...", "name": "...", "layout": {"widgets": [...]}}]}
+```
+
+---
+
+### POST /api/dashboards
+
+Create a dashboard.
+
+Request (shape):
+```json
+{
+  "name": "My dashboard",
+  "description": "...",
+  "layout": {"columns": 3, "widgets": [{"query_id": "q_...", "limit": 5}]},
+  "refresh_interval": 60
+}
+```
+
+---
+
+### GET /api/dashboards/{dashboard_id}
+
+Get a dashboard.
+
+---
+
+### PUT /api/dashboards/{dashboard_id}
+
+Update a dashboard.
+
+---
+
+### DELETE /api/dashboards/{dashboard_id}
+
+Delete a dashboard.
+
+---
+
+### GET /api/dashboards/{dashboard_id}/export
+
+Download a dashboard definition as JSON (attachment).
+
+---
+
+### GET /api/dashboards/{dashboard_id}/render
+
+Render a dashboard (executes saved queries for each widget).
+
+Response (shape):
+```json
+{
+  "dashboard": {"id": "d_...", "name": "..."},
+  "widgets": [
+    {
+      "id": "w_...",
+      "title": "...",
+      "query_id": "q_...",
+      "query": "...",
+      "mode": "hybrid",
+      "sort_by": "relevance",
+      "results": [/* SearchResultResponse */],
+      "total": 10,
+      "search_time_ms": 12.3
+    }
+  ]
+}
+```
+
+Notes:
+- If any widget needs semantic search and the semantic components are not ready, this endpoint returns `503` with a warming payload.
+
+---
+
+## Chat
+
+### POST /api/chat
+
+Streaming chat endpoint.
+
+Request (shape):
+```json
+{"query": "...", "model_provider": "ollama", "model_name": "ollama/gemma3"}
+```
+
+Notes:
+- In snapshot mode, chat endpoints are blocked (`403`).
+
+---
+
+### POST /api/chat-rag
+
+Non-streaming RAG endpoint (structured response).
+
+Request (shape):
+```json
+{"query": "...", "model_provider": "openai", "model_name": "gpt-4.1-mini"}
+```
+
+---
+
+## Docs
+
+### POST /api/docs/summary
+
+Generate a Markdown/AsciiDoc summary document by running multiple searches.
+
+Feature flag:
+- Requires `export.enable_tech_docs=true` (otherwise returns `404`).
+
+Request:
+```json
+{
+  "title": "Tech Docs Summary",
+  "format": "markdown",
+  "sections": [
+    {
+      "name": "Indexing",
+      "query": "index_missing",
+      "mode": "hybrid",
+      "filters": {"project": "myapp", "tool": "claude", "date": "week"},
+      "max_results": 10
+    }
+  ]
+}
+```
+
+Response (shape):
+```json
+{
+  "title": "Tech Docs Summary",
+  "format": "markdown",
+  "generated_at": "2026-01-31T07:04:00",
+  "content": "# ...",
+  "citation_count": 3,
+  "citations": [{"conversation_id": "...", "title": "..."}]
+}
+```
 
 ---
 
@@ -186,19 +614,45 @@ Serve conversation as formatted HTML page.
 
 ### GET /api/statistics
 
-Get index statistics and metadata.
+Index statistics.
 
-**Response:**
-```json
-{
-  "total_conversations": 1523,
-  "total_messages": 45680,
-  "avg_messages": 30.0,
-  "total_projects": 42,
-  "earliest_date": "2024-01-01T00:00:00",
-  "latest_date": "2025-01-20T15:30:00"
-}
+Parameters:
 ```
+snapshot  string  Optional snapshot dataset (read-only)
+```
+
+---
+
+## Analytics (Opt-in)
+
+Analytics endpoints read from the active dataset only.
+
+### GET /api/stats/analytics/summary
+
+Parameters:
+```
+days  int  1-365 (default: 30)
+```
+
+### GET /api/stats/analytics/top-queries
+
+Parameters:
+```
+limit  int  1-50 (default: 10)
+days   int  1-365 (default: 30)
+```
+
+### GET /api/stats/analytics/dead-ends
+
+### GET /api/stats/analytics/config
+
+### GET /api/stats/analytics/trends
+
+### GET /api/stats/analytics/heatmap
+
+### GET /api/stats/analytics/agent-comparison
+
+### GET /api/stats/analytics/topics
 
 ---
 
@@ -206,57 +660,13 @@ Get index statistics and metadata.
 
 ### POST /api/reindex
 
-Full reindex of all conversations.
-
-**Response:**
-```json
-{
-  "detail": "BLOCKED: Full reindex disabled for data safety..."
-}
-```
-
-**Status:** `403 Forbidden`
-
-**Note:** Blocked to prevent accidental data loss. Use `/api/index_missing` for safe append-only indexing.
+Blocked for data safety (`403`).
 
 ---
 
 ### POST /api/index_missing
 
-Index conversations not yet in the search index (append-only, safe).
-
-**Response:**
-```json
-{
-  "success": true,
-  "new_conversations": 15,
-  "total_files": 20,
-  "already_indexed": 5,
-  "time_seconds": 3.2,
-  "message": "Indexed 15 new conversations in 3.2 seconds"
-}
-```
-
-**Behavior:**
-- Scans Claude Code and Mistral Vibe directories
-- Skips files already in index (by file path)
-- Appends new conversations to existing index
-- Reloads SearchEngine after indexing
-- Clears projects cache
-
-**Response (no new files):**
-```json
-{
-  "success": true,
-  "new_conversations": 0,
-  "total_files": 20,
-  "already_indexed": 20,
-  "message": "All 20 conversation files are already indexed"
-}
-```
-
-**Errors:**
-- `500` - Indexing failed (exception message in detail)
+Append-only indexing of new conversations.
 
 ---
 
@@ -264,114 +674,43 @@ Index conversations not yet in the search index (append-only, safe).
 
 ### POST /api/backup/create
 
-Create timestamped backup of index and config.
-
-**Parameters:**
-```
-backup_name   string   Optional custom name (default: backup_YYYYMMDD_HHMMSS)
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "backup": {
-    "backup_path": "/path/to/backups/backup_20250120_100000",
-    "timestamp": "20250120_100000",
-    "file_count": 5,
-    "total_size_mb": 123.45
-  },
-  "message": "Backup created successfully at /path/to/backups/backup_20250120_100000"
-}
-```
-
-**Backed Up:**
-- `data/` - Parquet files, FAISS index, metadata
-- `config/` - settings.toml, .env
-
-**Errors:**
-- `500` - Backup failed (disk full, permissions, etc.)
-
----
+Create a backup.
 
 ### GET /api/backup/list
 
-List all available backups.
-
-**Response:**
-```json
-{
-  "backups": [
-    {
-      "backup_path": "/path/to/backups/backup_20250120_100000",
-      "timestamp": "20250120_100000",
-      "file_count": 5,
-      "total_size_mb": 123.45
-    }
-  ],
-  "total": 3,
-  "backup_directory": "/path/to/backups"
-}
-```
-
-**Errors:**
-- `500` - Failed to list backups (permissions, disk error)
-
----
+List backups.
 
 ### POST /api/backup/restore
 
-Restore from backup.
-
-**Parameters:**
-```
-backup_name   string   Backup directory name (required)
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "restored_from": "backup_20250120_100000",
-  "pre_restore_backup": {
-    "backup_path": "/path/to/backups/pre_restore_20250120_101500",
-    "timestamp": "20250120_101500",
-    "file_count": 5,
-    "total_size_mb": 125.30
-  },
-  "message": "Successfully restored from backup_20250120_100000"
-}
-```
-
-**Behavior:**
-- Creates pre-restore backup of current state
-- Validates backup exists and contains data
-- Restores data/ and config/ directories
-- Reloads SearchEngine
-- Clears projects cache
-
-**Errors:**
-- `404` - Backup not found
-- `500` - Restore failed (corrupted backup, disk error)
-
----
+Restore from a backup.
 
 ### DELETE /api/backup/delete/{backup_name}
 
 Delete a backup.
 
-**Response:**
-```json
-{
-  "success": true,
-  "deleted": "backup_20250120_100000",
-  "message": "Backup deleted successfully"
-}
-```
+---
 
-**Errors:**
-- `404` - Backup not found
-- `500` - Deletion failed (permissions, disk error)
+## Bookmarks
+
+### GET /api/bookmarks
+
+List bookmarks.
+
+### POST /api/bookmarks
+
+Create/update bookmark.
+
+### GET /api/bookmarks/{conversation_id}
+
+Get bookmark state.
+
+### PATCH /api/bookmarks/{conversation_id}/notes
+
+Update bookmark notes.
+
+### DELETE /api/bookmarks/{conversation_id}
+
+Remove bookmark.
 
 ---
 
@@ -379,139 +718,13 @@ Delete a backup.
 
 ### GET /api/watcher/status
 
-Get file watcher status.
-
-**Response (running):**
-```json
-{
-  "running": true,
-  "watched_directories": [
-    "/path/to/.claude/projects",
-    "/path/to/.vibe/logs/session"
-  ],
-  "indexed_since_start": 15,
-  "last_update": "2025-01-20T15:30:00"
-}
-```
-
-**Response (not running):**
-```json
-{
-  "running": false,
-  "watched_directories": [],
-  "indexed_since_start": 0,
-  "last_update": null
-}
-```
-
----
+File watcher status.
 
 ### POST /api/shutdown
 
-Gracefully shutdown server.
+Graceful shutdown.
 
-**Parameters:**
+Parameters:
 ```
-force   bool   Force shutdown even if indexing in progress (default: false)
-```
-
-**Response (graceful):**
-```json
-{
-  "success": true,
-  "forced": false,
-  "message": "Server shutting down gracefully..."
-}
-```
-
-**Response (blocked during indexing):**
-```json
-{
-  "success": false,
-  "indexing_in_progress": true,
-  "operation": "manual_index",
-  "files_total": 100,
-  "message": "Cannot shutdown: indexing in progress. Use ?force=true to override."
-}
-```
-
-**Response (forced):**
-```json
-{
-  "success": true,
-  "forced": true,
-  "message": "Server shutdown (indexing interrupted)"
-}
-```
-
-**Behavior:**
-- Checks for ongoing indexing operations
-- Stops file watcher
-- Shuts down FastAPI server after 1 second delay
-- `force=true` bypasses indexing check (may corrupt data)
-
----
-
-## Error Responses
-
-All endpoints return errors in this format:
-
-```json
-{
-  "detail": "Error message description"
-}
-```
-
-**Common Status Codes:**
-- `400` - Bad Request (invalid parameters)
-- `403` - Forbidden (blocked operation)
-- `404` - Not Found (conversation, backup, etc.)
-- `500` - Internal Server Error (indexing failed, disk error, etc.)
-
----
-
-## CORS
-
-CORS enabled for all origins to support Claude Code integration.
-
-**Headers:**
-```
-Access-Control-Allow-Origin: *
-Access-Control-Allow-Methods: GET, POST, DELETE
-Access-Control-Allow-Headers: Content-Type
-```
-
----
-
-## Rate Limiting
-
-None. API is local-only and assumes trusted environment.
-
----
-
-## Authentication
-
-None. API is local-only (localhost:8000) and assumes trusted environment.
-
----
-
-## Performance
-
-**Caching:**
-- Projects list: 5 minute TTL
-- Search results: Not cached (always fresh)
-
-**Concurrency:**
-- Indexing operations are serialized
-- Multiple search requests can run in parallel
-
-**Indexing State:**
-Global state tracks ongoing indexing to prevent concurrent operations:
-```json
-{
-  "in_progress": true,
-  "operation": "manual_index|watcher_index",
-  "started_at": "2025-01-20T15:30:00",
-  "files_total": 100
-}
+force  bool  Force shutdown even if indexing is in progress (default: false)
 ```
