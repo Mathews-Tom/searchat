@@ -88,6 +88,29 @@ async def test_status_endpoint_returns_readiness_snapshot() -> None:
     assert set(payload.keys()) == {"warmup_started_at", "components", "watcher", "errors"}
 
 
+def test_status_features_endpoint_returns_flags(monkeypatch: pytest.MonkeyPatch) -> None:
+    from searchat.api.app import app
+
+    config = SimpleNamespace(
+        analytics=SimpleNamespace(enabled=True),
+        chat=SimpleNamespace(enable_rag=True, enable_citations=False),
+        export=SimpleNamespace(enable_ipynb=False, enable_pdf=True, enable_tech_docs=False),
+        dashboards=SimpleNamespace(enabled=True),
+        snapshots=SimpleNamespace(enabled=True),
+    )
+    monkeypatch.setattr("searchat.api.routers.status.deps.get_config", lambda: config)
+
+    client = TestClient(app)
+    resp = client.get("/api/status/features")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["analytics"]["enabled"] is True
+    assert data["chat"]["enable_rag"] is True
+    assert data["chat"]["enable_citations"] is False
+    assert data["export"]["enable_pdf"] is True
+    assert data["snapshots"]["enabled"] is True
+
+
 def test_dependencies_getters_raise_when_not_initialized() -> None:
     import searchat.api.dependencies as deps
 

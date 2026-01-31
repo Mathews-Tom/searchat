@@ -114,6 +114,50 @@ class TestStatisticsEndpoint:
             assert data["avg_messages"] == 10.0
             assert data["total_projects"] == 1
 
+    def test_get_statistics_uses_cache(self, client):
+        """Second call should return cached payload for active dataset."""
+        from searchat.api.duckdb_store import IndexStatistics
+
+        mock_store = Mock()
+        mock_store.get_statistics.return_value = IndexStatistics(
+            total_conversations=2,
+            total_messages=20,
+            avg_messages=10.0,
+            total_projects=1,
+            earliest_date="2025-01-01T00:00:00",
+            latest_date="2025-01-02T00:00:00",
+        )
+
+        with patch('searchat.api.routers.stats.deps.get_duckdb_store', return_value=mock_store):
+            with patch('searchat.api.routers.stats.deps.stats_cache', None):
+                first = client.get("/api/statistics")
+                second = client.get("/api/statistics")
+
+        assert first.status_code == 200
+        assert second.status_code == 200
+        assert mock_store.get_statistics.call_count == 1
+
+    def test_get_statistics_snapshot_uses_dataset_store(self, client, mock_duckdb_store_stats):
+        """Snapshot requests should bypass stats_cache and use get_duckdb_store_for."""
+        with patch('searchat.api.routers.stats.deps.resolve_dataset_search_dir', return_value=(Path('/tmp/snap'), 'snap')):
+            with patch('searchat.api.routers.stats.deps.get_duckdb_store_for', return_value=mock_duckdb_store_stats) as get_store:
+                resp = client.get("/api/statistics?snapshot=backup_20250101_000000")
+
+        assert resp.status_code == 200
+        get_store.assert_called_once()
+
+    def test_get_statistics_snapshot_not_found_returns_404(self, client):
+        with patch('searchat.api.routers.stats.deps.resolve_dataset_search_dir', side_effect=ValueError("Snapshot not found")):
+            resp = client.get("/api/statistics?snapshot=missing")
+        assert resp.status_code == 404
+        assert resp.json()["detail"] == "Snapshot not found"
+
+    def test_get_statistics_snapshot_invalid_returns_400(self, client):
+        with patch('searchat.api.routers.stats.deps.resolve_dataset_search_dir', side_effect=ValueError("Invalid snapshot name")):
+            resp = client.get("/api/statistics?snapshot=../nope")
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "Invalid snapshot name"
+
 
 # ============================================================================
 # BACKUP ENDPOINT TESTS
