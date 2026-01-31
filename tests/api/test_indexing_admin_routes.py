@@ -169,6 +169,41 @@ class TestIndexMissingEndpoint:
                             assert response.status_code == 500
                             assert "Indexing error" in response.json()["detail"]
 
+    def test_index_missing_progress_adapter_updates_state(self):
+        from searchat.api.routers.indexing import StateTrackingProgressAdapter
+
+        state = {"files_total": 0, "files_processed": 0}
+        progress = StateTrackingProgressAdapter(state)
+        progress.update_file_progress(3, 10, "x.jsonl")
+        assert state["files_processed"] == 3
+        assert state["files_total"] == 10
+
+    def test_index_missing_handles_scan_errors(self, client, mock_config, mock_indexer):
+        class BoomDir:
+            def rglob(self, _pattern: str):
+                raise RuntimeError("nope")
+
+            def __str__(self) -> str:
+                return "/boom"
+
+        class BoomVibeDir:
+            def glob(self, _pattern: str):
+                raise RuntimeError("nope")
+
+            def __str__(self) -> str:
+                return "/boom-vibe"
+
+        with patch('searchat.api.routers.indexing.get_config', return_value=mock_config):
+            with patch('searchat.api.routers.indexing.get_indexer', return_value=mock_indexer):
+                with patch('searchat.api.routers.indexing.PathResolver.resolve_claude_dirs', return_value=[BoomDir()]):
+                    with patch('searchat.api.routers.indexing.PathResolver.resolve_vibe_dirs', return_value=[BoomVibeDir()]):
+                        with patch('searchat.api.routers.indexing.PathResolver.resolve_opencode_dirs', return_value=[]):
+                            with patch('searchat.api.routers.indexing.indexing_state', {"in_progress": False}):
+                                resp = client.post('/api/index_missing')
+
+        assert resp.status_code == 200
+        assert resp.json()["new_conversations"] == 0
+
 
 # ============================================================================
 # ADMIN ENDPOINT TESTS
