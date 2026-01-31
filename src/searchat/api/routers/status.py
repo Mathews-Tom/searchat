@@ -41,4 +41,7 @@ async def get_features():
         "dashboards": {
             "enabled": config.dashboards.enabled,
         },
+        "snapshots": {
+            "enabled": config.snapshots.enabled,
+        },
     }

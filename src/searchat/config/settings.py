@@ -47,6 +47,7 @@ from .constants import (
     DEFAULT_ENABLE_EXPORT_PDF,
     DEFAULT_ENABLE_EXPORT_TECH_DOCS,
     DEFAULT_ENABLE_DASHBOARDS,
+    DEFAULT_ENABLE_SNAPSHOTS,
     DEFAULT_THEME,
     DEFAULT_FONT_FAMILY,
     DEFAULT_FONT_SIZE,
@@ -70,6 +71,7 @@ from .constants import (
     ENV_ENABLE_EXPORT_PDF,
     ENV_ENABLE_EXPORT_TECH_DOCS,
     ENV_ENABLE_DASHBOARDS,
+    ENV_ENABLE_SNAPSHOTS,
     ERROR_NO_CONFIG,
 )
 
@@ -443,6 +445,20 @@ class DashboardsConfig:
 
 
 @dataclass
+class SnapshotsConfig:
+    enabled: bool
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "SnapshotsConfig":
+        return cls(
+            enabled=_get_env_bool(
+                ENV_ENABLE_SNAPSHOTS,
+                data.get("enabled", DEFAULT_ENABLE_SNAPSHOTS),
+            )
+        )
+
+
+@dataclass
 class Config:
     paths: PathsConfig
     indexing: IndexingConfig
@@ -455,6 +471,7 @@ class Config:
     chat: ChatConfig
     export: ExportConfig
     dashboards: DashboardsConfig
+    snapshots: SnapshotsConfig
     logging: LogConfig
 
     @classmethod
@@ -526,5 +543,6 @@ class Config:
             chat=ChatConfig.from_dict(data.get("chat", {})),
             export=ExportConfig.from_dict(data.get("export", {})),
             dashboards=DashboardsConfig.from_dict(data.get("dashboards", {})),
+            snapshots=SnapshotsConfig.from_dict(data.get("snapshots", {})),
             logging=LogConfig(**data.get("logging", {})),
         )
