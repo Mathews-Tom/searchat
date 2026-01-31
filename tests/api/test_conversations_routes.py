@@ -1002,3 +1002,110 @@ class TestResumeSessionEndpoint:
                 assert data["cwd"] is None
                 # Should still open terminal
                 mock_platform_manager.open_terminal_with_command.assert_called_once()
+
+
+def test_conversations_resolve_dataset_requires_snapshot() -> None:
+    from searchat.api.routers import conversations as conv_router
+
+    with pytest.raises(RuntimeError):
+        conv_router._resolve_dataset(None)
+
+
+def test_conversations_resolve_dataset_disabled_returns_404(monkeypatch: pytest.MonkeyPatch) -> None:
+    from searchat.api.routers import conversations as conv_router
+
+    config = type("Cfg", (), {"snapshots": type("S", (), {"enabled": False})()})()
+    monkeypatch.setattr(conv_router.deps, "get_config", lambda: config)
+
+    with pytest.raises(HTTPException) as excinfo:
+        conv_router._resolve_dataset("backup_20250101_000000")
+    assert excinfo.value.status_code == 404
+
+
+def test_conversations_messages_from_parquet_parses_dict_and_tuple() -> None:
+    from searchat.api.routers import conversations as conv_router
+
+    now = datetime.now()
+    messages = conv_router._messages_from_parquet(
+        [
+            {"role": "user", "content": "hi", "timestamp": now},
+            (0, "assistant", "ok", "2025-01-01T00:00:00"),
+        ]
+    )
+    assert len(messages) == 2
+    assert messages[0].role == "user"
+    assert messages[0].timestamp.startswith(str(now.date()))
+    assert messages[1].role == "assistant"
+
+
+def test_conversations_slice_messages_handles_invalid_range() -> None:
+    from searchat.api.routers import conversations as conv_router
+    from searchat.api.models import ConversationMessage
+
+    msgs = [ConversationMessage(role="user", content="a", timestamp="")]
+    assert conv_router._slice_messages(msgs, 2, 1) == []
+
+
+def test_conversation_diff_no_similar_returns_404(client, monkeypatch: pytest.MonkeyPatch):
+    from unittest.mock import AsyncMock
+    from searchat.api.routers import conversations as conv_router
+
+    monkeypatch.setattr(
+        conv_router,
+        "get_similar_conversations",
+        AsyncMock(return_value={"similar_conversations": []}),
+    )
+
+    resp = client.get("/api/conversation/conv-1/diff")
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "No similar conversation found"
+
+
+@pytest.mark.asyncio
+async def test_conversation_diff_rejects_invalid_target_id_type() -> None:
+    from searchat.api.routers import conversations as conv_router
+
+    with pytest.raises(HTTPException) as excinfo:
+        await conv_router.get_conversation_diff("conv-1", target_id=123)  # type: ignore[arg-type]
+    assert excinfo.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_conversation_diff_computes_added_removed_counts(monkeypatch: pytest.MonkeyPatch) -> None:
+    from searchat.api.routers import conversations as conv_router
+    from searchat.api.models import ConversationMessage
+
+    source = type(
+        "C",
+        (),
+        {
+            "messages": [
+                ConversationMessage(role="user", content="a", timestamp=""),
+                ConversationMessage(role="assistant", content="b", timestamp=""),
+            ]
+        },
+    )()
+    target = type(
+        "C",
+        (),
+        {
+            "messages": [
+                ConversationMessage(role="user", content="a", timestamp=""),
+                ConversationMessage(role="assistant", content="c", timestamp=""),
+            ]
+        },
+    )()
+
+    async def _fake_get_conversation(conversation_id: str, snapshot=None):
+        return source if conversation_id == "conv-1" else target
+
+    monkeypatch.setattr(conv_router, "get_conversation", _fake_get_conversation)
+
+    payload = await conv_router.get_conversation_diff(
+        "conv-1",
+        target_id="conv-2",
+        source_start=0,
+        source_end=1,
+    )
+    assert payload["summary"]["added"] >= 1
+    assert payload["summary"]["removed"] >= 1
