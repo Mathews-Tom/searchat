@@ -205,6 +205,89 @@ def test_load_opencode_and_vibe_project_paths(tmp_path: Path):
     assert conv._load_vibe_project_path(str(vibe_path)) == "/vibe/project"
 
 
+def test_resolve_opencode_data_root_falls_back_to_parent(tmp_path: Path):
+    from searchat.api.routers import conversations as conv
+
+    assert conv._resolve_opencode_data_root("session.json") == Path(".")
+
+
+def test_load_opencode_project_path_invalid_inputs_return_none(tmp_path: Path):
+    from searchat.api.routers import conversations as conv
+
+    bad_json = tmp_path / "bad.json"
+    bad_json.write_text("not-json")
+    assert conv._load_opencode_project_path(str(bad_json)) is None
+
+    missing_project_id = tmp_path / "missing_project_id.json"
+    missing_project_id.write_text("{}")
+    assert conv._load_opencode_project_path(str(missing_project_id)) is None
+
+
+def test_load_opencode_project_path_missing_or_invalid_project_file_returns_none(tmp_path: Path):
+    from searchat.api.routers import conversations as conv
+
+    session_path = tmp_path / "storage" / "session" / "proj" / "session.json"
+    session_path.parent.mkdir(parents=True)
+    session_path.write_text(json.dumps({"projectID": "proj-1"}))
+
+    assert conv._load_opencode_project_path(str(session_path)) is None
+
+    project_path = tmp_path / "storage" / "project" / "proj-1.json"
+    project_path.parent.mkdir(parents=True)
+    project_path.write_text("not-json")
+    assert conv._load_opencode_project_path(str(session_path)) is None
+
+    project_path.write_text(json.dumps({"worktree": "   "}))
+    assert conv._load_opencode_project_path(str(session_path)) is None
+
+
+def test_load_vibe_project_path_missing_or_invalid_returns_none(tmp_path: Path):
+    from searchat.api.routers import conversations as conv
+
+    bad_json = tmp_path / "bad.json"
+    bad_json.write_text("not-json")
+    assert conv._load_vibe_project_path(str(bad_json)) is None
+
+    missing = tmp_path / "missing.json"
+    missing.write_text(json.dumps({"metadata": {"environment": {}}}))
+    assert conv._load_vibe_project_path(str(missing)) is None
+
+    empty = tmp_path / "empty.json"
+    empty.write_text(json.dumps({"metadata": {"environment": {"working_directory": "  "}}}))
+    assert conv._load_vibe_project_path(str(empty)) is None
+
+
+def test_messages_to_lines_includes_blank_lines() -> None:
+    from searchat.api.routers import conversations as conv
+    from searchat.api.models import ConversationMessage
+
+    lines = conv._messages_to_lines([
+        ConversationMessage(role="user", content="", timestamp=""),
+        ConversationMessage(role="assistant", content="a\n\n", timestamp=""),
+    ])
+    assert "USER #1" in lines[0]
+    assert "ASSISTANT #2" in lines
+    assert "" in lines
+
+
+def test_detect_language_various() -> None:
+    from searchat.api.routers import conversations as conv
+
+    assert conv._detect_language("SELECT 1") == "sql"
+    assert conv._detect_language("def hi():\n  return 1\n") == "python"
+    assert conv._detect_language("function x() { console.log('hi') }") == "javascript"
+    assert conv._detect_language("type X = { a: string };\nconst x: X = { a: 'b' };") == "typescript"
+    assert conv._detect_language("#!/bin/bash\necho hi\n") == "bash"
+    assert conv._detect_language('{"a": 1}') == "json"
+    assert conv._detect_language("{bad: 1}") == "plaintext"
+    assert conv._detect_language("<div>hi</div>") == "html"
+    assert conv._detect_language(".a { color: red; }") == "css"
+    assert conv._detect_language("package main\nfunc main(){}\n") == "go"
+    assert conv._detect_language("fn main() { println!(\"hi\"); }\n") == "rust"
+    assert conv._detect_language("public static void main(String[] args) {}") == "java"
+    assert conv._detect_language("hello") == "plaintext"
+
+
 @pytest.mark.asyncio
 async def test_load_opencode_messages_from_storage(tmp_path: Path):
     from searchat.api.routers import conversations as conv
@@ -1002,3 +1085,110 @@ class TestResumeSessionEndpoint:
                 assert data["cwd"] is None
                 # Should still open terminal
                 mock_platform_manager.open_terminal_with_command.assert_called_once()
+
+
+def test_conversations_resolve_dataset_requires_snapshot() -> None:
+    from searchat.api.routers import conversations as conv_router
+
+    with pytest.raises(RuntimeError):
+        conv_router._resolve_dataset(None)
+
+
+def test_conversations_resolve_dataset_disabled_returns_404(monkeypatch: pytest.MonkeyPatch) -> None:
+    from searchat.api.routers import conversations as conv_router
+
+    config = type("Cfg", (), {"snapshots": type("S", (), {"enabled": False})()})()
+    monkeypatch.setattr(conv_router.deps, "get_config", lambda: config)
+
+    with pytest.raises(HTTPException) as excinfo:
+        conv_router._resolve_dataset("backup_20250101_000000")
+    assert excinfo.value.status_code == 404
+
+
+def test_conversations_messages_from_parquet_parses_dict_and_tuple() -> None:
+    from searchat.api.routers import conversations as conv_router
+
+    now = datetime.now()
+    messages = conv_router._messages_from_parquet(
+        [
+            {"role": "user", "content": "hi", "timestamp": now},
+            (0, "assistant", "ok", "2025-01-01T00:00:00"),
+        ]
+    )
+    assert len(messages) == 2
+    assert messages[0].role == "user"
+    assert messages[0].timestamp.startswith(str(now.date()))
+    assert messages[1].role == "assistant"
+
+
+def test_conversations_slice_messages_handles_invalid_range() -> None:
+    from searchat.api.routers import conversations as conv_router
+    from searchat.api.models import ConversationMessage
+
+    msgs = [ConversationMessage(role="user", content="a", timestamp="")]
+    assert conv_router._slice_messages(msgs, 2, 1) == []
+
+
+def test_conversation_diff_no_similar_returns_404(client, monkeypatch: pytest.MonkeyPatch):
+    from unittest.mock import AsyncMock
+    from searchat.api.routers import conversations as conv_router
+
+    monkeypatch.setattr(
+        conv_router,
+        "get_similar_conversations",
+        AsyncMock(return_value={"similar_conversations": []}),
+    )
+
+    resp = client.get("/api/conversation/conv-1/diff")
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "No similar conversation found"
+
+
+@pytest.mark.asyncio
+async def test_conversation_diff_rejects_invalid_target_id_type() -> None:
+    from searchat.api.routers import conversations as conv_router
+
+    with pytest.raises(HTTPException) as excinfo:
+        await conv_router.get_conversation_diff("conv-1", target_id=123)  # type: ignore[arg-type]
+    assert excinfo.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_conversation_diff_computes_added_removed_counts(monkeypatch: pytest.MonkeyPatch) -> None:
+    from searchat.api.routers import conversations as conv_router
+    from searchat.api.models import ConversationMessage
+
+    source = type(
+        "C",
+        (),
+        {
+            "messages": [
+                ConversationMessage(role="user", content="a", timestamp=""),
+                ConversationMessage(role="assistant", content="b", timestamp=""),
+            ]
+        },
+    )()
+    target = type(
+        "C",
+        (),
+        {
+            "messages": [
+                ConversationMessage(role="user", content="a", timestamp=""),
+                ConversationMessage(role="assistant", content="c", timestamp=""),
+            ]
+        },
+    )()
+
+    async def _fake_get_conversation(conversation_id: str, snapshot=None):
+        return source if conversation_id == "conv-1" else target
+
+    monkeypatch.setattr(conv_router, "get_conversation", _fake_get_conversation)
+
+    payload = await conv_router.get_conversation_diff(
+        "conv-1",
+        target_id="conv-2",
+        source_start=0,
+        source_end=1,
+    )
+    assert payload["summary"]["added"] >= 1
+    assert payload["summary"]["removed"] >= 1
