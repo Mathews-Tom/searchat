@@ -204,6 +204,47 @@ class TestIndexMissingEndpoint:
         assert resp.status_code == 200
         assert resp.json()["new_conversations"] == 0
 
+    def test_index_missing_scans_opencode_storage_sessions(self, client, mock_config, mock_indexer, tmp_path):
+        opencode_dir = tmp_path / "opencode"
+        session_dir = opencode_dir / "storage" / "session" / "proj"
+        session_dir.mkdir(parents=True)
+        (session_dir / "s1.json").write_text("{}")
+
+        mock_indexer.get_indexed_file_paths.return_value = set()
+
+        with patch('searchat.api.routers.indexing.get_config', return_value=mock_config):
+            with patch('searchat.api.routers.indexing.get_indexer', return_value=mock_indexer):
+                with patch('searchat.api.routers.indexing.invalidate_search_index'):
+                    with patch('searchat.api.routers.indexing.PathResolver.resolve_claude_dirs', return_value=[]):
+                        with patch('searchat.api.routers.indexing.PathResolver.resolve_vibe_dirs', return_value=[]):
+                            with patch('searchat.api.routers.indexing.PathResolver.resolve_opencode_dirs', return_value=[opencode_dir]):
+                                with patch('searchat.api.routers.indexing.indexing_state', {"in_progress": False}):
+                                    resp = client.post('/api/index_missing')
+
+        assert resp.status_code == 200
+        mock_indexer.index_append_only.assert_called_once()
+
+    def test_index_missing_returns_message_when_failures_present(self, client, mock_config, mock_indexer, tmp_path):
+        claude_dir = tmp_path / "claude"
+        claude_dir.mkdir()
+        (claude_dir / "conv1.jsonl").write_text('{"type": "user"}')
+
+        stats = Mock(new_conversations=1, skipped_conversations=2)
+        mock_indexer.index_append_only.return_value = stats
+        mock_indexer.get_indexed_file_paths.return_value = set()
+
+        with patch('searchat.api.routers.indexing.get_config', return_value=mock_config):
+            with patch('searchat.api.routers.indexing.get_indexer', return_value=mock_indexer):
+                with patch('searchat.api.routers.indexing.invalidate_search_index'):
+                    with patch('searchat.api.routers.indexing.PathResolver.resolve_claude_dirs', return_value=[claude_dir]):
+                        with patch('searchat.api.routers.indexing.PathResolver.resolve_vibe_dirs', return_value=[]):
+                            with patch('searchat.api.routers.indexing.PathResolver.resolve_opencode_dirs', return_value=[]):
+                                with patch('searchat.api.routers.indexing.indexing_state', {"in_progress": False}):
+                                    resp = client.post('/api/index_missing')
+
+        assert resp.status_code == 200
+        assert "failed" in resp.json()["message"].lower()
+
 
 # ============================================================================
 # ADMIN ENDPOINT TESTS
