@@ -101,6 +101,9 @@ DEFAULT_ENABLE_EXPORT_TECH_DOCS = False
 # Dashboards feature flag
 DEFAULT_ENABLE_DASHBOARDS = True
 
+# Snapshots feature flag
+DEFAULT_ENABLE_SNAPSHOTS = True
+
 # ============================================================================
 # UI Defaults
 # ============================================================================
@@ -161,6 +164,8 @@ ENV_ENABLE_EXPORT_PDF = "SEARCHAT_ENABLE_EXPORT_PDF"
 ENV_ENABLE_EXPORT_TECH_DOCS = "SEARCHAT_ENABLE_EXPORT_TECH_DOCS"
 
 ENV_ENABLE_DASHBOARDS = "SEARCHAT_ENABLE_DASHBOARDS"
+
+ENV_ENABLE_SNAPSHOTS = "SEARCHAT_ENABLE_SNAPSHOTS"
 
 ENV_ISOLATION_MODE = "SEARCHAT_ISOLATION_MODE"
 ENV_VARIANT_SUFFIX = "SEARCHAT_VARIANT_SUFFIX"

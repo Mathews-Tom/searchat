@@ -70,7 +70,7 @@ class TestSearchEndpoint:
 
     def test_basic_search(self, client, mock_search_engine):
         """Test basic search with query."""
-        with patch('searchat.api.routers.search.get_search_engine', return_value=mock_search_engine):
+        with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
             response = client.get("/api/search?q=test")
 
             assert response.status_code == 200
@@ -92,7 +92,7 @@ class TestSearchEndpoint:
 
     def test_search_mode_hybrid(self, client, mock_search_engine):
         """Test search with hybrid mode - combines keyword and semantic."""
-        with patch('searchat.api.routers.search.get_search_engine', return_value=mock_search_engine):
+        with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
             response = client.get("/api/search?q=implement binary search tree&mode=hybrid")
 
             assert response.status_code == 200
@@ -105,7 +105,7 @@ class TestSearchEndpoint:
 
     def test_search_mode_semantic(self, client, mock_search_engine):
         """Test search with semantic mode - meaning-based search."""
-        with patch('searchat.api.routers.search.get_search_engine', return_value=mock_search_engine):
+        with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
             # Semantic mode should handle conceptual queries well
             response = client.get("/api/search?q=how to sort data structures&mode=semantic")
 
@@ -117,7 +117,7 @@ class TestSearchEndpoint:
 
     def test_search_mode_keyword(self, client, mock_search_engine):
         """Test search with keyword mode - exact text matching."""
-        with patch('searchat.api.routers.search.get_or_create_search_engine', return_value=mock_search_engine):
+        with patch('searchat.api.routers.search.deps.get_or_create_search_engine', return_value=mock_search_engine):
             # Keyword mode should handle specific terms
             response = client.get("/api/search?q=def binary_search&mode=keyword")
 
@@ -129,7 +129,7 @@ class TestSearchEndpoint:
 
     def test_search_mode_default_is_hybrid(self, client, mock_search_engine):
         """Test that default search mode is hybrid when not specified."""
-        with patch('searchat.api.routers.search.get_search_engine', return_value=mock_search_engine):
+        with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
             response = client.get("/api/search?q=test")  # No mode specified
 
             assert response.status_code == 200
@@ -139,7 +139,7 @@ class TestSearchEndpoint:
 
     def test_search_mode_invalid_returns_400(self, client, mock_search_engine):
         """Test that invalid mode is rejected."""
-        with patch('searchat.api.routers.search.get_search_engine', return_value=mock_search_engine):
+        with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
             response = client.get("/api/search?q=test&mode=invalid")
 
             assert response.status_code == 400
@@ -147,7 +147,7 @@ class TestSearchEndpoint:
 
     def test_search_highlight_requires_provider(self, client, mock_search_engine):
         """Test that highlight requests require explicit provider."""
-        with patch('searchat.api.routers.search.get_search_engine', return_value=mock_search_engine):
+        with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
             response = client.get("/api/search?q=test&highlight=true")
 
             assert response.status_code == 400
@@ -155,7 +155,7 @@ class TestSearchEndpoint:
 
     def test_search_with_project_filter(self, client, mock_search_engine):
         """Test search with project filter."""
-        with patch('searchat.api.routers.search.get_search_engine', return_value=mock_search_engine):
+        with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
             response = client.get("/api/search?q=test&project=test-project")
 
             assert response.status_code == 200
@@ -165,7 +165,7 @@ class TestSearchEndpoint:
 
     def test_search_with_date_filter_today(self, client, mock_search_engine):
         """Test search with 'today' date filter."""
-        with patch('searchat.api.routers.search.get_search_engine', return_value=mock_search_engine):
+        with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
             response = client.get("/api/search?q=test&date=today")
 
             assert response.status_code == 200
@@ -180,7 +180,7 @@ class TestSearchEndpoint:
 
     def test_search_with_date_filter_week(self, client, mock_search_engine):
         """Test search with 'week' date filter."""
-        with patch('searchat.api.routers.search.get_search_engine', return_value=mock_search_engine):
+        with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
             response = client.get("/api/search?q=test&date=week")
 
             assert response.status_code == 200
@@ -195,7 +195,7 @@ class TestSearchEndpoint:
 
     def test_search_with_date_filter_month(self, client, mock_search_engine):
         """Test search with 'month' date filter."""
-        with patch('searchat.api.routers.search.get_search_engine', return_value=mock_search_engine):
+        with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
             response = client.get("/api/search?q=test&date=month")
 
             assert response.status_code == 200
@@ -210,7 +210,7 @@ class TestSearchEndpoint:
 
     def test_search_with_custom_date_range(self, client, mock_search_engine):
         """Test search with custom date range."""
-        with patch('searchat.api.routers.search.get_search_engine', return_value=mock_search_engine):
+        with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
             response = client.get(
                 "/api/search?q=test&date=custom&date_from=2025-01-01&date_to=2025-01-31"
             )
@@ -251,7 +251,7 @@ class TestSearchEndpoint:
             mode_used="hybrid"
         )
 
-        with patch('searchat.api.routers.search.get_search_engine', return_value=mock_search_engine):
+        with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
             response = client.get("/api/search?q=test&sort_by=date_newest")
 
             assert response.status_code == 200
@@ -289,7 +289,7 @@ class TestSearchEndpoint:
             mode_used="hybrid"
         )
 
-        with patch('searchat.api.routers.search.get_search_engine', return_value=mock_search_engine):
+        with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
             response = client.get("/api/search?q=test&sort_by=date_oldest")
 
             assert response.status_code == 200
@@ -327,7 +327,7 @@ class TestSearchEndpoint:
             mode_used="hybrid"
         )
 
-        with patch('searchat.api.routers.search.get_search_engine', return_value=mock_search_engine):
+        with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
             response = client.get("/api/search?q=test&sort_by=messages")
 
             assert response.status_code == 200
@@ -365,7 +365,7 @@ class TestSearchEndpoint:
             mode_used="hybrid"
         )
 
-        with patch('searchat.api.routers.search.get_search_engine', return_value=mock_search_engine):
+        with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
             response = client.get("/api/search?q=test&limit=3")
 
             assert response.status_code == 200
@@ -400,7 +400,7 @@ class TestSearchEndpoint:
             mode_used="hybrid"
         )
 
-        with patch('searchat.api.routers.search.get_search_engine', return_value=mock_search_engine):
+        with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
             response = client.get("/api/search?q=test")
 
             assert response.status_code == 200
@@ -431,7 +431,7 @@ class TestSearchEndpoint:
             mode_used="hybrid"
         )
 
-        with patch('searchat.api.routers.search.get_search_engine', return_value=mock_search_engine):
+        with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
             response = client.get("/api/search?q=test")
 
             assert response.status_code == 200
@@ -474,7 +474,7 @@ class TestSearchEndpoint:
             mode_used="keyword"
         )
 
-        with patch('searchat.api.routers.search.get_or_create_search_engine', return_value=mock_search_engine):
+        with patch('searchat.api.routers.search.deps.get_or_create_search_engine', return_value=mock_search_engine):
             # Search with partial word "apologiz" (missing 'e' or 'ing')
             response = client.get("/api/search?q=apologiz&mode=keyword")
 
@@ -508,7 +508,7 @@ class TestSearchEndpoint:
             mode_used="hybrid"
         )
 
-        with patch('searchat.api.routers.search.get_search_engine', return_value=mock_search_engine):
+        with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
             # Search with partial word "optimi" (matches "optimize", "optimizing", "optimization")
             response = client.get("/api/search?q=optimi&mode=hybrid")
 
@@ -533,7 +533,7 @@ class TestSearchEndpoint:
             mode_used="semantic"
         )
 
-        with patch('searchat.api.routers.search.get_search_engine', return_value=mock_search_engine):
+        with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
             # Partial word may not match well in semantic mode
             response = client.get("/api/search?q=refactor&mode=semantic")
 
@@ -566,7 +566,7 @@ class TestSearchEndpoint:
             mode_used="keyword"
         )
 
-        with patch('searchat.api.routers.search.get_or_create_search_engine', return_value=mock_search_engine):
+        with patch('searchat.api.routers.search.deps.get_or_create_search_engine', return_value=mock_search_engine):
             # Search with lowercase partial word should match uppercase full word
             response = client.get("/api/search?q=datab&mode=keyword")
 
@@ -581,7 +581,7 @@ class TestSearchEndpoint:
         """Test that search errors are handled properly."""
         mock_search_engine.search.side_effect = Exception("Search failed")
 
-        with patch('searchat.api.routers.search.get_search_engine', return_value=mock_search_engine):
+        with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
             response = client.get("/api/search?q=test")
 
             assert response.status_code == 500

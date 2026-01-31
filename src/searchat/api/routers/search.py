@@ -11,17 +11,12 @@ from searchat.services.llm_service import LLMServiceError
 from searchat.api.utils import detect_tool_from_path, detect_source_from_path, parse_date_filter
 import searchat.api.dependencies as deps
 
-from searchat.api.dependencies import (
-    get_search_engine,
-    get_or_create_search_engine,
-    trigger_search_engine_warmup,
-    get_analytics_service
-)
+from searchat.api.dependencies import get_analytics_service
 from searchat.api.readiness import get_readiness, warming_payload, error_payload
 
 
 router = APIRouter()
-_highlight_cache: dict[tuple[str, str, str | None], list[str]] = {}
+_highlight_cache: dict[tuple[str, str, str, str | None], list[str]] = {}
 
 
 @router.get("/search")
@@ -39,9 +34,18 @@ async def search(
     highlight: bool = Query(False, description="Enable semantic highlight term extraction"),
     highlight_provider: str | None = Query(None, description="LLM provider for highlights (openai, ollama)"),
     highlight_model: str | None = Query(None, description="LLM model override for highlights"),
+    snapshot: str | None = Query(None, description="Backup snapshot name (read-only)"),
 ):
     """Search conversations with filters and sorting."""
     try:
+        try:
+            search_dir, snapshot_name = deps.resolve_dataset_search_dir(snapshot)
+        except ValueError as exc:
+            msg = str(exc)
+            if msg == "Snapshot not found":
+                raise HTTPException(status_code=404, detail="Snapshot not found") from exc
+            raise HTTPException(status_code=400, detail=msg) from exc
+
         # Convert mode string to SearchMode enum
         mode_map = {
             "hybrid": SearchMode.HYBRID,
@@ -56,19 +60,23 @@ async def search(
         if q.strip() == "*":
             search_mode = SearchMode.KEYWORD
 
-        # Keyword search should work without semantic warmup.
-        if search_mode == SearchMode.KEYWORD:
-            search_engine = get_or_create_search_engine()
+        # Snapshot requests must not mutate readiness/warmup globals.
+        if snapshot_name is not None:
+            search_engine = deps.get_or_create_search_engine_for(search_dir)
         else:
-            readiness = get_readiness().snapshot()
-            for key in ("metadata", "faiss", "embedder"):
-                if readiness.components.get(key) == "error":
-                    return JSONResponse(status_code=500, content=error_payload())
-            if any(readiness.components.get(key) != "ready" for key in ("metadata", "faiss", "embedder")):
-                trigger_search_engine_warmup()
-                return JSONResponse(status_code=503, content=warming_payload())
+            # Keyword search should work without semantic warmup.
+            if search_mode == SearchMode.KEYWORD:
+                search_engine = deps.get_or_create_search_engine()
+            else:
+                readiness = get_readiness().snapshot()
+                for key in ("metadata", "faiss", "embedder"):
+                    if readiness.components.get(key) == "error":
+                        return JSONResponse(status_code=500, content=error_payload())
+                if any(readiness.components.get(key) != "ready" for key in ("metadata", "faiss", "embedder")):
+                    deps.trigger_search_engine_warmup()
+                    return JSONResponse(status_code=503, content=warming_payload())
 
-            search_engine = get_search_engine()
+                search_engine = deps.get_search_engine()
 
         # Build filters
         filters = SearchFilters()
@@ -96,7 +104,8 @@ async def search(
             if provider not in ("openai", "ollama"):
                 raise HTTPException(status_code=400, detail="Invalid highlight provider")
 
-            cache_key = (q, provider, highlight_model)
+            dataset_cache_key = str(search_dir)
+            cache_key = (dataset_cache_key, q, provider, highlight_model)
             if cache_key in _highlight_cache:
                 highlight_terms = _highlight_cache[cache_key]
             else:
@@ -114,9 +123,9 @@ async def search(
 
                 _highlight_cache[cache_key] = highlight_terms
 
-        # Log search analytics (opt-in)
+        # Log search analytics (opt-in; active dataset only)
         config = deps.get_config()
-        if config.analytics.enabled:
+        if snapshot_name is None and config.analytics.enabled:
             try:
                 analytics = get_analytics_service()
                 analytics.log_search(
@@ -180,9 +189,19 @@ async def search(
 
 
 @router.get("/projects")
-async def get_projects():
+async def get_projects(snapshot: str | None = Query(None, description="Backup snapshot name (read-only)")):
     """Get list of all projects in the index."""
-    store = deps.get_duckdb_store()
+    try:
+        search_dir, snapshot_name = deps.resolve_dataset_search_dir(snapshot)
+    except ValueError as exc:
+        msg = str(exc)
+        if msg == "Snapshot not found":
+            raise HTTPException(status_code=404, detail="Snapshot not found") from exc
+        raise HTTPException(status_code=400, detail=msg) from exc
+    store = deps.get_duckdb_store_for(search_dir)
+
+    if snapshot_name is not None:
+        return store.list_projects()
 
     if deps.projects_cache is None:
         deps.projects_cache = store.list_projects()
@@ -190,9 +209,19 @@ async def get_projects():
 
 
 @router.get("/projects/summary")
-async def get_projects_summary():
+async def get_projects_summary(snapshot: str | None = Query(None, description="Backup snapshot name (read-only)")):
     """Get summary stats for all projects in the index."""
-    store = deps.get_duckdb_store()
+    try:
+        search_dir, snapshot_name = deps.resolve_dataset_search_dir(snapshot)
+    except ValueError as exc:
+        msg = str(exc)
+        if msg == "Snapshot not found":
+            raise HTTPException(status_code=404, detail="Snapshot not found") from exc
+        raise HTTPException(status_code=400, detail=msg) from exc
+    store = deps.get_duckdb_store_for(search_dir)
+
+    if snapshot_name is not None:
+        return store.list_project_summaries()
 
     if deps.projects_summary_cache is None:
         deps.projects_summary_cache = store.list_project_summaries()

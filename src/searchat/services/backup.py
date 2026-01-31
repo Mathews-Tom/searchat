@@ -256,10 +256,18 @@ class BackupManager:
             logger.error(f"Backup missing data directory: {data_dir}")
             return False
 
-        # Check for parquet files (the critical data)
+        # Check for parquet files (the critical data).
+        # Historical note: older validation expected parquets directly under data/.
+        # Current index layout stores parquets under data/conversations/.
         parquet_files = list(data_dir.glob("*.parquet"))
         if not parquet_files:
-            logger.error(f"Backup contains no parquet files in: {data_dir}")
+            parquet_files = list((data_dir / "conversations").glob("*.parquet"))
+        if not parquet_files:
+            logger.error(
+                "Backup contains no parquet files in: %s or %s",
+                data_dir,
+                data_dir / "conversations",
+            )
             return False
 
         logger.info(f"Backup validation passed: {backup_path.name}")

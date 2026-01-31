@@ -1,7 +1,7 @@
 """Chat endpoints for RAG answers."""
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from searchat.api.models import ChatRequest, ChatRagRequest, ConversationSource, RAGResponse
@@ -16,7 +16,12 @@ router = APIRouter()
 
 
 @router.post("/chat")
-async def chat(request: ChatRequest):
+async def chat(
+    request: ChatRequest,
+    snapshot: str | None = Query(None, description="Backup snapshot name (read-only)"),
+):
+    if snapshot is not None:
+        raise HTTPException(status_code=403, detail="Chat is disabled in snapshot mode")
     provider = request.model_provider.lower()
     if provider not in ("openai", "ollama"):
         raise HTTPException(status_code=400, detail="model_provider must be 'openai' or 'ollama'.")
@@ -49,7 +54,12 @@ async def chat(request: ChatRequest):
 
 
 @router.post("/chat-rag", response_model=RAGResponse)
-async def chat_rag(request: ChatRagRequest):
+async def chat_rag(
+    request: ChatRagRequest,
+    snapshot: str | None = Query(None, description="Backup snapshot name (read-only)"),
+):
+    if snapshot is not None:
+        raise HTTPException(status_code=403, detail="Chat is disabled in snapshot mode")
     provider = request.model_provider.lower()
     if provider not in ("openai", "ollama"):
         raise HTTPException(status_code=400, detail="model_provider must be 'openai' or 'ollama'.")

@@ -1,5 +1,7 @@
 // Similar conversations functionality
 
+import { applySnapshotParam } from './dataset.js';
+
 /**
  * Load and display similar conversations
  */
@@ -7,7 +9,8 @@ export async function loadSimilarConversations(conversationId, container) {
     container.innerHTML = '<div class="loading">Finding similar conversations...</div>';
 
     try {
-        const response = await fetch(`/api/conversation/${conversationId}/similar?limit=5`);
+        const params = applySnapshotParam(new URLSearchParams({ limit: '5' }));
+        const response = await fetch(`/api/conversation/${conversationId}/similar?${params.toString()}`);
         if (!response.ok) {
             const payload = await response.json().catch(() => null);
             const msg = payload && payload.detail ? payload.detail : 'Failed to load similar conversations';

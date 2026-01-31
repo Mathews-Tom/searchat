@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from searchat.api.dependencies import (
     get_backup_manager,
@@ -16,8 +16,13 @@ logger = logging.getLogger(__name__)
 
 
 @router.post("/create")
-async def create_backup(backup_name: str | None = None):
+async def create_backup(
+    backup_name: str | None = None,
+    snapshot: str | None = Query(None, description="Backup snapshot name (read-only)"),
+):
     """Create a new backup of the index and data."""
+    if snapshot is not None:
+        raise HTTPException(status_code=403, detail="Backup operations are disabled in snapshot mode")
     try:
         backup_manager = get_backup_manager()
         logger.info(f"Creating backup: {backup_name or 'auto'}")
@@ -52,8 +57,13 @@ async def list_backups():
 
 
 @router.post("/restore")
-async def restore_backup(backup_name: str):
+async def restore_backup(
+    backup_name: str,
+    snapshot: str | None = Query(None, description="Backup snapshot name (read-only)"),
+):
     """Restore from a backup."""
+    if snapshot is not None:
+        raise HTTPException(status_code=403, detail="Backup operations are disabled in snapshot mode")
     try:
         backup_manager = get_backup_manager()
 
@@ -90,8 +100,13 @@ async def restore_backup(backup_name: str):
 
 
 @router.delete("/delete/{backup_name}")
-async def delete_backup(backup_name: str):
+async def delete_backup(
+    backup_name: str,
+    snapshot: str | None = Query(None, description="Backup snapshot name (read-only)"),
+):
     """Delete a backup."""
+    if snapshot is not None:
+        raise HTTPException(status_code=403, detail="Backup operations are disabled in snapshot mode")
     try:
         backup_manager = get_backup_manager()
         backup_path = backup_manager.backup_dir / backup_name

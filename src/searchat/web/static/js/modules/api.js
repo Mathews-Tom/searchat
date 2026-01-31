@@ -1,5 +1,7 @@
 // API Client Functions
 
+import { applySnapshotParam } from './dataset.js';
+
 function _sleep(ms) {
     return new Promise(function (resolve) {
         setTimeout(resolve, ms);
@@ -48,7 +50,9 @@ function _renderProjectSummary(projectId) {
 }
 
 export async function loadProjects() {
-    const response = await fetch('/api/projects/summary');
+    const params = applySnapshotParam(new URLSearchParams());
+    const url = params.toString() ? `/api/projects/summary?${params.toString()}` : '/api/projects/summary';
+    const response = await fetch(url);
 
     if (response.status === 503) {
         const payload = await response.json();
