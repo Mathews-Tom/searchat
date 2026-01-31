@@ -350,3 +350,20 @@ def test_get_analytics_config(client, mock_analytics_service):
         data = response.json()
         assert data["enabled"] is True
         assert data["retention_days"] == 14
+
+
+def test_analytics_endpoints_reject_snapshot_mode(client):
+    endpoints = [
+        "/api/stats/analytics/summary",
+        "/api/stats/analytics/top-queries",
+        "/api/stats/analytics/dead-ends",
+        "/api/stats/analytics/config",
+        "/api/stats/analytics/trends",
+        "/api/stats/analytics/heatmap",
+        "/api/stats/analytics/agent-comparison",
+        "/api/stats/analytics/topics",
+    ]
+    for endpoint in endpoints:
+        resp = client.get(f"{endpoint}?snapshot=backup_20250101_000000")
+        assert resp.status_code == 403
+        assert "active dataset" in resp.json()["detail"].lower()
