@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -109,3 +110,58 @@ def test_queries_crud_flow(client, queries_service, monkeypatch):
     listing_after = client.get("/api/queries")
     assert listing_after.status_code == 200
     assert listing_after.json()["total"] == 0
+
+
+def test_queries_list_returns_500_on_service_error(client, monkeypatch):
+    class BoomService:
+        def list_queries(self):
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr("searchat.api.routers.queries.deps.get_saved_queries_service", lambda: BoomService())
+    resp = client.get("/api/queries")
+    assert resp.status_code == 500
+    assert resp.json()["detail"] == "boom"
+
+
+def test_queries_create_returns_400_on_value_error(client, monkeypatch):
+    class BadService:
+        def create_query(self, _payload: dict) -> dict:
+            raise ValueError("invalid")
+
+    monkeypatch.setattr("searchat.api.routers.queries.deps.get_saved_queries_service", lambda: BadService())
+    resp = client.post(
+        "/api/queries",
+        json={
+            "name": "n",
+            "description": None,
+            "query": "q",
+            "filters": {},
+            "mode": "hybrid",
+        },
+    )
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "invalid"
+
+
+def test_queries_update_returns_404_when_not_found(client, monkeypatch):
+    service = SimpleNamespace(update_query=lambda _qid, _updates: None)
+    monkeypatch.setattr("searchat.api.routers.queries.deps.get_saved_queries_service", lambda: service)
+    resp = client.put("/api/queries/missing", json={"name": "x"})
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "Saved query not found"
+
+
+def test_queries_delete_returns_404_when_not_found(client, monkeypatch):
+    service = SimpleNamespace(delete_query=lambda _qid: False)
+    monkeypatch.setattr("searchat.api.routers.queries.deps.get_saved_queries_service", lambda: service)
+    resp = client.delete("/api/queries/missing")
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "Saved query not found"
+
+
+def test_queries_run_returns_404_when_not_found(client, monkeypatch):
+    service = SimpleNamespace(record_use=lambda _qid: None)
+    monkeypatch.setattr("searchat.api.routers.queries.deps.get_saved_queries_service", lambda: service)
+    resp = client.post("/api/queries/missing/run")
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "Saved query not found"
