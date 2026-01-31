@@ -25,14 +25,17 @@ Semantic search and RAG-powered Q&A for AI coding agent conversations. Find past
 ### AI-Powered Features
 
 - **RAG Chat** — Ask questions about your conversation history with AI-powered answers
+- **Semantic Highlights** — Optional LLM-generated highlight terms for search results
 - **Conversation Similarity** — Discover related conversations using semantic similarity
 - **Code Extraction** — Extract and view code snippets with syntax highlighting
 
 ### Organization & Management
 
 - **Bookmarks** — Save and annotate favorite conversations
+- **Saved Queries** — Save reusable searches (query + filters + mode)
+- **Dashboards** — Build dashboards from saved queries (widgets + auto-refresh)
 - **Search Analytics** — Track search patterns and usage statistics
-- **Export** — Export conversations in JSON, Markdown, HTML, PDF, or TXT formats
+- **Export** — Export conversations in JSON/Markdown/Text (optional PDF + Jupyter notebook)
 - **Bulk Export** — Export multiple conversations at once
 - **Pagination** — Navigate large result sets efficiently
 
@@ -41,6 +44,7 @@ Semantic search and RAG-powered Q&A for AI coding agent conversations. Find past
 - **Live Indexing** — Auto-indexes new/modified files (5min debounce)
 - **Append-Only** — Never deletes existing data, safe for long-term use
 - **Backups** — Create and restore backups from UI or API
+- **Snapshots** — Browse backups as read-only datasets ("snapshot" mode)
 - **Safe Shutdown** — Detects ongoing indexing, prevents data corruption
 - **DuckDB Storage** — Efficient Parquet-based storage with fast queries
 - **FAISS Vectors** — High-performance semantic search
@@ -98,7 +102,7 @@ curl -s "http://localhost:8000/api/conversation/CONVERSATION_ID" | jq '.messages
 ```bash
 curl -X POST "http://localhost:8000/api/chat" \
   -H "Content-Type: application/json" \
-  -d '{"query": "How did we implement authentication?", "model_provider": "openai", "model_name": "gpt-4"}'
+  -d '{"query": "How did we implement authentication?", "model_provider": "openai", "model_name": "gpt-4.1-mini"}'
 ```
 
 **When to use:**
@@ -130,8 +134,11 @@ Features:
 - **Bookmarks:** Save and annotate favorite conversations
 - **RAG Chat:** Ask questions about your conversation history
 - **Analytics:** View search patterns and statistics
+- **Saved Queries:** Save and re-run complex searches
+- **Dashboards:** Create dashboards and widgets from saved queries
 - **Export:** Download conversations in multiple formats
 - **Backups:** Create and restore backups (left sidebar)
+- **Snapshots:** Switch between active index and read-only backup snapshots
 - **Keyboard Shortcuts:** Press `?` to see all shortcuts
 - **Terminal Resume:** Resume conversations in terminal
 - **Helpful Tips:** Search tips + API integration sidebars
@@ -139,7 +146,6 @@ Features:
 ### CLI
 
 ```bash
-searchat "search query"
 searchat  # interactive mode
 ```
 
@@ -158,10 +164,13 @@ curl "http://localhost:8000/api/search?q=authentication&tool=claude&limit=10"
 curl "http://localhost:8000/api/search/suggestions?q=auth&limit=5"
 
 # Find similar conversations
-curl "http://localhost:8000/api/conversations/{conversation_id}/similar?limit=5"
+curl "http://localhost:8000/api/conversation/{conversation_id}/similar?limit=5"
+
+# Optional: request highlight terms for the UI (LLM)
+curl "http://localhost:8000/api/search?q=auth&mode=hybrid&highlight=true&highlight_provider=ollama"
 
 # Search with pagination
-curl "http://localhost:8000/api/search?q=api&page=1&page_size=20"
+curl "http://localhost:8000/api/search?q=api&limit=20&offset=0"
 ```
 
 #### Conversations
@@ -174,13 +183,21 @@ curl "http://localhost:8000/api/conversation/{conversation_id}"
 curl "http://localhost:8000/api/conversations/all?limit=50"
 
 # Extract code snippets
-curl "http://localhost:8000/api/conversations/{conversation_id}/code"
+curl "http://localhost:8000/api/conversation/{conversation_id}/code"
+
+# Code highlighting (Pygments)
+curl -X POST "http://localhost:8000/api/code/highlight" \
+  -H "Content-Type: application/json" \
+  -d '{"blocks":[{"code":"print(123)","language":"python","language_source":"fence"}]}'
+
+# Conversation diff
+curl "http://localhost:8000/api/conversation/{conversation_id}/diff?target_id={other_conversation_id}"
 
 # Export conversation
-curl "http://localhost:8000/api/conversations/{conversation_id}/export?format=markdown"
+curl "http://localhost:8000/api/conversation/{conversation_id}/export?format=markdown"
 
 # Bulk export
-curl -X POST "http://localhost:8000/api/conversations/export/bulk" \
+curl -X POST "http://localhost:8000/api/conversations/bulk-export" \
   -H "Content-Type: application/json" \
   -d '{"conversation_ids": ["id1", "id2"], "format": "json"}'
 
@@ -212,8 +229,13 @@ curl -X POST "http://localhost:8000/api/chat" \
   -d '{
     "query": "How did we implement authentication?",
     "model_provider": "openai",
-    "model_name": "gpt-4"
+    "model_name": "gpt-4.1-mini"
   }'
+
+# Non-streaming RAG response with citations
+curl -X POST "http://localhost:8000/api/chat-rag" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"Summarize how backups work","model_provider":"ollama","model_name":"ollama/gemma3"}'
 
 # Streaming response (default)
 curl -X POST "http://localhost:8000/api/chat" \
@@ -229,13 +251,50 @@ curl -X POST "http://localhost:8000/api/chat" \
 curl "http://localhost:8000/api/statistics"
 
 # Search analytics
-curl "http://localhost:8000/api/analytics/searches"
+curl "http://localhost:8000/api/stats/analytics/summary?days=7"
 
-# Top queries
-curl "http://localhost:8000/api/analytics/top-queries?limit=10"
+# Top queries / trends
+curl "http://localhost:8000/api/stats/analytics/top-queries?limit=10&days=30"
+curl "http://localhost:8000/api/stats/analytics/trends?days=30"
 
 # List projects
 curl "http://localhost:8000/api/projects"
+
+# Project summary
+curl "http://localhost:8000/api/projects/summary"
+```
+
+#### Saved Queries & Dashboards
+
+```bash
+# Saved queries
+curl "http://localhost:8000/api/queries"
+
+# Dashboards
+curl "http://localhost:8000/api/dashboards"
+```
+
+#### Tech Docs (Optional)
+
+Requires `export.enable_tech_docs=true`.
+
+```bash
+curl -X POST "http://localhost:8000/api/docs/summary" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Searchat Notes",
+    "format": "markdown",
+    "sections": [
+      {"name": "Backups", "query": "backup restore", "mode": "hybrid", "filters": {"project": "myapp"}}
+    ]
+  }'
+```
+
+#### Snapshots (Read-only)
+
+```bash
+# Search within a backup snapshot
+curl "http://localhost:8000/api/search?q=auth&snapshot=backup_YYYYMMDD_HHMMSS"
 ```
 
 #### Indexing & Management
@@ -303,11 +362,11 @@ for r in results.results[:5]:
 
 **Code Organization:**
 
-- `src/searchat/api/` - FastAPI app with 9 modular routers (30+ endpoints)
+- `src/searchat/api/` - FastAPI app with 13 modular routers (50+ endpoints)
 - `src/searchat/core/` - Core indexing and search logic
 - `src/searchat/services/` - Business services (chat, bookmarks, analytics, backup)
 - `src/searchat/web/` - Modular frontend (HTML + CSS modules + ES6 JS)
-- `tests/` - Comprehensive test suite (250 tests, 100% pass rate)
+- `tests/` - Comprehensive test suite (500+ tests)
 
 **Data Flow:**
 
@@ -364,13 +423,14 @@ Create `~/.searchat/config/settings.toml`:
 search_directory = "~/.searchat"
 claude_directory_windows = "~/.claude/projects"
 claude_directory_wsl = "//wsl$/Ubuntu/home/{username}/.claude/projects"
-opencode_data_dir = "~/.local/share/opencode"
 
 [indexing]
 batch_size = 1000
 auto_index = true
 reindex_on_modification = true  # Re-index modified conversations
 modification_debounce_minutes = 5  # Wait time before re-indexing
+enable_connectors = true
+enable_adaptive_indexing = true
 
 [search]
 default_mode = "hybrid"
@@ -380,11 +440,31 @@ snippet_length = 200
 [embedding]
 model = "all-MiniLM-L6-v2"
 batch_size = 32
+device = "auto"  # auto|cuda|mps|cpu
 
 [llm]
-openai_api_key = ""  # Optional: for RAG chat
-openai_model = "gpt-4"
-ollama_base_url = "http://localhost:11434"  # Optional: local LLM
+default_provider = "ollama"
+openai_model = "gpt-4.1-mini"
+ollama_model = "ollama/gemma3"
+
+[chat]
+enable_rag = true
+enable_citations = true
+
+[analytics]
+enabled = false
+retention_days = 30
+
+[export]
+enable_ipynb = false
+enable_pdf = false
+enable_tech_docs = false
+
+[dashboards]
+enabled = true
+
+[snapshots]
+enabled = true
 
 [performance]
 memory_limit_mb = 3000
@@ -401,6 +481,7 @@ export SEARCHAT_REINDEX_ON_MODIFICATION=true
 export SEARCHAT_MODIFICATION_DEBOUNCE_MINUTES=5
 export SEARCHAT_OPENCODE_DATA_DIR=~/.local/share/opencode
 export OPENAI_API_KEY=sk-...  # For RAG chat
+export OLLAMA_BASE_URL=http://localhost:11434
 ```
 
 ## Requirements
@@ -473,7 +554,7 @@ Protects against:
 ## Testing
 
 ```bash
-pytest                          # Run all 250 tests
+pytest                          # Run the full test suite
 pytest tests/api/              # Run API tests only
 pytest -v                      # Verbose output
 pytest -k test_search          # Run specific tests
@@ -483,7 +564,7 @@ pytest --cov-report=html       # HTML coverage report
 
 **Test Coverage:**
 
-- 250 tests, 100% pass rate
+- 500+ tests (API, UI contract tests, unit tests, perf gates)
 - ~5,900 lines of test code
 - Comprehensive coverage of all features
 - API endpoint tests, unit tests, integration tests
@@ -547,7 +628,10 @@ This fork adds significant new features beyond the original:
 - **Search Analytics** - Track and analyze search patterns
 - **Conversation Similarity** - Discover related conversations
 - **Code Extraction** - Extract code snippets with syntax highlighting
-- **Export Features** - Multiple export formats (JSON, Markdown, HTML, PDF, TXT)
+- **Saved Queries** - Reusable searches with stored filters
+- **Dashboards** - Builder UI + widgets rendered from saved queries
+- **Snapshots** - Browse backups as read-only datasets
+- **Export Features** - JSON/Markdown/Text exports (optional PDF + Jupyter)
 - **Bulk Export** - Export multiple conversations at once
 - **Pagination** - Efficient navigation of large result sets
 - **Autocomplete** - Smart search suggestions
