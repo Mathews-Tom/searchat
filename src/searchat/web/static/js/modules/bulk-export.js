@@ -1,5 +1,7 @@
 // Bulk export functionality
 
+import { applySnapshotParam } from './dataset.js';
+
 let selectedConversations = new Set();
 let bulkModeActive = false;
 
@@ -251,7 +253,11 @@ async function bulkExport(format) {
     }
 
     try {
-        const response = await fetch('/api/conversations/bulk-export', {
+        const params = applySnapshotParam(new URLSearchParams());
+        const url = params.toString()
+            ? `/api/conversations/bulk-export?${params.toString()}`
+            : '/api/conversations/bulk-export';
+        const response = await fetch(url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'

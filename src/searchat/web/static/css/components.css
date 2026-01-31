@@ -176,6 +176,25 @@
     font-weight: 500;
 }
 
+/* Dataset banner (snapshot mode) */
+.dataset-banner {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    margin-bottom: 16px;
+    background: color-mix(in srgb, var(--warning) 18%, var(--bg-surface));
+    border: 1px solid color-mix(in srgb, var(--warning) 35%, var(--border-default));
+    border-radius: 10px;
+}
+
+.dataset-banner-title {
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 600;
+}
+
 /* Result Cards */
 .result {
     background: var(--bg-surface);

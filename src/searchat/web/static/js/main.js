@@ -15,6 +15,7 @@ import { showAnalytics } from './modules/analytics.js';
 import { goToPage } from './modules/pagination.js';
 import { initSavedQueries } from './modules/saved-queries.js';
 import { showDashboards } from './modules/dashboards.js';
+import { initDatasetSelector } from './modules/dataset.js';
 
 // Initialize theme, shortcuts, search history, suggestions, bookmarks, and bulk export on page load
 initTheme();
@@ -26,6 +27,7 @@ initBookmarks();
 initBulkExport();
 initSavedQueries();
 initProjectSuggestion();
+initDatasetSelector();
 
 // Make functions globally available for inline event handlers
 window.setTheme = setTheme;

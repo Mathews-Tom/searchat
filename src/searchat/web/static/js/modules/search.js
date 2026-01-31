@@ -8,6 +8,7 @@ import { loadSimilarConversations } from './similar.js';
 import { addCheckboxToResult } from './bulk-export.js';
 import { renderPagination, setTotalResults, getOffset, resetPagination } from './pagination.js';
 import { getProjectSummaries } from './api.js';
+import { applySnapshotParam, isSnapshotActive, getSnapshotName } from './dataset.js';
 
 let _searchNonce = 0;
 const _snippetCodeMap = new Map();
@@ -321,6 +322,7 @@ function ensureResultsHandlers(resultsDiv) {
             const params = new URLSearchParams();
             if (sourceStart) params.append('source_start', sourceStart);
             if (sourceEnd) params.append('source_end', sourceEnd);
+            applySnapshotParam(params);
 
             diffContainer.innerHTML = '<div class="loading">Loading diff...</div>';
             try {
@@ -414,6 +416,8 @@ export async function search(resetPage = true, attempt = 0) {
         }
     }
 
+    applySnapshotParam(params);
+
     const response = await fetch(`/api/search?${params}`);
 
     if (response.status === 503) {
@@ -497,6 +501,11 @@ export async function search(resetPage = true, attempt = 0) {
         const highlightedTitle = highlightText(r.title, query, highlightTerms);
         const formattedSnippet = formatSnippet(r.snippet, query, highlightTerms);
 
+        const snapshotName = getSnapshotName();
+        const resumeButtonHtml = snapshotName
+            ? `<button class="resume-btn" data-conversation-id="${r.conversation_id}" disabled title="Disabled in snapshot mode (${escapeHtml(snapshotName)})">⚡ Resume (disabled)</button>`
+            : `<button class="resume-btn" data-conversation-id="${r.conversation_id}">⚡ Resume Session</button>`;
+
         div.innerHTML = `
             <div class="result-title">${highlightedTitle}</div>
             <div class="result-meta">
@@ -508,9 +517,7 @@ export async function search(resetPage = true, attempt = 0) {
             </div>
             <div class="result-snippet">${formattedSnippet}</div>
             <div class="result-actions">
-                <button class="resume-btn" data-conversation-id="${r.conversation_id}">
-                    ⚡ Resume Session
-                </button>
+                ${resumeButtonHtml}
                 <button class="diff-btn" data-conversation-id="${r.conversation_id}">
                     View Diff
                 </button>
@@ -528,10 +535,12 @@ export async function search(resetPage = true, attempt = 0) {
 
         // Add click handler for resume button
         const resumeBtn = div.querySelector('.resume-btn');
-        resumeBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            resumeSession(r.conversation_id, resumeBtn);
-        });
+        if (resumeBtn && !isSnapshotActive()) {
+            resumeBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                resumeSession(r.conversation_id, resumeBtn);
+            });
+        }
 
         div.onclick = () => {
             saveSearchState();
@@ -599,6 +608,10 @@ export function toggleCustomDate() {
 }
 
 export async function resumeSession(conversationId, buttonElement) {
+    if (isSnapshotActive()) {
+        console.error('Resume is disabled in snapshot mode');
+        return;
+    }
     const originalText = buttonElement.innerHTML;
     buttonElement.innerHTML = '⏳ Opening...';
     buttonElement.disabled = true;
@@ -685,6 +698,8 @@ export async function showAllConversations() {
         }
     }
 
+    applySnapshotParam(params);
+
     try {
         const response = await fetch(`/api/conversations/all?${params}`);
         const data = await response.json();
@@ -719,6 +734,11 @@ export async function showAllConversations() {
 
             const formattedSnippet = formatSnippet(r.snippet, '', []);
 
+            const snapshotName = getSnapshotName();
+            const resumeButtonHtml = snapshotName
+                ? `<button class="resume-btn" data-conversation-id="${r.conversation_id}" disabled title="Disabled in snapshot mode (${escapeHtml(snapshotName)})">⚡ Resume (disabled)</button>`
+                : `<button class="resume-btn" data-conversation-id="${r.conversation_id}">⚡ Resume Session</button>`;
+
             div.innerHTML = `
                 <div class="result-title">${escapeHtml(r.title)}</div>
                 <div class="result-meta">
@@ -730,9 +750,7 @@ export async function showAllConversations() {
                 </div>
                 <div class="result-snippet">${formattedSnippet}</div>
                 <div class="result-actions">
-                    <button class="resume-btn" data-conversation-id="${r.conversation_id}">
-                        ⚡ Resume Session
-                    </button>
+                    ${resumeButtonHtml}
                     <button class="diff-btn" data-conversation-id="${r.conversation_id}">
                         View Diff
                     </button>
@@ -750,10 +768,12 @@ export async function showAllConversations() {
 
             // Add click handler for resume button
             const resumeBtn = div.querySelector('.resume-btn');
-            resumeBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                resumeSession(r.conversation_id, resumeBtn);
-            });
+            if (resumeBtn && !isSnapshotActive()) {
+                resumeBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    resumeSession(r.conversation_id, resumeBtn);
+                });
+            }
 
             div.onclick = () => {
                 saveAllConversationsState();
@@ -818,7 +838,11 @@ export async function loadConversationView(conversationId, pushState = true) {
         if (pushState) {
             history.pushState({ conversationId }, '', `/conversation/${conversationId}`);
         }
-        const response = await fetch(`/api/conversation/${conversationId}`);
+        const params = applySnapshotParam(new URLSearchParams());
+        const url = params.toString()
+            ? `/api/conversation/${conversationId}?${params.toString()}`
+            : `/api/conversation/${conversationId}`;
+        const response = await fetch(url);
         if (!response.ok) {
             const payload = await response.json().catch(() => null);
             const msg = payload && payload.detail ? payload.detail : 'Failed to load conversation';
@@ -860,11 +884,17 @@ export async function loadConversationView(conversationId, pushState = true) {
         const resumeBtn = document.createElement('button');
         resumeBtn.className = 'resume-btn';
         resumeBtn.dataset.conversationId = data.conversation_id;
-        resumeBtn.textContent = '⚡ Resume Session';
-        resumeBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            resumeSession(data.conversation_id, resumeBtn);
-        });
+        if (isSnapshotActive()) {
+            resumeBtn.textContent = '⚡ Resume (disabled)';
+            resumeBtn.disabled = true;
+            resumeBtn.title = `Disabled in snapshot mode (${getSnapshotName()})`;
+        } else {
+            resumeBtn.textContent = '⚡ Resume Session';
+            resumeBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                resumeSession(data.conversation_id, resumeBtn);
+            });
+        }
 
         // Export button with dropdown
         const exportContainer = document.createElement('div');
@@ -1122,7 +1152,9 @@ export async function loadConversationView(conversationId, pushState = true) {
 function exportConversation(conversationId, format) {
     // Create a temporary link to trigger download
     const link = document.createElement('a');
-    link.href = `/api/conversation/${conversationId}/export?format=${format}`;
+    const params = new URLSearchParams({ format: format });
+    applySnapshotParam(params);
+    link.href = `/api/conversation/${conversationId}/export?${params.toString()}`;
     link.download = `conversation-${conversationId}.${format === 'markdown' ? 'md' : format}`;
     document.body.appendChild(link);
     link.click();
