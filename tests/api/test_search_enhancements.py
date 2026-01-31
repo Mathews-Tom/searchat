@@ -186,7 +186,7 @@ def test_search_pagination_offset_parameter(client, mock_search_results):
     mock_engine = Mock()
     mock_engine.search.return_value = mock_search_results
 
-    with patch("searchat.api.routers.search.get_or_create_search_engine", return_value=mock_engine), \
+    with patch("searchat.api.routers.search.deps.get_or_create_search_engine", return_value=mock_engine), \
          patch("searchat.api.routers.search.get_analytics_service"):
 
         response = client.get("/api/search?q=test&mode=keyword&offset=10")
@@ -203,7 +203,7 @@ def test_search_pagination_limit_parameter(client, mock_search_results):
     mock_engine = Mock()
     mock_engine.search.return_value = mock_search_results
 
-    with patch("searchat.api.routers.search.get_or_create_search_engine", return_value=mock_engine), \
+    with patch("searchat.api.routers.search.deps.get_or_create_search_engine", return_value=mock_engine), \
          patch("searchat.api.routers.search.get_analytics_service"):
 
         response = client.get("/api/search?q=test&mode=keyword&limit=10")
@@ -222,7 +222,7 @@ def test_search_pagination_has_more_flag(client, mock_search_results):
     mock_engine = Mock()
     mock_engine.search.return_value = mock_search_results
 
-    with patch("searchat.api.routers.search.get_or_create_search_engine", return_value=mock_engine), \
+    with patch("searchat.api.routers.search.deps.get_or_create_search_engine", return_value=mock_engine), \
          patch("searchat.api.routers.search.get_analytics_service"):
 
         # First page (offset=0, limit=20)
@@ -247,7 +247,7 @@ def test_search_pagination_default_limit(client, mock_search_results):
     mock_engine = Mock()
     mock_engine.search.return_value = mock_search_results
 
-    with patch("searchat.api.routers.search.get_or_create_search_engine", return_value=mock_engine), \
+    with patch("searchat.api.routers.search.deps.get_or_create_search_engine", return_value=mock_engine), \
          patch("searchat.api.routers.search.get_analytics_service"):
 
         response = client.get("/api/search?q=test&mode=keyword")
@@ -264,7 +264,7 @@ def test_search_pagination_offset_validation(client, mock_search_results):
     mock_engine = Mock()
     mock_engine.search.return_value = mock_search_results
 
-    with patch("searchat.api.routers.search.get_or_create_search_engine", return_value=mock_engine), \
+    with patch("searchat.api.routers.search.deps.get_or_create_search_engine", return_value=mock_engine), \
          patch("searchat.api.routers.search.get_analytics_service"):
 
         # Negative offset should fail
@@ -281,7 +281,7 @@ def test_search_pagination_limit_validation(client, mock_search_results):
     mock_engine = Mock()
     mock_engine.search.return_value = mock_search_results
 
-    with patch("searchat.api.routers.search.get_or_create_search_engine", return_value=mock_engine), \
+    with patch("searchat.api.routers.search.deps.get_or_create_search_engine", return_value=mock_engine), \
          patch("searchat.api.routers.search.get_analytics_service"):
 
         # limit < 1 should fail
@@ -302,7 +302,7 @@ def test_search_pagination_slicing(client, mock_search_results):
     mock_engine = Mock()
     mock_engine.search.return_value = mock_search_results
 
-    with patch("searchat.api.routers.search.get_or_create_search_engine", return_value=mock_engine), \
+    with patch("searchat.api.routers.search.deps.get_or_create_search_engine", return_value=mock_engine), \
          patch("searchat.api.routers.search.get_analytics_service"):
 
         # Get first page (0-20)
@@ -325,7 +325,7 @@ def test_search_pagination_total_count(client, mock_search_results):
     mock_engine = Mock()
     mock_engine.search.return_value = mock_search_results
 
-    with patch("searchat.api.routers.search.get_or_create_search_engine", return_value=mock_engine), \
+    with patch("searchat.api.routers.search.deps.get_or_create_search_engine", return_value=mock_engine), \
          patch("searchat.api.routers.search.get_analytics_service"):
 
         # Get different pages
@@ -344,7 +344,7 @@ def test_search_pagination_beyond_results(client, mock_search_results):
     mock_engine = Mock()
     mock_engine.search.return_value = mock_search_results
 
-    with patch("searchat.api.routers.search.get_or_create_search_engine", return_value=mock_engine), \
+    with patch("searchat.api.routers.search.deps.get_or_create_search_engine", return_value=mock_engine), \
          patch("searchat.api.routers.search.get_analytics_service"):
 
         # Offset beyond total results
@@ -363,7 +363,7 @@ def test_search_pagination_metadata(client, mock_search_results):
     mock_engine = Mock()
     mock_engine.search.return_value = mock_search_results
 
-    with patch("searchat.api.routers.search.get_or_create_search_engine", return_value=mock_engine), \
+    with patch("searchat.api.routers.search.deps.get_or_create_search_engine", return_value=mock_engine), \
          patch("searchat.api.routers.search.get_analytics_service"):
 
         response = client.get("/api/search?q=test&mode=keyword&offset=10&limit=15")

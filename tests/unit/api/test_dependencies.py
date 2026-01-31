@@ -45,6 +45,8 @@ def reset_dependency_singletons(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(deps, "_analytics_service", None)
     monkeypatch.setattr(deps, "_watcher", None)
     monkeypatch.setattr(deps, "_duckdb_store", None)
+    monkeypatch.setattr(deps, "_duckdb_store_by_dir", {})
+    monkeypatch.setattr(deps, "_search_engine_by_dir", {})
     monkeypatch.setattr(deps, "_warmup_task", None)
 
     monkeypatch.setattr(deps, "projects_cache", "x")
