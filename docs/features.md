@@ -250,11 +250,11 @@ curl "http://localhost:8000/api/search?q=+python \"error handling\" -deprecated"
 **API:**
 
 ```bash
-# Get page 2 with 20 results per page
-curl "http://localhost:8000/api/search?q=api&page=2&page_size=20"
+# Get the second page (20 per page -> offset=20)
+curl "http://localhost:8000/api/search?q=api&limit=20&offset=20"
 
 # Custom page size
-curl "http://localhost:8000/api/search?q=testing&page=1&page_size=50"
+curl "http://localhost:8000/api/search?q=testing&limit=50&offset=0"
 ```
 
 **Response:**
@@ -262,10 +262,10 @@ curl "http://localhost:8000/api/search?q=testing&page=1&page_size=50"
 ```json
 {
   "results": [...],
-  "total_count": 150,
-  "page": 2,
-  "page_size": 20,
-  "total_pages": 8
+  "total": 150,
+  "limit": 20,
+  "offset": 20,
+  "has_more": true
 }
 ```
 
@@ -300,32 +300,29 @@ curl "http://localhost:8000/api/search?q=testing&page=1&page_size=50"
 **API:**
 
 ```bash
-# OpenAI
+# Streaming chat response
 curl -X POST "http://localhost:8000/api/chat" \
   -H "Content-Type: application/json" \
-  -d '{
-    "query": "How did we handle error cases?",
-    "model_provider": "openai",
-    "model_name": "gpt-4"
-  }'
+  -d '{"query": "Explain how indexing works", "model_provider": "ollama", "model_name": "ollama/gemma3"}' \
+  --no-buffer
 
-# Ollama (local)
-curl -X POST "http://localhost:8000/api/chat" \
+# Non-streaming RAG response with citations
+curl -X POST "http://localhost:8000/api/chat-rag" \
   -H "Content-Type: application/json" \
-  -d '{
-    "query": "Explain the database schema",
-    "model_provider": "ollama",
-    "model_name": "llama3"
-  }'
+  -d '{"query": "How did we implement backups?", "model_provider": "openai", "model_name": "gpt-4.1-mini"}'
 ```
 
 **Configuration:**
 
 ```toml
 [llm]
-openai_api_key = "sk-..."
-openai_model = "gpt-4.1"
-ollama_base_url = "http://localhost:11434"
+default_provider = "ollama"
+openai_model = "gpt-4.1-mini"
+ollama_model = "ollama/gemma3"
+
+[chat]
+enable_rag = true
+enable_citations = true
 ```
 
 **Environment:**
@@ -337,10 +334,10 @@ export OLLAMA_BASE_URL=http://localhost:11434
 
 **Technical:**
 
-- RAG retrieval: Top 5 conversations by hybrid search
-- Context window: Up to 8K tokens
-- Streaming: Server-Sent Events (SSE)
-- Fallback: Graceful degradation if LLM unavailable
+- Retrieval: Hybrid search over indexed conversations
+- Context selection: Top 6-16 chunks depending on query complexity
+- Streaming: Chunked HTTP response (`/api/chat`)
+- Readiness: Semantic search may return `503` until FAISS/embeddings are warmed up
 
 **UI:** Chat panel in web interface with streaming responses
 
@@ -367,7 +364,7 @@ export OLLAMA_BASE_URL=http://localhost:11434
 **API:**
 
 ```bash
-curl "http://localhost:8000/api/conversations/{conversation_id}/similar?limit=5"
+curl "http://localhost:8000/api/conversation/{conversation_id}/similar?limit=5"
 ```
 
 **Response:**
@@ -419,7 +416,7 @@ curl "http://localhost:8000/api/conversations/{conversation_id}/similar?limit=5"
 **API:**
 
 ```bash
-curl "http://localhost:8000/api/conversations/{conversation_id}/code"
+curl "http://localhost:8000/api/conversation/{conversation_id}/code"
 ```
 
 **Response:**
@@ -450,7 +447,7 @@ curl "http://localhost:8000/api/conversations/{conversation_id}/code"
 **UI:**
 
 - Tabbed interface grouped by language
-- Syntax highlighting with Prism.js
+- Syntax highlighting via server-side Pygments (`/api/code/highlight`)
 - Copy button for each snippet
 - Line numbers for context
 
@@ -537,14 +534,19 @@ curl -X DELETE "http://localhost:8000/api/bookmarks/{conversation_id}"
 **API:**
 
 ```bash
-# Get analytics summary
-curl "http://localhost:8000/api/analytics/searches"
+# Get analytics summary (opt-in)
+curl "http://localhost:8000/api/stats/analytics/summary?days=7"
 
 # Top queries
-curl "http://localhost:8000/api/analytics/top-queries?limit=10"
+curl "http://localhost:8000/api/stats/analytics/top-queries?limit=10&days=30"
 
-# Search trends (by date)
-curl "http://localhost:8000/api/analytics/trends?period=week"
+# Trends and heatmap
+curl "http://localhost:8000/api/stats/analytics/trends?days=30"
+curl "http://localhost:8000/api/stats/analytics/heatmap?days=30"
+
+# Per-agent comparison and topic clusters
+curl "http://localhost:8000/api/stats/analytics/agent-comparison?days=30"
+curl "http://localhost:8000/api/stats/analytics/topics?days=30&k=8"
 ```
 
 **Metrics tracked:**
@@ -556,9 +558,93 @@ curl "http://localhost:8000/api/analytics/trends?period=week"
 - Query frequency
 - Zero-result queries
 
-**Storage:** SQLite database in `~/.searchat/analytics.db`
+**Configuration:**
+
+```toml
+[analytics]
+enabled = false
+retention_days = 30
+```
+
+**Storage:** DuckDB database in `~/.searchat/analytics/analytics.duckdb`
 
 **UI:** Analytics dashboard with charts and insights
+
+---
+
+### Saved Queries
+
+**Description:** Save frequently-used searches (query + filters + mode) and re-run them from the UI.
+
+**API:**
+
+```bash
+# List saved queries
+curl "http://localhost:8000/api/queries"
+
+# Create saved query
+curl -X POST "http://localhost:8000/api/queries" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Auth investigations","query":"jwt refresh","mode":"hybrid","filters":{"project":"myapp","tool":"claude"}}'
+```
+
+**Storage:** `~/.searchat/saved_queries.json`
+
+**UI:** Saved Queries panel in the left sidebar.
+
+---
+
+### Dashboards
+
+**Description:** Build dashboards from saved queries and render them as widgets (with optional auto-refresh).
+
+**API:**
+
+```bash
+# List dashboards
+curl "http://localhost:8000/api/dashboards"
+
+# Render a dashboard (executes the saved queries in its widgets)
+curl "http://localhost:8000/api/dashboards/{dashboard_id}/render"
+```
+
+**Storage:** `~/.searchat/dashboards.json`
+
+**Configuration:**
+
+```toml
+[dashboards]
+enabled = true
+```
+
+**UI:** Dashboards view + dashboard builder editor.
+
+---
+
+### Tech Docs Summary (Optional)
+
+**Description:** Generate a single Markdown/AsciiDoc document by running multiple searches and stitching the results into named sections.
+
+**API:**
+
+```bash
+curl -X POST "http://localhost:8000/api/docs/summary" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Tech Notes",
+    "format": "markdown",
+    "sections": [
+      {"name": "Indexing", "query": "index_missing", "mode": "hybrid", "max_results": 10}
+    ]
+  }'
+```
+
+**Configuration:**
+
+```toml
+[export]
+enable_tech_docs = false
+```
 
 ---
 
@@ -570,9 +656,9 @@ curl "http://localhost:8000/api/analytics/trends?period=week"
 
 - **JSON** - Structured data with full metadata
 - **Markdown** - Formatted text with code blocks
-- **HTML** - Styled web page, self-contained
-- **PDF** - Printable document (requires wkhtmltopdf)
-- **TXT** - Plain text, minimal formatting
+- **Text** - Plain text, minimal formatting
+- **Jupyter Notebook** (`ipynb`) - Optional (feature-flagged)
+- **PDF** - Optional (feature-flagged)
 
 **How it works:**
 
@@ -594,20 +680,25 @@ curl "http://localhost:8000/api/analytics/trends?period=week"
 
 ```bash
 # Export as Markdown
-curl "http://localhost:8000/api/conversations/{conversation_id}/export?format=markdown" \
+curl "http://localhost:8000/api/conversation/{conversation_id}/export?format=markdown" \
   -o conversation.md
 
 # Export as JSON
-curl "http://localhost:8000/api/conversations/{conversation_id}/export?format=json" \
+curl "http://localhost:8000/api/conversation/{conversation_id}/export?format=json" \
   -o conversation.json
 
-# Export as HTML
-curl "http://localhost:8000/api/conversations/{conversation_id}/export?format=html" \
-  -o conversation.html
-
 # Export as PDF
-curl "http://localhost:8000/api/conversations/{conversation_id}/export?format=pdf" \
+curl "http://localhost:8000/api/conversation/{conversation_id}/export?format=pdf" \
   -o conversation.pdf
+```
+
+**Configuration:**
+
+```toml
+[export]
+enable_ipynb = false
+enable_pdf = false
+enable_tech_docs = false
 ```
 
 **UI:**
@@ -640,7 +731,7 @@ curl "http://localhost:8000/api/conversations/{conversation_id}/export?format=pd
 **API:**
 
 ```bash
-curl -X POST "http://localhost:8000/api/conversations/export/bulk" \
+curl -X POST "http://localhost:8000/api/conversations/bulk-export" \
   -H "Content-Type: application/json" \
   -d '{
     "conversation_ids": ["abc123", "def456", "ghi789"],
@@ -687,24 +778,21 @@ curl "http://localhost:8000/api/projects"
 # Search within project
 curl "http://localhost:8000/api/search?q=api&project=myapp"
 
-# Project statistics
-curl "http://localhost:8000/api/projects/{project_id}/stats"
+# Project summary (conversation/message counts per project)
+curl "http://localhost:8000/api/projects/summary"
 ```
 
 **Response:**
 
 ```json
-{
-  "projects": [
-    {
-      "project_id": "myapp",
-      "conversation_count": 150,
-      "message_count": 4500,
-      "earliest_date": "2024-01-01",
-      "latest_date": "2024-12-31"
-    }
-  ]
-}
+[
+  {
+    "project_id": "myapp",
+    "conversation_count": 150,
+    "message_count": 4500,
+    "updated_at": "2026-01-31T07:04:00"
+  }
+]
 ```
 
 **UI:**
@@ -827,6 +915,36 @@ curl -X DELETE "http://localhost:8000/api/backup/delete/backup_20260129_120000"
 - One-click create backup
 - List with size and date
 - Restore confirmation dialog
+
+---
+
+### Read-only Index Snapshots
+
+**Description:** Browse/search a backup as a read-only dataset ("snapshot") without overwriting your active index.
+
+**How it works:**
+
+- Select a backup by name with `snapshot=<backup_dir_name>` on supported endpoints.
+- When snapshot mode is active, write-like operations are blocked (403).
+
+**API:**
+
+```bash
+# Search within a backup snapshot
+curl "http://localhost:8000/api/search?q=authentication&snapshot=backup_YYYYMMDD_HHMMSS"
+
+# Read a conversation from a snapshot
+curl "http://localhost:8000/api/conversation/{conversation_id}?snapshot=backup_YYYYMMDD_HHMMSS"
+```
+
+**Configuration:**
+
+```toml
+[snapshots]
+enabled = true
+```
+
+**UI:** Dataset selector in the left sidebar + a read-only banner when a snapshot is selected.
 
 ---
 
@@ -1294,7 +1412,7 @@ See `docs/architecture.md` for extension guide.
 
 ### REST API
 
-**9 routers, 30+ endpoints:**
+**13 routers, 50+ endpoints:**
 
 - Search & filtering
 - Conversation CRUD
@@ -1305,6 +1423,10 @@ See `docs/architecture.md` for extension guide.
 - Admin & monitoring
 - RAG chat
 - Export functionality
+- Saved queries
+- Dashboards
+- Code highlighting
+- Tech docs summaries
 
 See `docs/api-reference.md` for complete documentation.
 
@@ -1345,15 +1467,6 @@ Terminal-friendly interface:
 ```bash
 # Interactive mode
 searchat
-
-# Direct search
-searchat "authentication bug fix"
-
-# With options
-searchat --mode semantic --limit 5 "API design"
-
-# Export
-searchat --export markdown --output design.md "API design"
 ```
 
 ---
@@ -1400,12 +1513,15 @@ Searchat provides comprehensive search, AI-powered Q&A, and organization feature
 
 - **3 search modes** - Hybrid, semantic, keyword
 - **3 AI agents** - Claude Code, Mistral Vibe, OpenCode
-- **30+ API endpoints** - Full REST API
-- **250 tests** - 100% pass rate
+- **50+ API endpoints** - Full REST API
+- **500+ tests** - Extensive API/UI/unit/perf coverage
 - **RAG chat** - Ask questions about conversation history
 - **Bookmarks** - Organize favorites
 - **Export** - Multiple formats
 - **Analytics** - Track usage patterns
+- **Saved queries** - Reusable searches
+- **Dashboards** - Widgets built from saved queries
+- **Snapshots** - Read-only browsing of backups
 - **Safe & fast** - Append-only, <100ms queries
 - **Cross-platform** - Windows, WSL, Linux, macOS
 
