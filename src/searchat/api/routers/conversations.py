@@ -32,6 +32,62 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
+def _resolve_dataset(snapshot: str | None) -> tuple[Path, str | None]:
+    if snapshot is None or snapshot == "":
+        raise RuntimeError("_resolve_dataset called without snapshot")
+
+    config = deps.get_config()
+    if not config.snapshots.enabled:
+        raise HTTPException(status_code=404, detail="Snapshot mode is disabled")
+
+    try:
+        return deps.resolve_dataset_search_dir(snapshot)
+    except ValueError as exc:
+        msg = str(exc)
+        if msg == "Snapshot not found":
+            raise HTTPException(status_code=404, detail="Snapshot not found") from exc
+        raise HTTPException(status_code=400, detail=msg) from exc
+
+
+def _messages_from_parquet(value) -> list[ConversationMessage]:
+    if not value:
+        return []
+
+    messages: list[ConversationMessage] = []
+    for entry in value:
+        role = None
+        content = None
+        ts = None
+
+        if isinstance(entry, dict):
+            role = entry.get("role")
+            content = entry.get("content")
+            ts = entry.get("timestamp")
+        elif isinstance(entry, (list, tuple)):
+            # Expected schema order: sequence, role, content, timestamp, ...
+            if len(entry) >= 4:
+                role = entry[1]
+                content = entry[2]
+                ts = entry[3]
+
+        if isinstance(ts, datetime):
+            ts_value = ts.isoformat()
+        elif ts is None:
+            ts_value = ""
+        else:
+            ts_value = str(ts)
+
+        messages.append(
+            ConversationMessage(
+                role=str(role) if role is not None else "",
+                content=str(content) if content is not None else "",
+                timestamp=ts_value,
+            )
+        )
+
+    return messages
+
+
 async def read_file_async(file_path: str, encoding: str = 'utf-8') -> str:
     """Read file asynchronously to avoid blocking event loop."""
     loop = asyncio.get_event_loop()
@@ -305,11 +361,16 @@ async def get_all_conversations(
     tool: str | None = Query(None, description="Filter by tool: claude, vibe, opencode"),
     limit: int | None = Query(None, ge=1, le=5000, description="Max results to return"),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
+    snapshot: str | None = Query(None, description="Backup snapshot name (read-only)"),
 ):
     """Get all conversations with sorting and filtering."""
     started = time.perf_counter()
     try:
-        store = deps.get_duckdb_store()
+        if snapshot is None:
+            store = deps.get_duckdb_store()
+        else:
+            search_dir, _snapshot_name = _resolve_dataset(snapshot)
+            store = deps.get_duckdb_store_for(search_dir)
 
         # Handle date filtering
         date_from_dt, date_to_dt = parse_date_filter(date, date_from, date_to)
@@ -375,22 +436,75 @@ async def get_all_conversations(
 
 
 @router.get("/conversation/{conversation_id}")
-async def get_conversation(conversation_id: str):
+async def get_conversation(
+    conversation_id: str,
+    snapshot: str | None = Query(None, description="Backup snapshot name (read-only)"),
+):
     """Get a specific conversation with all messages."""
     try:
-        store = deps.get_duckdb_store()
+        if snapshot is None:
+            store = deps.get_duckdb_store()
+            snapshot_name = None
+        else:
+            search_dir, snapshot_name = _resolve_dataset(snapshot)
+            store = deps.get_duckdb_store_for(search_dir)
         conv = store.get_conversation_meta(conversation_id)
         if conv is None:
             logger.warning(f"Conversation not found in index: {conversation_id}")
             raise HTTPException(status_code=404, detail="Conversation not found in index")
         file_path = conv["file_path"]
 
-        # Check if file exists
+        if snapshot_name is not None:
+            record = store.get_conversation_record(conversation_id)
+            if record is None:
+                raise HTTPException(status_code=404, detail="Conversation not found in snapshot")
+            messages = _messages_from_parquet(record.get("messages"))
+            tool_name = detect_tool_from_path(file_path)
+            return ConversationResponse(
+                conversation_id=conversation_id,
+                title=conv["title"],
+                project_id=conv["project_id"],
+                project_path=None,
+                file_path=file_path,
+                message_count=int(record.get("message_count") or len(messages)),
+                tool=tool_name,
+                messages=messages,
+            )
+
+        # Check if file exists. If missing, fall back to parquet (safer for moved/deleted sources).
         if not Path(file_path).exists():
-            logger.error(f"Conversation file not found: {file_path} (conversation_id: {conversation_id})")
-            raise HTTPException(
-                status_code=404,
-                detail=f"Conversation file not found. The file may have been moved or deleted: {file_path}"
+            record = store.get_conversation_record(conversation_id)
+            if record is None:
+                logger.error(
+                    "Conversation file not found and no parquet record available: %s (conversation_id: %s)",
+                    file_path,
+                    conversation_id,
+                )
+                raise HTTPException(
+                    status_code=404,
+                    detail=(
+                        "Conversation file not found and no indexed record is available. "
+                        f"The file may have been moved or deleted: {file_path}"
+                    ),
+                )
+
+            try:
+                messages = _messages_from_parquet(record.get("messages"))
+            except TypeError:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Conversation file not found. The file may have been moved or deleted: {file_path}",
+                )
+            tool_name = detect_tool_from_path(file_path)
+            return ConversationResponse(
+                conversation_id=conversation_id,
+                title=conv["title"],
+                project_id=conv["project_id"],
+                project_path=None,
+                file_path=conv["file_path"],
+                message_count=int(record.get("message_count") or len(messages)),
+                tool=tool_name,
+                messages=messages,
             )
 
         messages = []
@@ -487,8 +601,13 @@ async def get_conversation(conversation_id: str):
 
 
 @router.post("/resume")
-async def resume_session(request: ResumeRequest):
+async def resume_session(
+    request: ResumeRequest,
+    snapshot: str | None = Query(None, description="Backup snapshot name (read-only)"),
+):
     """Resume a conversation session in its original tool (Claude Code or Vibe)."""
+    if snapshot is not None:
+        raise HTTPException(status_code=403, detail="Resume is disabled in snapshot mode")
     try:
         store = deps.get_duckdb_store()
         platform_manager = get_platform_manager()
@@ -565,11 +684,17 @@ async def resume_session(request: ResumeRequest):
 
 
 @router.get("/conversation/{conversation_id}/code")
-async def get_conversation_code(conversation_id: str):
+async def get_conversation_code(
+    conversation_id: str,
+    snapshot: str | None = Query(None, description="Backup snapshot name (read-only)"),
+):
     """Extract code blocks from a conversation."""
     try:
         # Get full conversation with messages
-        conv_response = await get_conversation(conversation_id)
+        if snapshot is None:
+            conv_response = await get_conversation(conversation_id)
+        else:
+            conv_response = await get_conversation(conversation_id, snapshot=snapshot)
 
         code_blocks = []
         for msg_idx, message in enumerate(conv_response.messages):
@@ -675,12 +800,22 @@ def _detect_language(code: str) -> str:
 @router.get("/conversation/{conversation_id}/similar")
 async def get_similar_conversations(
     conversation_id: str,
-    limit: int = Query(5, description="Max similar conversations to return (1-20)", ge=1, le=20)
+    limit: int = Query(5, description="Max similar conversations to return (1-20)", ge=1, le=20),
+    snapshot: str | None = Query(None, description="Backup snapshot name (read-only)"),
 ):
     """Get conversations similar to the specified conversation using FAISS embeddings."""
     try:
-        store = deps.get_duckdb_store()
-        search_engine = deps.get_search_engine()
+        if snapshot is None:
+            try:
+                search_engine = deps.get_search_engine()
+            except RuntimeError as exc:
+                raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+            store = deps.get_duckdb_store()
+        else:
+            search_dir, _snapshot_name = _resolve_dataset(snapshot)
+            store = deps.get_duckdb_store_for(search_dir)
+            search_engine = deps.get_or_create_search_engine_for(search_dir)
 
         # Verify conversation exists
         conv_meta = store.get_conversation_meta(conversation_id)
@@ -852,15 +987,12 @@ async def get_conversation_diff(
     target_id: str | None = Query(None, description="Target conversation to diff against"),
     source_start: int | None = Query(None, description="Source message start index"),
     source_end: int | None = Query(None, description="Source message end index"),
+    snapshot: str | None = Query(None, description="Backup snapshot name (read-only)"),
 ):
     """Compute a line diff between two conversations."""
     try:
         if target_id is None:
-            try:
-                deps.get_search_engine()
-            except RuntimeError as exc:
-                raise HTTPException(status_code=503, detail=str(exc)) from exc
-            similar_payload = await get_similar_conversations(conversation_id, limit=1)
+            similar_payload = await get_similar_conversations(conversation_id, limit=1, snapshot=snapshot)
             similar_list = similar_payload.get("similar_conversations", [])
             if not similar_list:
                 raise HTTPException(status_code=404, detail="No similar conversation found")
@@ -871,8 +1003,8 @@ async def get_conversation_diff(
         if not isinstance(target_id, str):
             raise HTTPException(status_code=400, detail="Invalid target conversation id")
 
-        source_conv = await get_conversation(conversation_id)
-        target_conv = await get_conversation(target_id)
+        source_conv = await get_conversation(conversation_id, snapshot=snapshot)
+        target_conv = await get_conversation(target_id, snapshot=snapshot)
 
         source_messages = _slice_messages(source_conv.messages, source_start, source_end)
         target_messages = _slice_messages(target_conv.messages, None, None)
@@ -915,12 +1047,16 @@ async def get_conversation_diff(
 @router.get("/conversation/{conversation_id}/export")
 async def export_conversation(
     conversation_id: str,
-    format: str = Query("json", description="Export format: json, markdown, text, ipynb, pdf")
+    format: str = Query("json", description="Export format: json, markdown, text, ipynb, pdf"),
+    snapshot: str | None = Query(None, description="Backup snapshot name (read-only)"),
 ):
     """Export a conversation in various formats."""
     try:
         # Get full conversation
-        conv_response = await get_conversation(conversation_id)
+        if snapshot is None:
+            conv_response = await get_conversation(conversation_id)
+        else:
+            conv_response = await get_conversation(conversation_id, snapshot=snapshot)
 
         format_lower = format.lower()
         if format_lower in ("ipynb", "pdf"):
@@ -961,7 +1097,10 @@ class BulkExportRequest(BaseModel):
 
 
 @router.post("/conversations/bulk-export")
-async def bulk_export_conversations(request: BulkExportRequest):
+async def bulk_export_conversations(
+    request: BulkExportRequest,
+    snapshot: str | None = Query(None, description="Backup snapshot name (read-only)"),
+):
     """Export multiple conversations as a ZIP archive."""
     try:
         import io
@@ -1007,7 +1146,10 @@ async def bulk_export_conversations(request: BulkExportRequest):
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
             for conv_id in request.conversation_ids:
                 try:
-                    conv_response = await get_conversation(conv_id)
+                    if snapshot is None:
+                        conv_response = await get_conversation(conv_id)
+                    else:
+                        conv_response = await get_conversation(conv_id, snapshot=snapshot)
                     exported = render_export(conv_response, format=format_lower)  # type: ignore[arg-type]
 
                     safe_title = "".join(

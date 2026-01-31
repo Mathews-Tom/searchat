@@ -3,7 +3,7 @@ import asyncio
 import time
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from searchat.core.logging_config import get_logger
 from searchat.core.progress import LoggingProgressAdapter
@@ -48,8 +48,10 @@ async def reindex():
 
 
 @router.post("/index_missing")
-async def index_missing():
+async def index_missing(snapshot: str | None = Query(None, description="Backup snapshot name (read-only)")):
     """Index conversations that aren't already indexed (append-only, safe)."""
+    if snapshot is not None:
+        raise HTTPException(status_code=403, detail="Indexing is disabled in snapshot mode")
     global projects_cache, indexing_state
 
     try:
