@@ -1,5 +1,7 @@
 """Unit tests for search API routes."""
 import pytest
+from pathlib import Path
+from types import SimpleNamespace
 from datetime import datetime, timedelta
 from unittest.mock import Mock, patch
 
@@ -586,6 +588,81 @@ class TestSearchEndpoint:
 
             assert response.status_code == 500
             assert "Search failed" in response.json()["detail"]
+
+    def test_search_rejects_invalid_tool_filter(self, client, mock_search_engine):
+        with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
+            resp = client.get("/api/search?q=test&tool=bad")
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "Invalid tool filter"
+
+    def test_search_snapshot_not_found_returns_404(self, client):
+        with patch(
+            'searchat.api.routers.search.deps.resolve_dataset_search_dir',
+            side_effect=ValueError("Snapshot not found"),
+        ):
+            resp = client.get("/api/search?q=test&snapshot=missing")
+        assert resp.status_code == 404
+        assert resp.json()["detail"] == "Snapshot not found"
+
+    def test_search_snapshot_invalid_name_returns_400(self, client):
+        with patch(
+            'searchat.api.routers.search.deps.resolve_dataset_search_dir',
+            side_effect=ValueError("Invalid snapshot name"),
+        ):
+            resp = client.get("/api/search?q=test&snapshot=../nope")
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "Invalid snapshot name"
+
+    def test_search_highlight_invalid_provider_returns_400(self, client, mock_search_engine):
+        with patch('searchat.api.routers.search.deps.resolve_dataset_search_dir', return_value=(Path("/tmp"), None)):
+            with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
+                resp = client.get(
+                    "/api/search?q=python&highlight=true&highlight_provider=bad"
+                )
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "Invalid highlight provider"
+
+    def test_search_highlight_extracts_terms_and_caches(self, client, mock_search_engine):
+        from searchat.api.routers import search as search_router
+
+        search_router._highlight_cache.clear()
+
+        config = SimpleNamespace(analytics=SimpleNamespace(enabled=False))
+        with patch('searchat.api.routers.search.deps.resolve_dataset_search_dir', return_value=(Path("/tmp"), None)):
+            with patch('searchat.api.routers.search.deps.get_config', return_value=config):
+                with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
+                    with patch('searchat.api.routers.search.extract_highlight_terms', return_value=["foo"]) as extract:
+                        first = client.get(
+                            "/api/search?q=python&highlight=true&highlight_provider=openai"
+                        )
+                        second = client.get(
+                            "/api/search?q=python&highlight=true&highlight_provider=openai"
+                        )
+
+        assert first.status_code == 200
+        assert second.status_code == 200
+        assert first.json()["highlight_terms"] == ["foo"]
+        assert second.json()["highlight_terms"] == ["foo"]
+        assert extract.call_count == 1
+
+    def test_search_highlight_llm_error_returns_503(self, client, mock_search_engine):
+        from searchat.api.routers import search as search_router
+
+        search_router._highlight_cache.clear()
+
+        config = SimpleNamespace(analytics=SimpleNamespace(enabled=False))
+        with patch('searchat.api.routers.search.deps.resolve_dataset_search_dir', return_value=(Path("/tmp"), None)):
+            with patch('searchat.api.routers.search.deps.get_config', return_value=config):
+                with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
+                    with patch(
+                        'searchat.api.routers.search.extract_highlight_terms',
+                        side_effect=search_router.LLMServiceError("nope"),
+                    ):
+                        resp = client.get(
+                            "/api/search?q=python&highlight=true&highlight_provider=openai"
+                        )
+        assert resp.status_code == 503
+        assert resp.json()["detail"] == "nope"
 
 
 @pytest.mark.unit
