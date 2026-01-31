@@ -289,6 +289,46 @@ class DuckDBStore:
         finally:
             con.close()
 
+
+    def get_conversation_record(self, conversation_id: str) -> dict | None:
+        """Return full conversation record including messages from parquet."""
+        parquets = self._conversation_parquets()
+        if not parquets:
+            return None
+
+        con = self._connect()
+        try:
+            query = """
+            SELECT
+              conversation_id,
+              project_id,
+              title,
+              created_at,
+              updated_at,
+              message_count,
+              file_path,
+              messages
+            FROM parquet_scan(?)
+            WHERE conversation_id = ?
+            LIMIT 1
+            """
+            row = con.execute(query, [str(self._conversations_dir / "*.parquet"), conversation_id]).fetchone()
+            if row is None:
+                return None
+            columns = [
+                "conversation_id",
+                "project_id",
+                "title",
+                "created_at",
+                "updated_at",
+                "message_count",
+                "file_path",
+                "messages",
+            ]
+            return dict(zip(columns, row))
+        finally:
+            con.close()
+
     def get_statistics(self) -> IndexStatistics:
         parquets = self._conversation_parquets()
         if not parquets:

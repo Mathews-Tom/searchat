@@ -11,6 +11,8 @@ import os
 import time
 from threading import Lock
 from pathlib import Path
+import re
+from typing import TYPE_CHECKING
 
 from searchat.services import BackupManager, PlatformManager
 from searchat.config import Config, PathResolver
@@ -18,6 +20,11 @@ from searchat.api.readiness import get_readiness
 
 
 logger = logging.getLogger(__name__)
+
+
+if TYPE_CHECKING:
+    from searchat.api.duckdb_store import DuckDBStore
+    from searchat.core.search_engine import SearchEngine
 
 
 # Global singletons (initialized on startup)
@@ -33,6 +40,10 @@ _dashboards_service = None
 _analytics_service = None
 _watcher = None
 _duckdb_store = None
+
+# Snapshot-scoped caches (keyed by dataset root, i.e. backup directory path).
+_duckdb_store_by_dir: dict[str, "DuckDBStore"] = {}
+_search_engine_by_dir: dict[str, "SearchEngine"] = {}
 
 _service_lock = Lock()
 _warmup_task: asyncio.Task[None] | None = None
@@ -211,6 +222,87 @@ def get_duckdb_store():
     if _duckdb_store is None:
         raise RuntimeError("Services not initialized. Call initialize_services() first.")
     return _duckdb_store
+
+
+def _is_valid_snapshot_name(value: str) -> bool:
+    if not value:
+        return False
+    if value in (".", ".."):
+        return False
+    if "/" in value or "\\" in value:
+        return False
+    if ".." in value:
+        return False
+    # Keep this conservative; backup folder names are ASCII-ish.
+    return re.fullmatch(r"[A-Za-z0-9_.-]+", value) is not None
+
+
+def resolve_dataset_search_dir(snapshot: str | None) -> tuple[Path, str | None]:
+    """Resolve request dataset to a search_dir.
+
+    Returns:
+        (search_dir, snapshot_name)
+
+    Raises:
+        ValueError: If snapshot is invalid or does not exist.
+    """
+    if snapshot is None or snapshot == "":
+        return get_search_dir(), None
+
+    if not get_config().snapshots.enabled:
+        raise ValueError("Snapshot mode is disabled")
+
+    if not _is_valid_snapshot_name(snapshot):
+        raise ValueError("Invalid snapshot name")
+
+    backup_manager = get_backup_manager()
+    backup_root = backup_manager.backup_dir.resolve()
+    snapshot_dir = (backup_root / snapshot).resolve()
+    if not snapshot_dir.is_relative_to(backup_root):
+        raise ValueError("Invalid snapshot path")
+    if not snapshot_dir.exists():
+        raise ValueError("Snapshot not found")
+    if not backup_manager.validate_backup(snapshot_dir):
+        raise ValueError("Snapshot validation failed")
+    return snapshot_dir, snapshot
+
+
+def get_duckdb_store_for(search_dir: Path) -> "DuckDBStore":
+    """Get a DuckDBStore for a specific dataset root."""
+    if search_dir == get_search_dir():
+        return get_duckdb_store()
+
+    key = str(search_dir)
+    store = _duckdb_store_by_dir.get(key)
+    if store is not None:
+        return store
+
+    config = get_config()
+    from searchat.api.duckdb_store import DuckDBStore
+
+    store = DuckDBStore(search_dir, memory_limit_mb=config.performance.memory_limit_mb)
+    _duckdb_store_by_dir[key] = store
+    return store
+
+
+def get_or_create_search_engine_for(search_dir: Path) -> "SearchEngine":
+    """Get (or create) a SearchEngine for a specific dataset root.
+
+    Snapshot engines must not mutate readiness/warmup globals.
+    """
+    if search_dir == get_search_dir():
+        return get_or_create_search_engine()
+
+    key = str(search_dir)
+    engine = _search_engine_by_dir.get(key)
+    if engine is not None:
+        return engine
+
+    from searchat.core.search_engine import SearchEngine
+
+    engine = SearchEngine(search_dir, get_config())
+    _search_engine_by_dir[key] = engine
+    return engine
 
 
 def get_search_engine():
