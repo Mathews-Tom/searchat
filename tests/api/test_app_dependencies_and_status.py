@@ -508,3 +508,85 @@ def test_chat_streams_response_when_ready(monkeypatch: pytest.MonkeyPatch) -> No
 
     assert response.status_code == 200
     assert response.text == "hello world"
+
+
+def test_chat_snapshot_mode_returns_403() -> None:
+    from searchat.api.app import app
+    from searchat.api.readiness import get_readiness
+
+    readiness = get_readiness()
+    readiness.set_component("metadata", "ready")
+    readiness.set_component("faiss", "ready")
+    readiness.set_component("embedder", "ready")
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/chat?snapshot=backup_20250101_000000",
+        json={"query": "hello", "model_provider": "openai"},
+    )
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Chat is disabled in snapshot mode"
+
+
+def test_chat_returns_400_on_generate_value_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    from searchat.api.app import app
+    from searchat.api.readiness import get_readiness
+
+    readiness = get_readiness()
+    readiness.set_component("metadata", "ready")
+    readiness.set_component("faiss", "ready")
+    readiness.set_component("embedder", "ready")
+
+    monkeypatch.setattr("searchat.api.routers.chat.get_config", lambda: object())
+    monkeypatch.setattr(
+        "searchat.api.routers.chat.generate_answer_stream",
+        lambda **_kwargs: (_ for _ in ()).throw(ValueError("bad")),
+    )
+
+    client = TestClient(app)
+    resp = client.post("/api/chat", json={"query": "hello", "model_provider": "openai"})
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "bad"
+
+
+def test_chat_returns_503_on_generate_llm_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    from searchat.api.app import app
+    from searchat.api.readiness import get_readiness
+    from searchat.services.llm_service import LLMServiceError
+
+    readiness = get_readiness()
+    readiness.set_component("metadata", "ready")
+    readiness.set_component("faiss", "ready")
+    readiness.set_component("embedder", "ready")
+
+    monkeypatch.setattr("searchat.api.routers.chat.get_config", lambda: object())
+    monkeypatch.setattr(
+        "searchat.api.routers.chat.generate_answer_stream",
+        lambda **_kwargs: (_ for _ in ()).throw(LLMServiceError("nope")),
+    )
+
+    client = TestClient(app)
+    resp = client.post("/api/chat", json={"query": "hello", "model_provider": "openai"})
+    assert resp.status_code == 503
+    assert resp.json()["detail"] == "nope"
+
+
+def test_chat_returns_500_on_generate_unexpected_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    from searchat.api.app import app
+    from searchat.api.readiness import get_readiness
+
+    readiness = get_readiness()
+    readiness.set_component("metadata", "ready")
+    readiness.set_component("faiss", "ready")
+    readiness.set_component("embedder", "ready")
+
+    monkeypatch.setattr("searchat.api.routers.chat.get_config", lambda: object())
+    monkeypatch.setattr(
+        "searchat.api.routers.chat.generate_answer_stream",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+
+    client = TestClient(app)
+    resp = client.post("/api/chat", json={"query": "hello", "model_provider": "openai"})
+    assert resp.status_code == 500
+    assert resp.json()["detail"] == "boom"

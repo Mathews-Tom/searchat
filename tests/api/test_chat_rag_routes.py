@@ -118,3 +118,82 @@ def test_chat_rag_citations_disabled_returns_no_sources(client):
     assert resp.status_code == 200
     data = resp.json()
     assert data["sources"] == []
+
+
+def test_chat_rag_snapshot_mode_returns_403(client):
+    resp = client.post(
+        "/api/chat-rag?snapshot=backup_20250101_000000",
+        json={"query": "x", "model_provider": "ollama"},
+    )
+    assert resp.status_code == 403
+    assert resp.json()["detail"] == "Chat is disabled in snapshot mode"
+
+
+def test_chat_rag_warming_until_ready(client, monkeypatch):
+    readiness = Mock()
+    readiness.snapshot.return_value = Mock(
+        components={"metadata": "idle", "faiss": "ready", "embedder": "ready"}
+    )
+    warmup = Mock()
+
+    monkeypatch.setattr("searchat.api.routers.chat.trigger_search_engine_warmup", warmup)
+    with patch("searchat.api.routers.chat.get_readiness", return_value=readiness):
+        resp = client.post("/api/chat-rag", json={"query": "x", "model_provider": "ollama"})
+
+    assert resp.status_code == 503
+    warmup.assert_called_once()
+
+
+def test_chat_rag_error_payload_when_component_error(client):
+    readiness = Mock()
+    readiness.snapshot.return_value = Mock(
+        components={"metadata": "error", "faiss": "ready", "embedder": "ready"}
+    )
+    with patch("searchat.api.routers.chat.get_readiness", return_value=readiness):
+        resp = client.post("/api/chat-rag", json={"query": "x", "model_provider": "ollama"})
+
+    assert resp.status_code == 500
+    assert resp.json()["status"] == "error"
+
+
+def test_chat_rag_value_error_returns_400(client):
+    from searchat.services.llm_service import LLMServiceError
+
+    config = Mock()
+    config.chat = Mock(enable_rag=True, enable_citations=True)
+    with patch("searchat.api.routers.chat.get_config", return_value=config):
+        with patch("searchat.api.routers.chat.generate_rag_response", side_effect=ValueError("bad")):
+            resp = client.post("/api/chat-rag", json={"query": "x", "model_provider": "ollama"})
+
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "bad"
+
+
+def test_chat_rag_llm_error_returns_503(client):
+    from searchat.services.llm_service import LLMServiceError
+
+    config = Mock()
+    config.chat = Mock(enable_rag=True, enable_citations=True)
+    with patch("searchat.api.routers.chat.get_config", return_value=config):
+        with patch(
+            "searchat.api.routers.chat.generate_rag_response",
+            side_effect=LLMServiceError("nope"),
+        ):
+            resp = client.post("/api/chat-rag", json={"query": "x", "model_provider": "ollama"})
+
+    assert resp.status_code == 503
+    assert resp.json()["detail"] == "nope"
+
+
+def test_chat_rag_unexpected_error_returns_500(client):
+    config = Mock()
+    config.chat = Mock(enable_rag=True, enable_citations=True)
+    with patch("searchat.api.routers.chat.get_config", return_value=config):
+        with patch(
+            "searchat.api.routers.chat.generate_rag_response",
+            side_effect=RuntimeError("boom"),
+        ):
+            resp = client.post("/api/chat-rag", json={"query": "x", "model_provider": "ollama"})
+
+    assert resp.status_code == 500
+    assert resp.json()["detail"] == "boom"
