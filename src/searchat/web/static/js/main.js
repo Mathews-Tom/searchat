@@ -15,6 +15,7 @@ import { goToPage } from './modules/pagination.js';
 import { initSavedQueries } from './modules/saved-queries.js';
 import { showDashboards } from './modules/dashboards.js';
 import { initDatasetSelector } from './modules/dataset.js';
+import { checkAndShowSplash } from './splash.js';
 
 // Make functions globally available for inline event handlers
 window.setTheme = setTheme;
@@ -87,8 +88,12 @@ if (searchBox) {
     });
 }
 
-// On page load, restore state if available
+// On page load, check splash and restore state if available
 window.addEventListener('load', async () => {
+    // 1. Check and show splash (non-blocking, first visit only)
+    const splashPromise = checkAndShowSplash();
+
+    // 2. Continue with existing initialization (page is functional even if splash is showing)
     const activeConversationId = sessionStorage.getItem('activeConversationId');
     const match = window.location.pathname.match(/\/conversation\/([^/]+)/);
     const conversationId = (match && match[1]) ? match[1] : activeConversationId;
@@ -123,6 +128,9 @@ window.addEventListener('load', async () => {
     }
 
     sessionStorage.removeItem('activeConversationId');
+
+    // 3. Wait for splash completion (optional)
+    await splashPromise;
 });
 
 window.addEventListener('popstate', async () => {
