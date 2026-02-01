@@ -13,6 +13,9 @@ Semantic search and RAG-powered Q&A for AI coding agent conversations. Find past
 | OpenCode     | `~/.local/share/opencode/storage/session/*/*.json` | JSON   |
 | OpenAI Codex | `~/.codex/sessions/**/rollout-*.jsonl`             | JSONL  |
 | Gemini CLI   | `~/.gemini/tmp/<project_hash>/chats/*.json`        | JSON   |
+| Continue     | `~/.continue/sessions/*.json`                      | JSON   |
+| Cursor       | Cursor user data (`.../Cursor/User/.../*.vscdb`)   | SQLite |
+| Aider        | `.aider.chat.history.md` (set `SEARCHAT_AIDER_PROJECT_DIRS`) | Markdown |
 
 ## Features
 
@@ -76,6 +79,15 @@ searchat-web
 Open http://localhost:8000
 
 The setup script indexes all conversations from supported agents. On subsequent runs, the web server automatically indexes new conversations via live file watching.
+
+## MCP Server (Claude Desktop, Cursor, ...)
+
+```bash
+pip install -e ".[mcp]"
+searchat-mcp
+```
+
+See `docs/mcp-setup.md` for client configuration.
 
 ## Enable Claude Self-Search
 

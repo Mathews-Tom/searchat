@@ -113,6 +113,7 @@ gpu = [
 [project.scripts]
 searchat = "searchat.cli:main"
 searchat-web = "searchat.api.app:main"
+searchat-mcp = "searchat.mcp.server:run"
 
 [project.entry-points."searchat.connectors"]
 claude = "searchat.core.connectors.claude:ClaudeConnector"
