@@ -19643,8 +19643,8 @@
                                 (0, u.jsx)(ne, {
                                   icon: (0, u.jsx)(t8, { size: 20 }),
                                   label: "Supported Agents",
-                                  value: "3",
-                                  trend: "Claude, Vibe, OpenCode",
+                                  value: "8",
+                                  trend: "Claude, Vibe, OpenCode + 5 more",
                                 }),
                                 (0, u.jsx)(ne, {
                                   icon: (0, u.jsx)(t4, { size: 20 }),
@@ -20041,6 +20041,41 @@
                                                           "justify-center py-2",
                                                         children:
                                                           "~/.opencode/**/*.json",
+                                                      }),
+                                                      (0, u.jsx)(tz, {
+                                                        variant: "outline",
+                                                        className:
+                                                          "justify-center py-2",
+                                                        children:
+                                                          "~/.codex/**/*.jsonl",
+                                                      }),
+                                                      (0, u.jsx)(tz, {
+                                                        variant: "outline",
+                                                        className:
+                                                          "justify-center py-2",
+                                                        children:
+                                                          "~/.gemini/tmp/**/chats/*.json",
+                                                      }),
+                                                      (0, u.jsx)(tz, {
+                                                        variant: "outline",
+                                                        className:
+                                                          "justify-center py-2",
+                                                        children:
+                                                          "~/.continue/sessions/*.json",
+                                                      }),
+                                                      (0, u.jsx)(tz, {
+                                                        variant: "outline",
+                                                        className:
+                                                          "justify-center py-2",
+                                                        children:
+                                                          "Cursor state.vscdb (SQLite)",
+                                                      }),
+                                                      (0, u.jsx)(tz, {
+                                                        variant: "outline",
+                                                        className:
+                                                          "justify-center py-2",
+                                                        children:
+                                                          ".aider.chat.history.md",
                                                       }),
                                                     ],
                                                   }),
@@ -20645,20 +20680,20 @@
                                   icon: (0, u.jsx)(tX, { size: 24 }),
                                   title: "Export & Integration",
                                   description:
-                                    "Export conversations in JSON, Markdown, Text, PDF, or Jupyter formats with bulk export capabilities.",
+                                    "Export conversations in JSON, Markdown, Text, PDF, or Jupyter formats, plus MCP integration for native agent access.",
                                   metrics: [
                                     "5 formats",
                                     "Bulk export",
-                                    "Code extraction",
+                                    "MCP server",
                                   ],
                                 }),
                                 (0, u.jsx)(t7, {
                                   icon: (0, u.jsx)(t1, { size: 24 }),
                                   title: "Multi-Agent Support",
                                   description:
-                                    "Unified search across Claude Code, Mistral Vibe, and OpenCode conversations with agent filtering.",
+                                    "Unified search across 8 agents (Claude, Vibe, OpenCode, Codex, Gemini, Cursor, Continue, Aider) with agent filtering.",
                                   metrics: [
-                                    "3 agents",
+                                    "8 agents",
                                     "Tool filters",
                                     "Cross-agent search",
                                   ],
@@ -20722,6 +20757,11 @@
                                         variant: "outline",
                                         className: "py-2 justify-center",
                                         children: "Terminal Resume",
+                                      }),
+                                      (0, u.jsx)(tz, {
+                                        variant: "outline",
+                                        className: "py-2 justify-center",
+                                        children: "MCP Server",
                                       }),
                                       (0, u.jsx)(tz, {
                                         variant: "outline",
@@ -21644,6 +21684,22 @@
     </script>
     <script>
       (function() {
+        function updateThemeButtons(theme) {
+          const value = theme || 'system';
+          const buttons = document.querySelectorAll('[data-theme-toggle="1"] button[data-theme]');
+          buttons.forEach(btn => {
+            const isActive = btn.getAttribute('data-theme') === value;
+            btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+
+            btn.classList.toggle('bg-blue-600', isActive);
+            btn.classList.toggle('text-white', isActive);
+            btn.classList.toggle('shadow-sm', isActive);
+
+            btn.classList.toggle('text-gray-600', !isActive);
+            btn.classList.toggle('dark:text-gray-400', !isActive);
+          });
+        }
+
         // Theme switching logic
         window.setTheme = function(theme) {
           try {
@@ -21664,6 +21720,8 @@
                 root.classList.remove('dark');
               }
             }
+
+            updateThemeButtons(theme);
           } catch (e) {
             console.error('Failed to set theme', e);
           }
@@ -21677,14 +21735,15 @@
           if (enterpriseBtn) {
             const container = document.createElement('div');
             container.className = 'flex items-center space-x-2';
+            container.setAttribute('data-theme-toggle', '1');
             container.innerHTML = `
-                <button onclick="setTheme('light')" class="p-2 rounded-md hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-600 dark:text-gray-400 transition-colors" title="Light Mode">
+                <button onclick="setTheme('light')" data-theme="light" class="p-2 rounded-md hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-600 dark:text-gray-400 transition-colors" title="Light Mode">
                   <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sun"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
                 </button>
-                <button onclick="setTheme('dark')" class="p-2 rounded-md hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-600 dark:text-gray-400 transition-colors" title="Dark Mode">
+                <button onclick="setTheme('dark')" data-theme="dark" class="p-2 rounded-md hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-600 dark:text-gray-400 transition-colors" title="Dark Mode">
                   <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-moon"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
                 </button>
-                <button onclick="setTheme('system')" class="p-2 rounded-md hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-600 dark:text-gray-400 transition-colors" title="System Mode">
+                <button onclick="setTheme('system')" data-theme="system" class="p-2 rounded-md hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-600 dark:text-gray-400 transition-colors" title="System Mode">
                   <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-monitor"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
                 </button>
             `;
@@ -21693,6 +21752,9 @@
             // The original button was in a div with "hidden md:flex". We want to keep that visibility logic if possible.
             // Let's replace the button itself, but make sure styling is correct.
             enterpriseBtn.replaceWith(container);
+
+            const storedTheme = localStorage.getItem('theme-preference') || 'system';
+            updateThemeButtons(storedTheme);
           } else {
             // Retry if not found immediately (React hydration might delay it)
             setTimeout(replaceEnterpriseButton, 100);
@@ -21705,7 +21767,14 @@
         } else {
           replaceEnterpriseButton();
         }
-        
+
+        window.addEventListener('storage', function (ev) {
+          if (ev && ev.key === 'theme-preference') {
+            const stored = localStorage.getItem('theme-preference') || 'system';
+            updateThemeButtons(stored);
+          }
+        });
+         
         // Ensure theme is applied on load
         const storedTheme = localStorage.getItem('theme-preference');
         if (storedTheme) {
