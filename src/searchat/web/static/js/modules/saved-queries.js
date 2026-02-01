@@ -185,6 +185,20 @@ function _findQuery(queryId) {
 }
 
 export async function initSavedQueries() {
+    const requiredIds = [
+        'savedQueryCancel',
+        'savedQuerySave',
+        'savedQueriesList',
+        'savedQueryName',
+        'savedQueryDescription',
+    ];
+    for (const id of requiredIds) {
+        if (!document.getElementById(id)) {
+            console.error(`Saved queries UI missing element: #${id}`);
+            return;
+        }
+    }
+
     const localQueries = _loadLocalQueries();
     const backendQueries = await _fetchSavedQueries();
 
