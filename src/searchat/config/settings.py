@@ -8,6 +8,8 @@ Configuration precedence (highest to lowest):
 4. Hardcoded constants (constants.py)
 """
 
+from __future__ import annotations
+
 import os
 from typing import overload
 from dataclasses import dataclass

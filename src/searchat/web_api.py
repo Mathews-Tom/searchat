@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 """FastAPI backend for Searchat"""
 
+from __future__ import annotations
+
 import os
 import warnings
 from pathlib import Path

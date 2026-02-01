@@ -1,5 +1,7 @@
 """Statistics endpoint - index statistics and metadata."""
 
+from __future__ import annotations
+
 import logging
 from fastapi import APIRouter, HTTPException, Query
 
