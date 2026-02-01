@@ -10,24 +10,11 @@ import { initSearchHistory, restoreSearchFromHistory, clearHistory } from './mod
 import { copyCode } from './modules/code-extraction.js';
 import { initSuggestions } from './modules/suggestions.js';
 import { initBookmarks, showBookmarks } from './modules/bookmarks.js';
-import { initBulkExport, toggleBulkMode } from './modules/bulk-export.js';
 import { showAnalytics } from './modules/analytics.js';
 import { goToPage } from './modules/pagination.js';
 import { initSavedQueries } from './modules/saved-queries.js';
 import { showDashboards } from './modules/dashboards.js';
 import { initDatasetSelector } from './modules/dataset.js';
-
-// Initialize theme, shortcuts, search history, suggestions, bookmarks, and bulk export on page load
-initTheme();
-initChat();
-initShortcuts();
-initSearchHistory();
-initSuggestions();
-initBookmarks();
-initBulkExport();
-initSavedQueries();
-initProjectSuggestion();
-initDatasetSelector();
 
 // Make functions globally available for inline event handlers
 window.setTheme = setTheme;
@@ -38,10 +25,43 @@ window.restoreSearchFromHistory = restoreSearchFromHistory;
 window.clearSearchHistory = clearHistory;
 window.copyCode = copyCode;
 window.showBookmarks = showBookmarks;
-window.toggleBulkMode = toggleBulkMode;
+window.toggleBulkMode = function () {
+    throw new Error('Bulk export module not loaded');
+};
 window.showAnalytics = showAnalytics;
 window.showDashboards = showDashboards;
 window.goToPage = (page) => goToPage(page, search);
+
+function safeInit(name, fn) {
+    try {
+        const result = fn();
+        if (result && typeof result.then === 'function') {
+            result.catch((error) => {
+                console.error(`Init failed: ${name}`, error);
+            });
+        }
+    } catch (error) {
+        console.error(`Init failed: ${name}`, error);
+    }
+}
+
+// Initialize modules on page load. A failure in one module should not
+// break basic interactions like search and chat.
+safeInit('theme', initTheme);
+safeInit('chat', initChat);
+safeInit('shortcuts', initShortcuts);
+safeInit('search-history', initSearchHistory);
+safeInit('suggestions', initSuggestions);
+safeInit('bookmarks', initBookmarks);
+safeInit('saved-queries', initSavedQueries);
+safeInit('project-suggestion', initProjectSuggestion);
+safeInit('dataset-selector', initDatasetSelector);
+
+safeInit('bulk-export', async () => {
+    const module = await import('./modules/bulk-export.js');
+    window.toggleBulkMode = module.toggleBulkMode;
+    module.initBulkExport();
+});
 
 // Import and expose other functions that might be called from HTML
 import('./modules/backup.js').then(module => {
@@ -60,9 +80,12 @@ import('./modules/search.js').then(module => {
 });
 
 // Add event listener for search on Enter key
-document.getElementById('search').addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') search();
-});
+const searchBox = document.getElementById('search');
+if (searchBox) {
+    searchBox.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') search();
+    });
+}
 
 // On page load, restore state if available
 window.addEventListener('load', async () => {
