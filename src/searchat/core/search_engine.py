@@ -178,9 +178,39 @@ class SearchEngine:
                     conditions.append(f"{prefix}project_id LIKE 'opencode-%'")
                 elif filters.tool == "vibe":
                     conditions.append(f"{prefix}project_id LIKE 'vibe-%'")
+                elif filters.tool == "codex":
+                    conditions.append(
+                        f"({prefix}project_id = 'codex' OR {prefix}file_path ILIKE '%/.codex/%')"
+                    )
+                elif filters.tool == "gemini":
+                    conditions.append(
+                        "("
+                        f"{prefix}project_id = 'gemini' OR "
+                        f"{prefix}project_id LIKE 'gemini-%' OR "
+                        f"{prefix}file_path ILIKE '%/.gemini/tmp/%/chats/%'"
+                        ")"
+                    )
+                elif filters.tool == "continue":
+                    conditions.append(
+                        f"({prefix}project_id LIKE 'continue-%' OR {prefix}file_path ILIKE '%/.continue/sessions/%')"
+                    )
+                elif filters.tool == "cursor":
+                    conditions.append(
+                        f"({prefix}project_id LIKE 'cursor-%' OR {prefix}file_path ILIKE '%.vscdb.cursor/%')"
+                    )
+                elif filters.tool == "aider":
+                    conditions.append(
+                        f"({prefix}project_id LIKE 'aider-%' OR {prefix}file_path ILIKE '%/.aider.chat.history.md')"
+                    )
                 elif filters.tool == "claude":
                     conditions.append(f"{prefix}project_id NOT LIKE 'opencode-%'")
                     conditions.append(f"{prefix}project_id NOT LIKE 'vibe-%'")
+                    conditions.append(f"{prefix}project_id NOT LIKE 'gemini-%'")
+                    conditions.append(f"{prefix}project_id NOT LIKE 'continue-%'")
+                    conditions.append(f"{prefix}project_id NOT LIKE 'cursor-%'")
+                    conditions.append(f"{prefix}project_id NOT LIKE 'aider-%'")
+                    conditions.append(f"{prefix}project_id != 'gemini'")
+                    conditions.append(f"{prefix}project_id != 'codex'")
 
             if filters.date_from:
                 conditions.append(f"{prefix}updated_at >= ?")

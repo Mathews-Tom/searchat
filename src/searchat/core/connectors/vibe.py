@@ -11,10 +11,10 @@ from searchat.models import ConversationRecord, MessageRecord
 
 
 class VibeConnector:
-    name = "vibe"
-    supported_extensions = (".json",)
+    name: str = "vibe"
+    supported_extensions: tuple[str, ...] = (".json",)
 
-    def discover_files(self, _config: Config) -> list[Path]:
+    def discover_files(self, config: Config) -> list[Path]:
         files: list[Path] = []
         for vibe_dir in PathResolver.resolve_vibe_dirs():
             if not vibe_dir.exists():
@@ -22,12 +22,12 @@ class VibeConnector:
             files.extend(vibe_dir.glob("*.json"))
         return files
 
-    def watch_dirs(self, _config: Config) -> list[Path]:
+    def watch_dirs(self, config: Config) -> list[Path]:
         return [p for p in PathResolver.resolve_vibe_dirs() if p.exists()]
 
-    def watch_stats(self, _config: Config) -> dict[str, int]:
+    def watch_stats(self, config: Config) -> dict[str, int]:
         session_count = 0
-        for root in self.watch_dirs(_config):
+        for root in self.watch_dirs(config):
             try:
                 session_count += sum(1 for p in root.glob("*.json") if p.is_file())
             except OSError:

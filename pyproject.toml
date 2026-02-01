@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "searchat"
-version = "0.2.2"
+version = "0.3.0"
 description = "Semantic search and RAG for local AI coding agent conversations"
 authors = [{name = "Searchat Contributors"}]
 license = {text = "MIT"}
@@ -113,6 +113,7 @@ gpu = [
 [project.scripts]
 searchat = "searchat.cli:main"
 searchat-web = "searchat.api.app:main"
+searchat-mcp = "searchat.mcp.server:run"
 
 [project.entry-points."searchat.connectors"]
 claude = "searchat.core.connectors.claude:ClaudeConnector"
@@ -120,6 +121,9 @@ vibe = "searchat.core.connectors.vibe:VibeConnector"
 opencode = "searchat.core.connectors.opencode:OpenCodeConnector"
 codex = "searchat.core.connectors.codex:CodexConnector"
 gemini = "searchat.core.connectors.gemini:GeminiCLIConnector"
+continue = "searchat.core.connectors.continue_cli:ContinueConnector"
+cursor = "searchat.core.connectors.cursor:CursorConnector"
+aider = "searchat.core.connectors.aider:AiderConnector"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/searchat"]

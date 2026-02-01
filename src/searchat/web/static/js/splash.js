@@ -5,9 +5,9 @@
  * Shows system highlights, component loading progress, and links to full infographics.
  */
 
-const SPLASH_STORAGE_KEY = 'searchatSplashShown';
+const SPLASH_STORAGE_KEY = 'searchatSplashDismissedServerStartedAt';
+const LEGACY_SPLASH_STORAGE_KEY = 'searchatSplashShown';
 const STATUS_POLL_INTERVAL = 500; // ms
-const MANUAL_DISMISS_DELAY = 3000; // ms
 const CRITICAL_COMPONENTS = ['embedder', 'faiss', 'metadata'];
 
 // 8-12 key highlights with icons (medium summary)
@@ -15,7 +15,8 @@ const HIGHLIGHTS = [
     { icon: '🔍', title: '3 Search Modes', desc: 'Hybrid, Semantic, Keyword' },
     { icon: '⚡', title: '<100ms Search', desc: 'Ultra-fast hybrid search with RRF fusion' },
     { icon: '🎯', title: 'Autocomplete', desc: 'Smart suggestions as you type' },
-    { icon: '🤖', title: '3 AI Agents', desc: 'Claude Code, Mistral Vibe, OpenCode' },
+    { icon: '🤖', title: '8 AI Agents', desc: 'Claude, Vibe, OpenCode, Codex, Gemini, Continue, Cursor, Aider' },
+    { icon: '🔌', title: 'MCP Server', desc: 'Native integration for MCP clients' },
     { icon: '💬', title: 'RAG Chat', desc: 'AI-powered Q&A over conversation history' },
     { icon: '🔗', title: 'Similarity Search', desc: 'Discover related conversations' },
     { icon: '🔖', title: 'Bookmarks', desc: 'Save and annotate favorites' },
@@ -27,44 +28,61 @@ const HIGHLIGHTS = [
 ];
 
 let pollInterval = null;
-let manualDismissTimeout = null;
+let _currentServerStartedAt = null;
 
 /**
  * Check if user has seen splash before
  */
-function hasSeenSplash() {
-    return localStorage.getItem(SPLASH_STORAGE_KEY) === 'true';
+function hasDismissedSplashForServer(serverStartedAt) {
+    if (!serverStartedAt) return false;
+    try {
+        return localStorage.getItem(SPLASH_STORAGE_KEY) === String(serverStartedAt);
+    } catch (error) {
+        console.warn('Splash: failed to read localStorage', error);
+        return false;
+    }
 }
 
 /**
  * Mark splash as seen (persistent across sessions)
  */
-function markSplashSeen() {
-    localStorage.setItem(SPLASH_STORAGE_KEY, 'true');
+function markSplashDismissedForServer(serverStartedAt) {
+    if (!serverStartedAt) return;
+    try {
+        localStorage.setItem(SPLASH_STORAGE_KEY, String(serverStartedAt));
+    } catch (error) {
+        console.warn('Splash: failed to write localStorage', error);
+    }
+}
+
+function clearLegacySplashFlag() {
+    try {
+        localStorage.removeItem(LEGACY_SPLASH_STORAGE_KEY);
+    } catch (error) {
+        console.warn('Splash: failed to clear legacy localStorage key', error);
+    }
 }
 
 /**
  * Check warmup status and show splash if needed (first visit only)
  */
 export async function checkAndShowSplash() {
-    // Skip if user has seen splash before
-    if (hasSeenSplash()) {
-        return;
-    }
-
     try {
+        clearLegacySplashFlag();
+
         const response = await fetch('/api/status');
         const status = await response.json();
 
-        // Check if any components are still loading
-        const isWarming = Object.values(status.components).some(
-            state => state === 'idle' || state === 'loading'
-        );
+        const serverStartedAt = status.server_started_at || status.warmup_started_at;
+        _currentServerStartedAt = serverStartedAt || null;
 
-        if (isWarming) {
-            renderSplash(status);
-            pollWarmupStatus();
+        // Show splash once per server start (requires manual dismissal).
+        if (hasDismissedSplashForServer(_currentServerStartedAt)) {
+            return;
         }
+
+        renderSplash(status);
+        pollWarmupStatus();
     } catch (error) {
         console.error('Failed to check warmup status:', error);
     }
@@ -122,7 +140,7 @@ function renderSplash(status) {
         <a href="/docs/infographics.html" target="_blank" class="splash-btn splash-btn-secondary">
             View Full Infographics
         </a>
-        <button id="splashDismiss" class="splash-btn splash-btn-primary" disabled>
+        <button id="splashDismiss" class="splash-btn splash-btn-primary">
             Get Started
         </button>
     `;
@@ -131,14 +149,11 @@ function renderSplash(status) {
     overlay.appendChild(content);
     document.body.appendChild(overlay);
 
-    // Enable manual dismiss after delay
-    manualDismissTimeout = setTimeout(() => {
-        const dismissBtn = document.getElementById('splashDismiss');
-        if (dismissBtn) {
-            dismissBtn.disabled = false;
-            dismissBtn.onclick = dismissSplash;
-        }
-    }, MANUAL_DISMISS_DELAY);
+    // Manual dismiss (always required; never auto-dismiss)
+    const dismissBtn = document.getElementById('splashDismiss');
+    if (dismissBtn) {
+        dismissBtn.onclick = dismissSplash;
+    }
 
     // Initial progress render
     updateProgress(status);
@@ -267,13 +282,14 @@ function pollWarmupStatus() {
             // Update progress display
             updateProgress(status);
 
-            // Check if critical components are ready
             const criticalReady = CRITICAL_COMPONENTS.every(
                 name => status.components[name] === 'ready'
             );
 
-            if (criticalReady) {
-                dismissSplash();
+            // Once ready, stop polling to reduce overhead. Overlay stays until user dismisses.
+            if (criticalReady && pollInterval) {
+                clearInterval(pollInterval);
+                pollInterval = null;
             }
         } catch (error) {
             console.error('Failed to poll status:', error);
@@ -290,13 +306,7 @@ function dismissSplash() {
         clearInterval(pollInterval);
         pollInterval = null;
     }
-    if (manualDismissTimeout) {
-        clearTimeout(manualDismissTimeout);
-        manualDismissTimeout = null;
-    }
-
-    // Mark as seen (never show again)
-    markSplashSeen();
+    markSplashDismissedForServer(_currentServerStartedAt);
 
     // Fade out and remove
     const overlay = document.getElementById('splashOverlay');

@@ -87,7 +87,7 @@ async def test_status_endpoint_returns_readiness_snapshot() -> None:
     payload = await get_status()
 
     assert payload["components"]["services"] == "ready"
-    assert set(payload.keys()) == {"warmup_started_at", "components", "watcher", "errors"}
+    assert set(payload.keys()) == {"server_started_at", "warmup_started_at", "components", "watcher", "errors"}
 
 
 def test_status_features_endpoint_returns_flags(monkeypatch: pytest.MonkeyPatch) -> None:

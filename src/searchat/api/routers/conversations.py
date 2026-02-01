@@ -358,7 +358,7 @@ async def get_all_conversations(
     date: str | None = Query(None, description="Date filter: today, week, month, or custom"),
     date_from: str | None = Query(None, description="Custom date from (YYYY-MM-DD)"),
     date_to: str | None = Query(None, description="Custom date to (YYYY-MM-DD)"),
-    tool: str | None = Query(None, description="Filter by tool: claude, vibe, opencode"),
+    tool: str | None = Query(None, description="Filter by tool: claude, vibe, opencode, codex, gemini, continue, cursor, aider"),
     limit: int | None = Query(None, ge=1, le=5000, description="Max results to return"),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
     snapshot: str | None = Query(None, description="Backup snapshot name (read-only)"),
@@ -377,7 +377,7 @@ async def get_all_conversations(
 
         if tool:
             tool_value = tool.lower()
-            if tool_value not in ("claude", "vibe", "opencode"):
+            if tool_value not in ("claude", "vibe", "opencode", "codex", "gemini", "continue", "cursor", "aider"):
                 raise HTTPException(status_code=400, detail="Invalid tool filter")
             tool = tool_value
 

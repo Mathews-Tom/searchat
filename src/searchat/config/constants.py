@@ -11,7 +11,7 @@ from pathlib import Path
 # ============================================================================
 
 APP_NAME = "searchat"
-APP_VERSION = "0.2.2"
+APP_VERSION = "0.3.0"
 CONFIG_DIR_NAME = ".searchat"
 
 # ============================================================================
@@ -138,6 +138,11 @@ GEMINI_TMP_DIR_CANDIDATES = [
     Path.home() / ".gemini" / "tmp",
 ]
 
+# Continue session directory locations
+CONTINUE_SESSIONS_DIR_CANDIDATES = [
+    Path.home() / ".continue" / "sessions",
+]
+
 # WSL mount point patterns
 WSL_MOUNT_PREFIX = "/mnt/"
 WSL_UNC_PREFIX = "\\\\wsl$\\"
@@ -153,6 +158,9 @@ ENV_ADDITIONAL_DIRS = "SEARCHAT_ADDITIONAL_DIRS"
 ENV_OPENCODE_DATA_DIR = "SEARCHAT_OPENCODE_DATA_DIR"
 ENV_CODEX_DATA_DIR = "SEARCHAT_CODEX_DATA_DIR"
 ENV_GEMINI_DATA_DIR = "SEARCHAT_GEMINI_DATA_DIR"
+ENV_CONTINUE_DATA_DIR = "SEARCHAT_CONTINUE_DATA_DIR"
+ENV_CURSOR_DATA_DIR = "SEARCHAT_CURSOR_DATA_DIR"
+ENV_AIDER_PROJECT_DIRS = "SEARCHAT_AIDER_PROJECT_DIRS"
 
 ENV_PORT = "SEARCHAT_PORT"
 ENV_HOST = "SEARCHAT_HOST"

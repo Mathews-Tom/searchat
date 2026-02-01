@@ -1,5 +1,7 @@
 """Status endpoints - readiness and warmup state."""
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter
 
 import searchat.api.dependencies as deps
@@ -9,11 +11,15 @@ from searchat.api.readiness import get_readiness
 router = APIRouter()
 
 
+_SERVER_STARTED_AT = datetime.now(timezone.utc).isoformat()
+
+
 @router.get("/status")
 async def get_status():
     """Return current readiness state for UI polling and diagnostics."""
     snap = get_readiness().snapshot()
     return {
+        "server_started_at": _SERVER_STARTED_AT,
         "warmup_started_at": snap.warmup_started_at,
         "components": snap.components,
         "watcher": snap.watcher,

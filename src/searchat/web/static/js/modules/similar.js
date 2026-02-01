@@ -53,7 +53,21 @@ export async function loadSimilarConversations(conversationId, container) {
         `;
 
         data.similar_conversations.forEach((conv, index) => {
-            const toolLabel = conv.tool === 'opencode' ? 'OpenCode' : (conv.tool === 'vibe' ? 'Vibe' : 'Claude Code');
+            const toolLabel = conv.tool === 'opencode'
+                ? 'OpenCode'
+                : (conv.tool === 'vibe'
+                    ? 'Vibe'
+                    : (conv.tool === 'codex'
+                        ? 'Codex'
+                        : (conv.tool === 'gemini'
+                            ? 'Gemini CLI'
+                            : (conv.tool === 'continue'
+                                ? 'Continue'
+                                : (conv.tool === 'cursor'
+                                    ? 'Cursor'
+                                    : (conv.tool === 'aider'
+                                        ? 'Aider'
+                                        : 'Claude Code')))));
             const similarityPercent = Math.round(conv.similarity_score * 100);
             const createdDate = new Date(conv.created_at).toLocaleDateString();
 

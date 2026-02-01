@@ -11,12 +11,12 @@ from searchat.models import ConversationRecord, MessageRecord
 
 
 class CodexConnector:
-    name = "codex"
-    supported_extensions = (".jsonl",)
+    name: str = "codex"
+    supported_extensions: tuple[str, ...] = (".jsonl",)
 
-    def discover_files(self, _config: Config) -> list[Path]:
+    def discover_files(self, config: Config) -> list[Path]:
         files: list[Path] = []
-        for codex_dir in PathResolver.resolve_codex_dirs(_config):
+        for codex_dir in PathResolver.resolve_codex_dirs(config):
             sessions_dir = codex_dir / "sessions"
             if sessions_dir.exists():
                 files.extend(sessions_dir.rglob("rollout-*.jsonl"))
@@ -25,8 +25,8 @@ class CodexConnector:
                 files.append(history)
         return files
 
-    def watch_dirs(self, _config: Config) -> list[Path]:
-        return [p for p in PathResolver.resolve_codex_dirs(_config) if p.exists()]
+    def watch_dirs(self, config: Config) -> list[Path]:
+        return [p for p in PathResolver.resolve_codex_dirs(config) if p.exists()]
 
     def can_parse(self, path: Path) -> bool:
         if path.suffix != ".jsonl":
@@ -45,6 +45,7 @@ class CodexConnector:
                     if "role" in data and ("content" in data or "text" in data):
                         return True
                     return False
+            return False
         except (json.JSONDecodeError, OSError):
             return False
 

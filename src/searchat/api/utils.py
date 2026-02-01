@@ -6,19 +6,43 @@ from datetime import datetime, timedelta
 
 def detect_tool_from_path(file_path: str) -> str:
     """
-    Detect tool type (claude, vibe, opencode) from file path.
+    Detect tool type from a conversation file path.
 
     Args:
         file_path: Path to conversation file
 
     Returns:
-        Tool name: 'claude', 'vibe', or 'opencode'
+        Tool name: 'claude', 'vibe', 'opencode', 'codex', 'gemini', 'continue', 'cursor', or 'aider'
     """
-    file_path_lower = file_path.lower()
-    if file_path.endswith('.jsonl'):
-        return "claude"
-    if "/.local/share/opencode/" in file_path_lower:
+    normalized = file_path.lower().replace("\\", "/")
+
+    if "/.local/share/opencode/" in normalized:
         return "opencode"
+
+    if "/.codex/" in normalized:
+        return "codex"
+
+    if "/.continue/sessions/" in normalized and normalized.endswith(".json"):
+        return "continue"
+
+    if ".vscdb.cursor/" in normalized and normalized.endswith(".json"):
+        return "cursor"
+
+    if "/.gemini/tmp/" in normalized and "/chats/" in normalized and normalized.endswith(".json"):
+        return "gemini"
+
+    if normalized.endswith("/.aider.chat.history.md") or normalized.endswith(".aider.chat.history.md"):
+        return "aider"
+
+    if "/.claude/" in normalized and normalized.endswith(".jsonl"):
+        return "claude"
+
+    if "/.vibe/" in normalized and normalized.endswith(".json"):
+        return "vibe"
+
+    if normalized.endswith(".jsonl"):
+        return "claude"
+
     return "vibe"
 
 
