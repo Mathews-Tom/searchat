@@ -242,6 +242,15 @@ async def test_app_root_and_conversation_page_serve_cached_html() -> None:
     assert root_resp.body == conv_resp.body
 
 
+@pytest.mark.asyncio
+async def test_favicon_ico_redirects_to_svg() -> None:
+    api_app = _api_app_module()
+
+    resp = await api_app.favicon_ico()
+    assert resp.status_code in {302, 307, 308}
+    assert resp.headers.get("location") == "/static/favicon.svg"
+
+
 def test_on_new_conversations_indexes_and_invalidates(monkeypatch: pytest.MonkeyPatch) -> None:
     api_app = _api_app_module()
     import searchat.api.dependencies as deps

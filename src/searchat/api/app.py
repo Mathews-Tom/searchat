@@ -11,7 +11,7 @@ from datetime import datetime
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from searchat.core.watcher import ConversationWatcher
@@ -247,6 +247,12 @@ async def root():
     return HTMLResponse(_CACHED_HTML)
 
 
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon_ico():
+    """Redirect default browser favicon request to our SVG favicon."""
+    return RedirectResponse(url="/static/favicon.svg")
+
+
 @app.get("/conversation/{conversation_id}", response_class=HTMLResponse)
 async def serve_conversation_page(conversation_id: str):
     """Serve HTML page for viewing a specific conversation."""
@@ -259,6 +265,28 @@ def main():
     import uvicorn
     import socket
     import warnings
+    import threading
+    import time
+    import webbrowser
+    import sys
+
+    prog = Path(sys.argv[0]).name
+    argv = set(sys.argv[1:])
+    if prog.startswith("searchat-web"):
+        if "--version" in argv:
+            from searchat import __version__
+
+            print(__version__)
+            return
+        if "-h" in argv or "--help" in argv:
+            print("Usage: searchat-web")
+            print()
+            print("Environment variables:")
+            print(f"  {ENV_HOST}=<host>   (default: {DEFAULT_HOST})")
+            print(f"  {ENV_PORT}=<port>   (default: auto-scan {PORT_SCAN_RANGE[0]}-{PORT_SCAN_RANGE[1]})")
+            print("  SEARCHAT_OPEN_BROWSER=0   Disable opening the browser tab")
+            print()
+            return
 
     # Python 3.12 can emit a noisy multiprocessing.resource_tracker warning on
     # shutdown with some native deps (e.g., torch/sentence-transformers).
@@ -310,6 +338,39 @@ def main():
     print(f"  Port: {port}")
     print()
     print("Press Ctrl+C to stop")
+
+    open_browser_raw = os.getenv("SEARCHAT_OPEN_BROWSER", "1").strip().lower()
+    open_browser = open_browser_raw not in {"0", "false", "no", "off"}
+    if "--no-browser" in argv:
+        open_browser = False
+    interactive = sys.stdout.isatty()
+
+    def _open_browser_when_ready() -> None:
+        url_host = host
+        if host in {"0.0.0.0", "::", ""}:
+            url_host = "localhost"
+        url = f"http://{url_host}:{port}"
+
+        probe_host = "127.0.0.1" if url_host == "localhost" else url_host
+
+        deadline = time.time() + 10.0
+        while time.time() < deadline:
+            try:
+                with socket.create_connection((probe_host, port), timeout=0.25):
+                    break
+            except OSError:
+                time.sleep(0.1)
+        else:
+            print(f"Warning: server did not start within 10s; not opening browser ({url})")
+            return
+
+        try:
+            webbrowser.open_new_tab(url)
+        except Exception as exc:
+            print(f"Warning: failed to open browser tab: {exc}")
+
+    if open_browser and interactive:
+        threading.Thread(target=_open_browser_when_ready, daemon=True).start()
 
     uvicorn.run(app, host=host, port=port)
 
