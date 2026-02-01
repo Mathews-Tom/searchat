@@ -73,4 +73,3 @@ jobs:
           python -c "import searchat.api.app"
           searchat --help
           searchat-web --help
-          searchat-mcp --help
