@@ -57,6 +57,26 @@
     color: var(--text-primary);
     font-size: 12px;
 }
+
+.system-overview-link {
+    display: block;
+    padding: 10px 12px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    color: var(--text-primary);
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.system-overview-link:hover {
+    background: var(--bg-surface);
+    border-color: var(--accent-primary);
+    color: var(--accent-primary);
+    transform: translateY(-1px);
+}
 /* Search Box */
 .search-box {
     width: 100%;
@@ -1410,4 +1430,278 @@ button.link {
 .chat-source-open:hover {
     border-color: var(--accent-primary);
     background: var(--bg-surface);
+}
+
+/* Splash Screen */
+.splash-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    padding: 20px;
+}
+
+.splash-overlay.splash-visible {
+    opacity: 1;
+}
+
+.splash-content {
+    background: linear-gradient(135deg, var(--bg-elevated) 0%, var(--bg-surface) 100%);
+    border: 1px solid var(--border-default);
+    border-radius: 16px;
+    padding: 32px 40px;
+    max-width: 800px;
+    width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.splash-header {
+    text-align: center;
+    margin-bottom: 24px;
+}
+
+.splash-header h1 {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 42px;
+    font-weight: 700;
+    margin: 0 0 8px 0;
+}
+
+.splash-header p {
+    color: var(--text-muted);
+    font-size: 14px;
+    margin: 0;
+}
+
+.splash-highlights {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+}
+
+.splash-highlight-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    transition: all 0.2s ease;
+}
+
+.splash-highlight-item:hover {
+    background: var(--bg-elevated);
+    border-color: var(--accent-primary);
+    transform: translateY(-2px);
+}
+
+.splash-highlight-icon {
+    font-size: 24px;
+    line-height: 1;
+    flex: 0 0 auto;
+}
+
+.splash-highlight-text {
+    flex: 1;
+    min-width: 0;
+}
+
+.splash-highlight-title {
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--text-primary);
+    margin-bottom: 2px;
+}
+
+.splash-highlight-desc {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.4;
+}
+
+.splash-progress-container {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-default);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 20px;
+}
+
+.splash-progress-item {
+    display: grid;
+    grid-template-columns: 24px 120px 20px 1fr 80px;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border-muted);
+}
+
+.splash-progress-item:last-child {
+    border-bottom: none;
+}
+
+.splash-progress-icon {
+    font-size: 16px;
+    text-align: center;
+}
+
+.splash-progress-ready .splash-progress-icon {
+    color: var(--success);
+}
+
+.splash-progress-error .splash-progress-icon {
+    color: var(--danger);
+}
+
+.splash-progress-loading .splash-progress-icon,
+.splash-progress-idle .splash-progress-icon {
+    color: var(--text-muted);
+}
+
+.splash-progress-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.splash-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--border-default);
+    border-top-color: var(--accent-primary);
+    border-radius: 50%;
+    animation: splash-spin 0.8s linear infinite;
+}
+
+@keyframes splash-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.splash-progress-bar {
+    height: 6px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-default);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.splash-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+    border-radius: 2px;
+    transition: width 0.3s ease;
+}
+
+.splash-progress-ready .splash-progress-fill {
+    background: linear-gradient(90deg, var(--success) 0%, #2ea043 100%);
+}
+
+.splash-progress-error .splash-progress-fill {
+    background: linear-gradient(90deg, var(--danger) 0%, #da3633 100%);
+}
+
+.splash-progress-status {
+    font-size: 12px;
+    color: var(--text-muted);
+    text-align: right;
+}
+
+.splash-progress-ready .splash-progress-status {
+    color: var(--success);
+    font-weight: 600;
+}
+
+.splash-progress-error .splash-progress-status {
+    color: var(--danger);
+    font-weight: 600;
+}
+
+.splash-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+}
+
+.splash-btn {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 10px 24px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-decoration: none;
+    display: inline-block;
+}
+
+.splash-btn-primary {
+    background: var(--accent-primary);
+    color: white;
+}
+
+.splash-btn-primary:hover:not(:disabled) {
+    background: var(--accent-secondary);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(74, 158, 255, 0.4);
+}
+
+.splash-btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.splash-btn-secondary {
+    background: transparent;
+    color: var(--accent-primary);
+    border: 1px solid var(--accent-primary);
+}
+
+.splash-btn-secondary:hover {
+    background: var(--accent-primary);
+    color: white;
+    transform: translateY(-2px);
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .splash-content {
+        padding: 24px;
+    }
+
+    .splash-header h1 {
+        font-size: 32px;
+    }
+
+    .splash-highlights {
+        grid-template-columns: 1fr;
+    }
+
+    .splash-progress-item {
+        grid-template-columns: 24px 1fr 20px;
+        gap: 8px;
+    }
+
+    .splash-progress-bar,
+    .splash-progress-status {
+        grid-column: 1 / -1;
+    }
+
+    .splash-actions {
+        flex-direction: column;
+    }
 }

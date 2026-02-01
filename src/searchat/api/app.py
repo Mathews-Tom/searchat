@@ -99,6 +99,11 @@ app.add_middleware(
 static_path = Path(__file__).parent.parent / "web" / "static"
 app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
 
+# Mount docs directory for infographics
+docs_path = Path(__file__).parent.parent.parent.parent / "docs"
+if docs_path.exists():
+    app.mount("/docs", StaticFiles(directory=str(docs_path)), name="docs")
+
 # Register routers
 app.include_router(search_router, prefix="/api", tags=["search"])
 app.include_router(conversations_router, prefix="/api", tags=["conversations"])
