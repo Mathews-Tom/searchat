@@ -6,15 +6,15 @@ Semantic search and RAG-powered Q&A for AI coding agent conversations. Find past
 
 ## Supported Agents
 
-| Agent        | Location                                           | Format |
-| ------------ | -------------------------------------------------- | ------ |
-| Claude Code  | `~/.claude/projects/**/*.jsonl`                    | JSONL  |
-| Mistral Vibe | `~/.vibe/logs/session/*.json`                      | JSON   |
-| OpenCode     | `~/.local/share/opencode/storage/session/*/*.json` | JSON   |
-| OpenAI Codex | `~/.codex/sessions/**/rollout-*.jsonl`             | JSONL  |
-| Gemini CLI   | `~/.gemini/tmp/<project_hash>/chats/*.json`        | JSON   |
-| Continue     | `~/.continue/sessions/*.json`                      | JSON   |
-| Cursor       | Cursor user data (`.../Cursor/User/.../*.vscdb`)   | SQLite |
+| Agent        | Location                                                     | Format   |
+| ------------ | ------------------------------------------------------------ | -------- |
+| Claude Code  | `~/.claude/projects/**/*.jsonl`                              | JSONL    |
+| Mistral Vibe | `~/.vibe/logs/session/*.json`                                | JSON     |
+| OpenCode     | `~/.local/share/opencode/storage/session/*/*.json`           | JSON     |
+| OpenAI Codex | `~/.codex/sessions/**/rollout-*.jsonl`                       | JSONL    |
+| Gemini CLI   | `~/.gemini/tmp/<project_hash>/chats/*.json`                  | JSON     |
+| Continue     | `~/.continue/sessions/*.json`                                | JSON     |
+| Cursor       | Cursor user data (`.../Cursor/User/.../*.vscdb`)             | SQLite   |
 | Aider        | `.aider.chat.history.md` (set `SEARCHAT_AIDER_PROJECT_DIRS`) | Markdown |
 
 ## Features
@@ -384,7 +384,7 @@ for r in results.results[:5]:
 
 **Data Flow:**
 
-```
+```plaintext
 ~/.claude/projects/**/*.jsonl     (source conversations)
 ~/.vibe/logs/session/*.json
 ~/.local/share/opencode/.../*.json
