@@ -158,6 +158,14 @@ from typing import Any
 from searchat.core import ConversationIndexer
 from searchat.services import BackupManager
 from searchat.config import Config
+from searchat.config import PathResolver
+
+
+@pytest.fixture(autouse=True)
+def _isolate_user_agent_dirs(monkeypatch):
+    """Prevent tests from scanning real user home directories."""
+    monkeypatch.setattr(PathResolver, "resolve_codex_dirs", staticmethod(lambda _cfg=None: []))
+    monkeypatch.setattr(PathResolver, "resolve_gemini_dirs", staticmethod(lambda _cfg=None: []))
 
 
 @pytest.fixture

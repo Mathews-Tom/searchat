@@ -128,6 +128,16 @@ OPENCODE_DIR_CANDIDATES = [
     Path.home() / ".local" / "share" / "opencode",
 ]
 
+# OpenAI Codex directory locations
+CODEX_DIR_CANDIDATES = [
+    Path.home() / ".codex",
+]
+
+# Google Gemini CLI directory locations
+GEMINI_TMP_DIR_CANDIDATES = [
+    Path.home() / ".gemini" / "tmp",
+]
+
 # WSL mount point patterns
 WSL_MOUNT_PREFIX = "/mnt/"
 WSL_UNC_PREFIX = "\\\\wsl$\\"
@@ -141,6 +151,8 @@ ENV_WINDOWS_PROJECTS = "SEARCHAT_WINDOWS_PROJECTS_DIR"
 ENV_WSL_PROJECTS = "SEARCHAT_WSL_PROJECTS_DIR"
 ENV_ADDITIONAL_DIRS = "SEARCHAT_ADDITIONAL_DIRS"
 ENV_OPENCODE_DATA_DIR = "SEARCHAT_OPENCODE_DATA_DIR"
+ENV_CODEX_DATA_DIR = "SEARCHAT_CODEX_DATA_DIR"
+ENV_GEMINI_DATA_DIR = "SEARCHAT_GEMINI_DATA_DIR"
 
 ENV_PORT = "SEARCHAT_PORT"
 ENV_HOST = "SEARCHAT_HOST"

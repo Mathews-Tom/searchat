@@ -24,6 +24,10 @@ from .constants import (
     CLAUDE_DIR_CANDIDATES,
     ENV_OPENCODE_DATA_DIR,
     OPENCODE_DIR_CANDIDATES,
+    ENV_CODEX_DATA_DIR,
+    CODEX_DIR_CANDIDATES,
+    ENV_GEMINI_DATA_DIR,
+    GEMINI_TMP_DIR_CANDIDATES,
 )
 
 
@@ -309,13 +313,71 @@ class PathResolver:
                     paths.append(candidate)
 
         seen: set[str] = set()
-        unique_paths: List[Path] = []
+        unique_paths: list[Path] = []
         for path in paths:
             resolved = path.resolve() if path.exists() else path
             path_str = str(resolved)
             if path_str not in seen:
                 seen.add(path_str)
                 unique_paths.append(path)
+
+        return unique_paths
+
+    @staticmethod
+    def resolve_codex_dirs(_config=None) -> list[Path]:
+        """Resolve OpenAI Codex data directories."""
+        paths: list[Path] = []
+
+        codex_dir = os.getenv(ENV_CODEX_DATA_DIR) or os.getenv("CODEX_HOME")
+        if codex_dir:
+            expanded = PathResolver.expand_path_template(codex_dir)
+            path = Path(expanded)
+            if path.exists():
+                paths.append(path)
+
+        if not paths:
+            for candidate in CODEX_DIR_CANDIDATES:
+                if candidate.exists():
+                    paths.append(candidate)
+
+        seen: set[str] = set()
+        unique_paths: list[Path] = []
+        for path in paths:
+            resolved = path.resolve() if path.exists() else path
+            path_str = str(resolved)
+            if path_str in seen:
+                continue
+            seen.add(path_str)
+            unique_paths.append(path)
+
+        return unique_paths
+
+    @staticmethod
+    def resolve_gemini_dirs(_config=None) -> list[Path]:
+        """Resolve Google Gemini CLI data directories."""
+        paths: list[Path] = []
+
+        gemini_dir = os.getenv(ENV_GEMINI_DATA_DIR)
+        if gemini_dir:
+            expanded = PathResolver.expand_path_template(gemini_dir)
+            path = Path(expanded)
+            if path.exists():
+                paths.append(path)
+
+        if not paths:
+            for candidate in GEMINI_TMP_DIR_CANDIDATES:
+                if candidate.exists():
+                    paths.append(candidate)
+
+        seen: set[str] = set()
+        unique_paths: list[Path] = []
+        for path in paths:
+            resolved = path.resolve() if path.exists() else path
+            path_str = str(resolved)
+            if path_str in seen:
+                continue
+            seen.add(path_str)
+            unique_paths.append(path)
 
         return unique_paths
 
@@ -335,4 +397,6 @@ class PathResolver:
             'claude': PathResolver.resolve_claude_dirs(config),
             'vibe': PathResolver.resolve_vibe_dirs(),
             'opencode': PathResolver.resolve_opencode_dirs(config),
+            'codex': PathResolver.resolve_codex_dirs(config),
+            'gemini': PathResolver.resolve_gemini_dirs(config),
         }
