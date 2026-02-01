@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import mimetypes
 import os
 import time
 import warnings
@@ -65,7 +66,12 @@ _existing_warn = os.environ.get("PYTHONWARNINGS", "")
 if _warn_filter not in _existing_warn:
     os.environ["PYTHONWARNINGS"] = (
         f"{_existing_warn},{_warn_filter}" if _existing_warn else _warn_filter
-    )
+)
+
+# Ensure correct JS MIME types across platforms (notably Windows).
+# Without this, browsers may refuse to load ES modules from /static.
+mimetypes.add_type("text/javascript", ".js")
+mimetypes.add_type("text/javascript", ".mjs")
 
 
 # Cache HTML at module load for faster responses
