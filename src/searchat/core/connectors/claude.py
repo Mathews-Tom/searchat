@@ -11,8 +11,8 @@ from searchat.models import ConversationRecord, MessageRecord
 
 
 class ClaudeConnector:
-    name = "claude"
-    supported_extensions = (".jsonl",)
+    name: str = "claude"
+    supported_extensions: tuple[str, ...] = (".jsonl",)
 
     def discover_files(self, config: Config) -> list[Path]:
         files: list[Path] = []

@@ -70,6 +70,17 @@ class TestReindexEndpoint:
 class TestIndexMissingEndpoint:
     """Tests for POST /api/index_missing endpoint."""
 
+    class _FakeConnector:
+        def __init__(self, name: str, paths: list[Path] | None = None, *, raises: Exception | None = None):
+            self.name = name
+            self._paths = paths or []
+            self._raises = raises
+
+        def discover_files(self, _config):
+            if self._raises is not None:
+                raise self._raises
+            return list(self._paths)
+
     def test_index_missing_success(self, client, mock_config, mock_indexer, tmp_path):
         """Test indexing missing conversations successfully."""
         # Create temporary conversation files
@@ -86,23 +97,38 @@ class TestIndexMissingEndpoint:
         with patch('searchat.api.routers.indexing.get_config', return_value=mock_config):
             with patch('searchat.api.routers.indexing.get_indexer', return_value=mock_indexer):
                 with patch('searchat.api.routers.indexing.invalidate_search_index') as invalidate:
-                    with patch('searchat.api.routers.indexing.PathResolver.resolve_claude_dirs', return_value=[claude_dir]):
-                        with patch('searchat.api.routers.indexing.PathResolver.resolve_vibe_dirs', return_value=[vibe_dir]):
-                            with patch('searchat.api.routers.indexing.PathResolver.resolve_opencode_dirs', return_value=[]):
-                                with patch('searchat.api.routers.indexing.indexing_state', {"in_progress": False}):
-                                    response = client.post("/api/index_missing")
+                    connectors = [
+                        self._FakeConnector(
+                            "claude",
+                            paths=[
+                                claude_dir / "conv1.jsonl",
+                                claude_dir / "conv2.jsonl",
+                                claude_dir / "conv3.jsonl",
+                            ],
+                        ),
+                        self._FakeConnector(
+                            "vibe",
+                            paths=[
+                                vibe_dir / "session1.json",
+                            ],
+                        ),
+                    ]
+                    with patch('searchat.api.routers.indexing.get_connectors', return_value=connectors):
+                        with patch('searchat.api.routers.indexing.indexing_state', {"in_progress": False}):
+                            response = client.post("/api/index_missing")
 
-                                assert response.status_code == 200
-                                data = response.json()
+                                
+                    assert response.status_code == 200
+                    data = response.json()
 
-                                assert data["success"] is True
-                                assert data["new_conversations"] == 5
-                                assert data["total_files"] == 4  # 3 JSONL + 1 JSON
-                                assert data["already_indexed"] == 2
-                                assert "time_seconds" in data
+                    assert data["success"] is True
+                    assert data["new_conversations"] == 5
+                    assert data["total_files"] == 4  # 3 JSONL + 1 JSON
+                    assert data["already_indexed"] == 2
+                    assert "time_seconds" in data
 
-                                mock_indexer.index_append_only.assert_called_once()
-                                invalidate.assert_called_once()
+                    mock_indexer.index_append_only.assert_called_once()
+                    invalidate.assert_called_once()
 
     def test_index_missing_all_indexed(self, client, mock_config, mock_indexer, tmp_path):
         """Test when all conversations are already indexed."""
@@ -115,19 +141,18 @@ class TestIndexMissingEndpoint:
 
         with patch('searchat.api.routers.indexing.get_config', return_value=mock_config):
             with patch('searchat.api.routers.indexing.get_indexer', return_value=mock_indexer):
-                with patch('searchat.api.routers.indexing.PathResolver.resolve_claude_dirs', return_value=[claude_dir]):
-                    with patch('searchat.api.routers.indexing.PathResolver.resolve_vibe_dirs', return_value=[]):
-                        with patch('searchat.api.routers.indexing.PathResolver.resolve_opencode_dirs', return_value=[]):
-                            response = client.post("/api/index_missing")
+                connectors = [self._FakeConnector("claude", paths=[claude_dir / "conv1.jsonl"])]
+                with patch('searchat.api.routers.indexing.get_connectors', return_value=connectors):
+                    response = client.post("/api/index_missing")
 
-                        assert response.status_code == 200
-                        data = response.json()
+                assert response.status_code == 200
+                data = response.json()
 
-                        assert data["success"] is True
-                        assert data["new_conversations"] == 0
-                        assert "already indexed" in data["message"].lower()
+                assert data["success"] is True
+                assert data["new_conversations"] == 0
+                assert "already indexed" in data["message"].lower()
 
-                        mock_indexer.index_append_only.assert_not_called()
+                mock_indexer.index_append_only.assert_not_called()
 
     def test_index_missing_sets_indexing_state(self, client, mock_config, mock_indexer, tmp_path):
         """Test that indexing state is properly managed."""
@@ -139,15 +164,14 @@ class TestIndexMissingEndpoint:
 
         with patch('searchat.api.routers.indexing.get_config', return_value=mock_config):
             with patch('searchat.api.routers.indexing.get_indexer', return_value=mock_indexer):
-                with patch('searchat.api.routers.indexing.PathResolver.resolve_claude_dirs', return_value=[claude_dir]):
-                    with patch('searchat.api.routers.indexing.PathResolver.resolve_vibe_dirs', return_value=[]):
-                        with patch('searchat.api.routers.indexing.PathResolver.resolve_opencode_dirs', return_value=[]):
-                            with patch('searchat.api.routers.indexing.indexing_state', indexing_state):
-                                response = client.post("/api/index_missing")
+                connectors = [self._FakeConnector("claude", paths=[claude_dir / "conv1.jsonl"])]
+                with patch('searchat.api.routers.indexing.get_connectors', return_value=connectors):
+                    with patch('searchat.api.routers.indexing.indexing_state', indexing_state):
+                        response = client.post("/api/index_missing")
 
-                            # State should be reset after completion
-                            assert indexing_state["in_progress"] is False
-                            assert indexing_state["operation"] is None
+        # State should be reset after completion
+        assert indexing_state["in_progress"] is False
+        assert indexing_state["operation"] is None
 
     def test_index_missing_error_handling(self, client, mock_config, mock_indexer, tmp_path):
         """Test error handling when indexing fails."""
@@ -160,14 +184,13 @@ class TestIndexMissingEndpoint:
 
         with patch('searchat.api.routers.indexing.get_config', return_value=mock_config):
             with patch('searchat.api.routers.indexing.get_indexer', return_value=mock_indexer):
-                with patch('searchat.api.routers.indexing.PathResolver.resolve_claude_dirs', return_value=[tmp_path]):
-                    with patch('searchat.api.routers.indexing.PathResolver.resolve_vibe_dirs', return_value=[]):
-                        with patch('searchat.api.routers.indexing.PathResolver.resolve_opencode_dirs', return_value=[]):
-                            with patch('searchat.api.routers.indexing.indexing_state', {"in_progress": False}):
-                                response = client.post("/api/index_missing")
+                connectors = [self._FakeConnector("claude", paths=[test_file])]
+                with patch('searchat.api.routers.indexing.get_connectors', return_value=connectors):
+                    with patch('searchat.api.routers.indexing.indexing_state', {"in_progress": False}):
+                        response = client.post("/api/index_missing")
 
-                            assert response.status_code == 500
-                            assert "Indexing error" in response.json()["detail"]
+        assert response.status_code == 500
+        assert "Indexing error" in response.json()["detail"]
 
     def test_index_missing_progress_adapter_updates_state(self):
         from searchat.api.routers.indexing import StateTrackingProgressAdapter
@@ -179,27 +202,15 @@ class TestIndexMissingEndpoint:
         assert state["files_total"] == 10
 
     def test_index_missing_handles_scan_errors(self, client, mock_config, mock_indexer):
-        class BoomDir:
-            def rglob(self, _pattern: str):
-                raise RuntimeError("nope")
-
-            def __str__(self) -> str:
-                return "/boom"
-
-        class BoomVibeDir:
-            def glob(self, _pattern: str):
-                raise RuntimeError("nope")
-
-            def __str__(self) -> str:
-                return "/boom-vibe"
-
         with patch('searchat.api.routers.indexing.get_config', return_value=mock_config):
             with patch('searchat.api.routers.indexing.get_indexer', return_value=mock_indexer):
-                with patch('searchat.api.routers.indexing.PathResolver.resolve_claude_dirs', return_value=[BoomDir()]):
-                    with patch('searchat.api.routers.indexing.PathResolver.resolve_vibe_dirs', return_value=[BoomVibeDir()]):
-                        with patch('searchat.api.routers.indexing.PathResolver.resolve_opencode_dirs', return_value=[]):
-                            with patch('searchat.api.routers.indexing.indexing_state', {"in_progress": False}):
-                                resp = client.post('/api/index_missing')
+                connectors = [
+                    self._FakeConnector("claude", raises=RuntimeError("nope")),
+                    self._FakeConnector("vibe", raises=RuntimeError("nope")),
+                ]
+                with patch('searchat.api.routers.indexing.get_connectors', return_value=connectors):
+                    with patch('searchat.api.routers.indexing.indexing_state', {"in_progress": False}):
+                        resp = client.post('/api/index_missing')
 
         assert resp.status_code == 200
         assert resp.json()["new_conversations"] == 0
@@ -215,11 +226,10 @@ class TestIndexMissingEndpoint:
         with patch('searchat.api.routers.indexing.get_config', return_value=mock_config):
             with patch('searchat.api.routers.indexing.get_indexer', return_value=mock_indexer):
                 with patch('searchat.api.routers.indexing.invalidate_search_index'):
-                    with patch('searchat.api.routers.indexing.PathResolver.resolve_claude_dirs', return_value=[]):
-                        with patch('searchat.api.routers.indexing.PathResolver.resolve_vibe_dirs', return_value=[]):
-                            with patch('searchat.api.routers.indexing.PathResolver.resolve_opencode_dirs', return_value=[opencode_dir]):
-                                with patch('searchat.api.routers.indexing.indexing_state', {"in_progress": False}):
-                                    resp = client.post('/api/index_missing')
+                    connectors = [self._FakeConnector("opencode", paths=[session_dir / "s1.json"])]
+                    with patch('searchat.api.routers.indexing.get_connectors', return_value=connectors):
+                        with patch('searchat.api.routers.indexing.indexing_state', {"in_progress": False}):
+                            resp = client.post('/api/index_missing')
 
         assert resp.status_code == 200
         mock_indexer.index_append_only.assert_called_once()
@@ -236,11 +246,10 @@ class TestIndexMissingEndpoint:
         with patch('searchat.api.routers.indexing.get_config', return_value=mock_config):
             with patch('searchat.api.routers.indexing.get_indexer', return_value=mock_indexer):
                 with patch('searchat.api.routers.indexing.invalidate_search_index'):
-                    with patch('searchat.api.routers.indexing.PathResolver.resolve_claude_dirs', return_value=[claude_dir]):
-                        with patch('searchat.api.routers.indexing.PathResolver.resolve_vibe_dirs', return_value=[]):
-                            with patch('searchat.api.routers.indexing.PathResolver.resolve_opencode_dirs', return_value=[]):
-                                with patch('searchat.api.routers.indexing.indexing_state', {"in_progress": False}):
-                                    resp = client.post('/api/index_missing')
+                    connectors = [self._FakeConnector("claude", paths=[claude_dir / "conv1.jsonl"])]
+                    with patch('searchat.api.routers.indexing.get_connectors', return_value=connectors):
+                        with patch('searchat.api.routers.indexing.indexing_state', {"in_progress": False}):
+                            resp = client.post('/api/index_missing')
 
         assert resp.status_code == 200
         assert "failed" in resp.json()["message"].lower()

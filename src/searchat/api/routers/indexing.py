@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from searchat.core.logging_config import get_logger
 from searchat.core.progress import LoggingProgressAdapter
-from searchat.config import PathResolver
+from searchat.core.connectors import get_connectors
 import searchat.api.dependencies as deps
 
 from searchat.api.dependencies import (
@@ -63,34 +63,13 @@ async def index_missing(snapshot: str | None = Query(None, description="Backup s
         indexer = get_indexer()
 
         # Get all conversation files
-        all_files = []
-
-        # Claude Code conversations (.jsonl)
-        for claude_dir in PathResolver.resolve_claude_dirs(config):
+        all_files: list[str] = []
+        for connector in get_connectors():
             try:
-                jsonl_files = list(claude_dir.rglob("*.jsonl"))
-                all_files.extend([str(f) for f in jsonl_files])
-            except Exception as e:
-                logger.warning(f"Error scanning {claude_dir}: {e}")
-
-        # Vibe sessions (.json)
-        for vibe_dir in PathResolver.resolve_vibe_dirs():
-            try:
-                json_files = list(vibe_dir.glob("*.json"))
-                all_files.extend([str(f) for f in json_files])
-            except Exception as e:
-                logger.warning(f"Error scanning {vibe_dir}: {e}")
-
-        # OpenCode sessions (.json)
-        for opencode_dir in PathResolver.resolve_opencode_dirs(config):
-            storage_session_dir = opencode_dir / "storage" / "session"
-            if not storage_session_dir.exists():
-                continue
-            try:
-                session_files = list(storage_session_dir.glob("*/*.json"))
-                all_files.extend([str(f) for f in session_files])
-            except Exception as e:
-                logger.warning(f"Error scanning {storage_session_dir}: {e}")
+                for path in connector.discover_files(config):
+                    all_files.append(str(path))
+            except Exception as exc:
+                logger.warning("Error scanning %s: %s", getattr(connector, "name", "<unknown>"), exc)
 
         # Get already indexed files
         indexed_paths = indexer.get_indexed_file_paths()

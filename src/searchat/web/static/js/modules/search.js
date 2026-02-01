@@ -130,7 +130,36 @@ function getToolLabel(tool) {
     if (tool === 'vibe') {
         return 'Vibe';
     }
+    if (tool === 'codex') {
+        return 'Codex';
+    }
+    if (tool === 'gemini') {
+        return 'Gemini CLI';
+    }
+    if (tool === 'continue') {
+        return 'Continue';
+    }
+    if (tool === 'cursor') {
+        return 'Cursor';
+    }
+    if (tool === 'aider') {
+        return 'Aider';
+    }
     return 'Claude Code';
+}
+
+function detectToolFromPath(filePath) {
+    const normalized = String(filePath || '').toLowerCase().replace(/\\/g, '/');
+    if (normalized.includes('/.local/share/opencode/')) return 'opencode';
+    if (normalized.includes('/.codex/')) return 'codex';
+    if (normalized.includes('/.continue/sessions/') && normalized.endsWith('.json')) return 'continue';
+    if (normalized.includes('.vscdb.cursor/') && normalized.endsWith('.json')) return 'cursor';
+    if (normalized.includes('/.gemini/tmp/') && normalized.includes('/chats/') && normalized.endsWith('.json')) return 'gemini';
+    if (normalized.endsWith('/.aider.chat.history.md') || normalized.endsWith('.aider.chat.history.md')) return 'aider';
+    if (normalized.includes('/.claude/') && normalized.endsWith('.jsonl')) return 'claude';
+    if (normalized.includes('/.vibe/') && normalized.endsWith('.json')) return 'vibe';
+    if (normalized.endsWith('.jsonl')) return 'claude';
+    return 'vibe';
 }
 
 function escapeRegExp(value) {
@@ -413,6 +442,16 @@ export async function search(resetPage = true, attempt = 0) {
             params.append('tool', 'opencode');
         } else if (projectValue.startsWith('vibe-')) {
             params.append('tool', 'vibe');
+        } else if (projectValue === 'codex') {
+            params.append('tool', 'codex');
+        } else if (projectValue === 'gemini' || projectValue.startsWith('gemini-')) {
+            params.append('tool', 'gemini');
+        } else if (projectValue === 'continue' || projectValue.startsWith('continue-')) {
+            params.append('tool', 'continue');
+        } else if (projectValue === 'cursor' || projectValue.startsWith('cursor-')) {
+            params.append('tool', 'cursor');
+        } else if (projectValue === 'aider' || projectValue.startsWith('aider-')) {
+            params.append('tool', 'aider');
         }
     }
 
@@ -856,7 +895,7 @@ export async function loadConversationView(conversationId, pushState = true) {
 
         const data = await response.json();
         debug.textContent = `Loaded ${conversationId} | messages: ${Array.isArray(data.messages) ? data.messages.length : 0}`;
-        const tool = data.tool || (data.file_path.endsWith('.jsonl') ? 'claude' : 'vibe');
+        const tool = data.tool || detectToolFromPath(data.file_path);
         const toolLabel = getToolLabel(tool);
         const projectPath = data.project_path || '';
         const headerMeta = projectPath

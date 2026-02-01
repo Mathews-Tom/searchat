@@ -120,6 +120,9 @@ vibe = "searchat.core.connectors.vibe:VibeConnector"
 opencode = "searchat.core.connectors.opencode:OpenCodeConnector"
 codex = "searchat.core.connectors.codex:CodexConnector"
 gemini = "searchat.core.connectors.gemini:GeminiCLIConnector"
+continue = "searchat.core.connectors.continue_cli:ContinueConnector"
+cursor = "searchat.core.connectors.cursor:CursorConnector"
+aider = "searchat.core.connectors.aider:AiderConnector"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/searchat"]

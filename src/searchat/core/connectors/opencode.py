@@ -11,8 +11,8 @@ from searchat.models import ConversationRecord, MessageRecord
 
 
 class OpenCodeConnector:
-    name = "opencode"
-    supported_extensions = (".json",)
+    name: str = "opencode"
+    supported_extensions: tuple[str, ...] = (".json",)
 
     def discover_files(self, config: Config) -> list[Path]:
         files: list[Path] = []

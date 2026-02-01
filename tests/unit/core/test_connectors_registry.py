@@ -39,6 +39,29 @@ def test_detect_connector_gemini(tmp_path):
     assert connector.name == "gemini"
 
 
+def test_detect_connector_continue(tmp_path):
+    file_path = tmp_path / "session.json"
+    file_path.write_text(
+        json.dumps({"workspaceDirectory": "/repo", "messages": [{"role": "user", "content": "Hi"}]}),
+        encoding="utf-8",
+    )
+    connector = detect_connector(file_path)
+    assert connector.name == "continue"
+
+
+def test_detect_connector_cursor_pseudo_path():
+    pseudo = Path("/tmp/state.vscdb.cursor/00000000-0000-0000-0000-000000000000.json")
+    connector = detect_connector(pseudo)
+    assert connector.name == "cursor"
+
+
+def test_detect_connector_aider(tmp_path):
+    file_path = tmp_path / ".aider.chat.history.md"
+    file_path.write_text("#### user:\nHello\n", encoding="utf-8")
+    connector = detect_connector(file_path)
+    assert connector.name == "aider"
+
+
 def test_supported_extensions():
     extensions = supported_extensions()
     assert ".jsonl" in extensions

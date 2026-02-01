@@ -304,7 +304,7 @@ def _build_filters(filters_value: Any) -> SearchFilters:
     tool = filters_value.get("tool")
     if isinstance(tool, str) and tool:
         tool_value = tool.lower()
-        if tool_value not in ("claude", "vibe", "opencode"):
+        if tool_value not in ("claude", "vibe", "opencode", "codex", "gemini", "continue", "cursor", "aider"):
             raise ValueError("Invalid tool filter in saved query")
         filters.tool = tool_value
 

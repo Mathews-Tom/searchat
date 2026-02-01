@@ -337,6 +337,31 @@
     color: var(--success);
 }
 
+.tool-badge.codex {
+    background: rgba(87, 96, 106, 0.12);
+    color: var(--text-muted);
+}
+
+.tool-badge.gemini {
+    background: rgba(5, 80, 174, 0.12);
+    color: var(--accent-secondary);
+}
+
+.tool-badge.continue {
+    background: rgba(26, 127, 55, 0.12);
+    color: var(--success);
+}
+
+.tool-badge.cursor {
+    background: rgba(9, 105, 218, 0.12);
+    color: var(--accent-primary);
+}
+
+.tool-badge.aider {
+    background: rgba(168, 85, 247, 0.12);
+    color: var(--accent-secondary);
+}
+
 .header {
     background: var(--bg-elevated);
     border: 1px solid var(--border-default);

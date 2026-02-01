@@ -28,6 +28,10 @@ from .constants import (
     CODEX_DIR_CANDIDATES,
     ENV_GEMINI_DATA_DIR,
     GEMINI_TMP_DIR_CANDIDATES,
+    ENV_CONTINUE_DATA_DIR,
+    CONTINUE_SESSIONS_DIR_CANDIDATES,
+    ENV_CURSOR_DATA_DIR,
+    ENV_AIDER_PROJECT_DIRS,
 )
 
 
@@ -382,6 +386,109 @@ class PathResolver:
         return unique_paths
 
     @staticmethod
+    def resolve_continue_dirs(_config=None) -> list[Path]:
+        """Resolve Continue session directories."""
+        paths: list[Path] = []
+
+        continue_dir = os.getenv(ENV_CONTINUE_DATA_DIR)
+        if continue_dir:
+            expanded = PathResolver.expand_path_template(continue_dir)
+            path = Path(expanded)
+            if path.exists():
+                paths.append(path)
+
+        if not paths:
+            for candidate in CONTINUE_SESSIONS_DIR_CANDIDATES:
+                if candidate.exists():
+                    paths.append(candidate)
+
+        seen: set[str] = set()
+        unique_paths: list[Path] = []
+        for path in paths:
+            resolved = path.resolve() if path.exists() else path
+            path_str = str(resolved)
+            if path_str in seen:
+                continue
+            seen.add(path_str)
+            unique_paths.append(path)
+
+        return unique_paths
+
+    @staticmethod
+    def resolve_cursor_dirs(_config=None) -> list[Path]:
+        """Resolve Cursor user data directories."""
+        paths: list[Path] = []
+
+        cursor_dir = os.getenv(ENV_CURSOR_DATA_DIR)
+        if cursor_dir:
+            expanded = PathResolver.expand_path_template(cursor_dir)
+            path = Path(expanded)
+            if path.exists():
+                paths.append(path)
+
+        if not paths:
+            system = platform.system().lower()
+            if system == "darwin":
+                candidate = Path.home() / "Library" / "Application Support" / "Cursor" / "User"
+                if candidate.exists():
+                    paths.append(candidate)
+            elif system == "windows":
+                appdata = os.getenv("APPDATA")
+                if appdata:
+                    candidate = Path(appdata) / "Cursor" / "User"
+                    if candidate.exists():
+                        paths.append(candidate)
+            else:
+                candidate = Path.home() / ".config" / "Cursor" / "User"
+                if candidate.exists():
+                    paths.append(candidate)
+
+        seen: set[str] = set()
+        unique_paths: list[Path] = []
+        for path in paths:
+            resolved = path.resolve() if path.exists() else path
+            path_str = str(resolved)
+            if path_str in seen:
+                continue
+            seen.add(path_str)
+            unique_paths.append(path)
+
+        return unique_paths
+
+    @staticmethod
+    def resolve_aider_dirs(_config=None) -> list[Path]:
+        """Resolve Aider project directories.
+
+        Aider writes per-repo chat logs to `.aider.chat.history.md`. Since these
+        live inside arbitrary project roots, Searchat only scans directories
+        explicitly provided via the `SEARCHAT_AIDER_PROJECT_DIRS` environment
+        variable.
+
+        Set `SEARCHAT_AIDER_PROJECT_DIRS` as a path-separated list (like PATH).
+        """
+        paths: list[Path] = []
+
+        raw = os.getenv(ENV_AIDER_PROJECT_DIRS)
+        if raw:
+            for dir_path in raw.split(os.pathsep):
+                expanded = PathResolver.expand_path_template(dir_path)
+                path = Path(expanded).expanduser()
+                if path.exists():
+                    paths.append(path)
+
+        seen: set[str] = set()
+        unique_paths: list[Path] = []
+        for path in paths:
+            resolved = path.resolve() if path.exists() else path
+            path_str = str(resolved)
+            if path_str in seen:
+                continue
+            seen.add(path_str)
+            unique_paths.append(path)
+
+        return unique_paths
+
+    @staticmethod
     def resolve_all_agent_dirs(config=None) -> dict:
         """
         Resolve all supported AI coding agent directories.
@@ -399,4 +506,7 @@ class PathResolver:
             'opencode': PathResolver.resolve_opencode_dirs(config),
             'codex': PathResolver.resolve_codex_dirs(config),
             'gemini': PathResolver.resolve_gemini_dirs(config),
+            'continue': PathResolver.resolve_continue_dirs(config),
+            'cursor': PathResolver.resolve_cursor_dirs(config),
+            'aider': PathResolver.resolve_aider_dirs(config),
         }

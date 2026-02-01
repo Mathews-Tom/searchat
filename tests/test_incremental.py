@@ -25,6 +25,10 @@ def claude_project_dir(tmp_path, monkeypatch):
     monkeypatch.setattr(PathResolver, "resolve_claude_dirs", lambda config=None: [claude_dir])
     monkeypatch.setattr(PathResolver, "resolve_vibe_dirs", lambda: [])
     monkeypatch.setattr(PathResolver, "resolve_opencode_dirs", lambda config=None: [])
+    monkeypatch.setattr(PathResolver, "resolve_codex_dirs", lambda config=None: [])
+    monkeypatch.setattr(PathResolver, "resolve_gemini_dirs", lambda config=None: [])
+    monkeypatch.setattr(PathResolver, "resolve_continue_dirs", lambda config=None: [])
+    monkeypatch.setattr(PathResolver, "resolve_cursor_dirs", lambda config=None: [])
     return claude_dir
 
 

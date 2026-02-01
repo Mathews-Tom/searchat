@@ -10,29 +10,30 @@ from searchat.config import Config, PathResolver
 from searchat.models import ConversationRecord, MessageRecord
 
 
-class GeminiCLIConnector:
-    name: str = "gemini"
+class ContinueConnector:
+    name: str = "continue"
     supported_extensions: tuple[str, ...] = (".json",)
 
     def discover_files(self, config: Config) -> list[Path]:
         files: list[Path] = []
-        for gemini_root in PathResolver.resolve_gemini_dirs(config):
-            if not gemini_root.exists():
+        for sessions_dir in PathResolver.resolve_continue_dirs(config):
+            if not sessions_dir.exists():
                 continue
-            for project_dir in gemini_root.iterdir():
-                if not project_dir.is_dir():
+            for candidate in sessions_dir.glob("*.json"):
+                if candidate.name == "sessions.json":
                     continue
-                chats_dir = project_dir / "chats"
-                if chats_dir.exists():
-                    files.extend(chats_dir.glob("*.json"))
+                files.append(candidate)
         return files
 
     def watch_dirs(self, config: Config) -> list[Path]:
-        return [p for p in PathResolver.resolve_gemini_dirs(config) if p.exists()]
+        return [p for p in PathResolver.resolve_continue_dirs(config) if p.exists()]
 
     def can_parse(self, path: Path) -> bool:
         if path.suffix != ".json":
             return False
+        if path.name == "sessions.json":
+            return False
+
         try:
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
@@ -42,23 +43,25 @@ class GeminiCLIConnector:
         if not isinstance(data, dict):
             return False
 
-        # Avoid collisions with Continue sessions.
-        if "workspaceDirectory" in data:
-            return False
-
         # Avoid collisions with other JSON connectors.
         if "metadata" in data and "messages" in data:
             return False
         if "projectID" in data and "sessionID" in data:
             return False
+        if ("history" in data or "turns" in data) and ("chats" in str(path).lower()):
+            return False
 
-        history = data.get("history") or data.get("turns")
-        if isinstance(history, list) and history:
-            return True
+        items = data.get("messages") or data.get("history")
+        if not isinstance(items, list) or not items:
+            return False
 
-        messages = data.get("messages")
-        if isinstance(messages, list) and messages:
-            return True
+        for entry in items[:10]:
+            if not isinstance(entry, dict):
+                continue
+            role = entry.get("role") or entry.get("author")
+            content = entry.get("content") or entry.get("text") or entry.get("message")
+            if isinstance(role, str) and role.strip() and isinstance(content, str) and content.strip():
+                return True
 
         return False
 
@@ -67,11 +70,15 @@ class GeminiCLIConnector:
             data = json.load(f)
 
         if not isinstance(data, dict):
-            raise ValueError(f"Invalid Gemini chat format: {path}")
+            raise ValueError(f"Invalid Continue session format: {path}")
 
-        items = data.get("history") or data.get("turns") or data.get("messages") or []
+        items = data.get("messages") or data.get("history") or []
         if not isinstance(items, list):
             items = []
+
+        workspace_dir = data.get("workspaceDirectory")
+        workspace_hash = self._workspace_hash(workspace_dir)
+        project_id = f"continue-{workspace_hash}" if workspace_hash else "continue"
 
         messages: list[MessageRecord] = []
         full_text_parts: list[str] = []
@@ -83,7 +90,7 @@ class GeminiCLIConnector:
             role = entry.get("role") or entry.get("author") or "user"
             if not isinstance(role, str):
                 role = "user"
-            role = role.lower()
+            role = role.lower().strip()
             if role not in ("user", "assistant", "system", "tool"):
                 continue
 
@@ -112,11 +119,7 @@ class GeminiCLIConnector:
 
         file_hash = hashlib.sha256(path.read_bytes()).hexdigest()
         conversation_id = path.stem
-
-        project_hash = self._project_hash_from_path(path)
-        project_id = f"gemini-{project_hash}" if project_hash else "gemini"
-
-        title = self._title_from_messages(messages) or "Untitled Gemini Chat"
+        title = self._title_from_messages(messages) or "Untitled Continue Session"
         full_text = "\n\n".join(full_text_parts)
 
         created_at = messages[0].timestamp if messages else datetime.fromtimestamp(path.stat().st_mtime)
@@ -145,30 +148,19 @@ class GeminiCLIConnector:
             text = content.get("text") or content.get("content")
             if isinstance(text, str) and text.strip():
                 return text.strip()
-
-        parts = entry.get("parts")
-        if isinstance(parts, list):
-            out: list[str] = []
-            for part in parts:
-                if isinstance(part, str) and part.strip():
-                    out.append(part.strip())
+        if isinstance(content, list):
+            parts: list[str] = []
+            for block in content:
+                if isinstance(block, str) and block.strip():
+                    parts.append(block.strip())
                     continue
-                if isinstance(part, dict):
-                    text = part.get("text") or part.get("content")
+                if isinstance(block, dict):
+                    text = block.get("text") or block.get("content")
                     if isinstance(text, str) and text.strip():
-                        out.append(text.strip())
-            return "\n\n".join(out)
-
+                        parts.append(text.strip())
+            if parts:
+                return "\n\n".join(parts)
         return ""
-
-    def _project_hash_from_path(self, path: Path) -> str | None:
-        # ~/.gemini/tmp/<project_hash>/chats/<id>.json
-        try:
-            if path.parent.name == "chats":
-                return path.parent.parent.name
-        except Exception:
-            return None
-        return None
 
     def _title_from_messages(self, messages: list[MessageRecord]) -> str | None:
         for msg in messages:
@@ -178,6 +170,12 @@ class GeminiCLIConnector:
             if msg.content.strip():
                 return msg.content.strip().splitlines()[0][:100]
         return None
+
+    def _workspace_hash(self, value: object) -> str | None:
+        if not isinstance(value, str) or not value.strip():
+            return None
+        digest = hashlib.sha1(value.strip().encode("utf-8")).hexdigest()
+        return digest[:10]
 
     def _parse_timestamp(self, value: object) -> datetime | None:
         if value is None:
