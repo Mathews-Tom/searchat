@@ -1,0 +1,87 @@
+[paths]
+# Claude projects directory
+# Use forward slashes. {username} is replaced with current user.
+claude_directory_windows = "~/.claude/projects"
+# WSL directory (optional, leave empty if not using WSL)
+# Example: //wsl$/Ubuntu/home/{username}/.claude/projects
+claude_directory_wsl = ""
+# Search index directory
+search_directory = "~/.searchat"
+auto_detect_environment = true
+
+[indexing]
+batch_size = 1000
+auto_index = true
+index_interval_minutes = 60
+max_workers = 4
+# Re-index modified conversations to capture in-progress work
+reindex_on_modification = true
+# Wait 5 minutes after last modification before re-indexing (prevents excessive re-indexing)
+modification_debounce_minutes = 5
+enable_connectors = true
+enable_adaptive_indexing = true
+
+[search]
+default_mode = "hybrid"
+max_results = 100
+snippet_length = 200
+
+[embedding]
+model = "all-MiniLM-L6-v2"
+batch_size = 32
+cache_embeddings = true
+# Device for embedding model:
+#   "auto" - auto-detect (cuda > mps > cpu)
+#   "cuda" - NVIDIA GPU (Windows/Linux)
+#   "mps"  - Apple Silicon GPU (macOS M1/M2/M3)
+#   "cpu"  - CPU only
+device = "auto"
+
+[ui]
+theme = "auto"
+font_family = "Segoe UI"
+font_size = 11
+highlight_color = "#FFEB3B"
+
+[performance]
+memory_limit_mb = 3000
+query_cache_size = 100
+enable_profiling = false
+
+[analytics]
+# Opt-in analytics tracking. When disabled, searches are NOT logged.
+enabled = false
+retention_days = 30
+
+[logging]
+level = "INFO"
+file_enabled = true
+file_path = "~/.searchat/logs/searchat.log"
+file_max_bytes = 10485760  # 10MB
+file_backup_count = 5
+format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+use_rich_console = true
+
+[llm]
+default_provider = "ollama"
+openai_model = "gpt-4.1-mini"
+ollama_model = "ollama/gemma3"
+
+[chat]
+# Controls the non-streaming RAG endpoint and citation/source output.
+enable_rag = true
+enable_citations = true
+
+[export]
+# Export feature flags. Keep disabled by default until stabilized.
+enable_ipynb = false
+enable_pdf = false
+enable_tech_docs = false
+
+[dashboards]
+# Dashboard builder and widget rendering.
+enabled = true
+
+[snapshots]
+# Read-only snapshot browsing (backup view).
+enabled = true

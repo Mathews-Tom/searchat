@@ -18,6 +18,8 @@ def test_discover_watch_dirs_uses_connector_watch_dirs(monkeypatch, tmp_path: Pa
     monkeypatch.setattr(PathResolver, "resolve_claude_dirs", staticmethod(lambda _cfg=None: [claude_root]))
     monkeypatch.setattr(PathResolver, "resolve_vibe_dirs", staticmethod(lambda: [vibe_root]))
     monkeypatch.setattr(PathResolver, "resolve_opencode_dirs", staticmethod(lambda _cfg=None: [opencode_root]))
+    monkeypatch.setattr(PathResolver, "resolve_codex_dirs", staticmethod(lambda _cfg=None: []))
+    monkeypatch.setattr(PathResolver, "resolve_gemini_dirs", staticmethod(lambda _cfg=None: []))
 
     config = Mock()
     watch_dirs = discover_watch_dirs(config)

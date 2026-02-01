@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import hashlib
 import json
 import re
@@ -1522,15 +1524,13 @@ class ConversationIndexer:
                 "project_id": record.project_id,
             }
 
+        # NOTE: We intentionally do not call `faiss.Index.remove_ids()` here.
+        # Several FAISS builds can abort the process on remove_ids for IndexIDMap/IVF
+        # combinations, which is not catchable from Python. Instead we make semantic
+        # deletion append-only: drop rows from the metadata parquet so stale vectors
+        # can no longer join to conversations. This keeps indexing crash-free and
+        # preserves the project's "never delete data" safety posture.
         needs_rebuild = False
-
-        if removed_vector_ids:
-            ids = np.asarray(sorted(removed_vector_ids), dtype=np.int64)
-            selector = _build_id_selector(ids)
-            try:
-                existing_index.remove_ids(selector)
-            except Exception:
-                needs_rebuild = True
 
         if new_embeddings:
             embeddings_array = np.array(new_embeddings).astype(np.float32)

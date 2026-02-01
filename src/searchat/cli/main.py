@@ -346,6 +346,21 @@ class SearchCLI:
 
 def main():
     """Entry point"""
+    prog = Path(sys.argv[0]).name
+    argv = set(sys.argv[1:])
+    if prog.startswith("searchat"):
+        if "--version" in argv:
+            from searchat import __version__
+
+            print(__version__)
+            return
+        if "-h" in argv or "--help" in argv:
+            print("Usage: searchat")
+            print()
+            print("Interactive terminal UI for searching indexed conversations.")
+            print()
+            return
+
     cli = SearchCLI()
     cli.run()
 

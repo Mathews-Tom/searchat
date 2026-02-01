@@ -1,23 +1,38 @@
 [build-system]
-requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling>=1.25.0"]
+build-backend = "hatchling.build"
 
 [project]
 name = "searchat"
-version = "0.2.0"
-description = "Semantic search for AI coding agents - search Claude Code and Mistral Vibe conversations"
+version = "0.2.2"
+description = "Semantic search and RAG for local AI coding agent conversations"
 authors = [{name = "Searchat Contributors"}]
 license = {text = "MIT"}
 readme = "README.md"
 requires-python = ">=3.9"
+keywords = [
+    "semantic-search",
+    "rag",
+    "ai-coding",
+    "conversation-search",
+    "faiss",
+    "duckdb",
+    "local-first",
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Environment :: Web Environment",
+    "Framework :: FastAPI",
     "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Typing :: Typed",
 ]
 
 dependencies = [
@@ -29,6 +44,7 @@ dependencies = [
     "uvicorn>=0.20.0",
     "rich>=13.0.0",
     "tomli>=2.0.1",
+    "eval_type_backport>=0.3.0; python_version < '3.10'",
     "numpy<2",
     "pandas>=2.0.0",
     "python-dotenv>=1.0.0",
@@ -39,6 +55,12 @@ dependencies = [
     "reportlab>=4.2.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/Mathews-Tom/searchat"
+Repository = "https://github.com/Mathews-Tom/searchat.git"
+Issues = "https://github.com/Mathews-Tom/searchat/issues"
+Changelog = "https://github.com/Mathews-Tom/searchat/blob/master/CHANGELOG.md"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=7.4.0",
@@ -46,6 +68,38 @@ dev = [
     "pytest-asyncio>=0.21.0",
     "pytest-mock>=3.11.0",
     "httpx>=0.24.0",  # For testing FastAPI
+    "build>=1.2.2",
+]
+
+# MCP support (Phase 2)
+mcp = [
+    "mcp>=0.1.0; python_version >= '3.10'",
+]
+
+# Embedded LLM support (Phase 3)
+embedded = [
+    "llama-cpp-python>=0.2.0",
+]
+
+# Export formats
+pdf = [
+    "weasyprint>=60.0",
+]
+jupyter = [
+    "nbformat>=5.9.0",
+]
+
+all = [
+    "mcp>=0.1.0; python_version >= '3.10'",
+    "llama-cpp-python>=0.2.0",
+    "weasyprint>=60.0",
+    "nbformat>=5.9.0",
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-mock>=3.11.0",
+    "httpx>=0.24.0",
+    "build>=1.2.2",
 ]
 
 # GPU acceleration (NVIDIA CUDA)
@@ -58,10 +112,35 @@ gpu = [
 
 [project.scripts]
 searchat = "searchat.cli:main"
-searchat-web = "searchat.api:main"
+searchat-web = "searchat.api.app:main"
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[project.entry-points."searchat.connectors"]
+claude = "searchat.core.connectors.claude:ClaudeConnector"
+vibe = "searchat.core.connectors.vibe:VibeConnector"
+opencode = "searchat.core.connectors.opencode:OpenCodeConnector"
+codex = "searchat.core.connectors.codex:CodexConnector"
+gemini = "searchat.core.connectors.gemini:GeminiCLIConnector"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/searchat"]
+include = [
+    "src/searchat/py.typed",
+    "src/searchat/config/*.toml",
+    "src/searchat/web/index.html",
+    "src/searchat/web/static/**",
+]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/**",
+    "tests/**",
+    "docs/**",
+    ".docs/**",
+    "README.md",
+    "LICENSE",
+    "pyproject.toml",
+    "CHANGELOG.md",
+]
 
 # Pytest configuration moved to pytest.ini for better organization
 
@@ -92,4 +171,6 @@ dev = [
     "pytest>=8.4.2",
     "pytest-asyncio>=1.2.0",
     "pytest-cov>=7.0.0",
+    "httpx>=0.24.0",
+    "build>=1.2.2",
 ]

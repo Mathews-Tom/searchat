@@ -25,6 +25,20 @@ def test_detect_connector_opencode(tmp_path):
     assert connector.name == "opencode"
 
 
+def test_detect_connector_codex(tmp_path):
+    file_path = tmp_path / "rollout-0001.jsonl"
+    file_path.write_text(json.dumps({"role": "user", "content": "Hello"}) + "\n", encoding="utf-8")
+    connector = detect_connector(file_path)
+    assert connector.name == "codex"
+
+
+def test_detect_connector_gemini(tmp_path):
+    file_path = tmp_path / "chat.json"
+    file_path.write_text(json.dumps({"history": [{"role": "user", "content": "Hi"}]}), encoding="utf-8")
+    connector = detect_connector(file_path)
+    assert connector.name == "gemini"
+
+
 def test_supported_extensions():
     extensions = supported_extensions()
     assert ".jsonl" in extensions

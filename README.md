@@ -11,6 +11,8 @@ Semantic search and RAG-powered Q&A for AI coding agent conversations. Find past
 | Claude Code  | `~/.claude/projects/**/*.jsonl`                    | JSONL  |
 | Mistral Vibe | `~/.vibe/logs/session/*.json`                      | JSON   |
 | OpenCode     | `~/.local/share/opencode/storage/session/*/*.json` | JSON   |
+| OpenAI Codex | `~/.codex/sessions/**/rollout-*.jsonl`             | JSONL  |
+| Gemini CLI   | `~/.gemini/tmp/<project_hash>/chats/*.json`        | JSON   |
 
 ## Features
 

@@ -9,6 +9,8 @@ Supported agents:
 - OpenCode: ~/.local/share/opencode/storage/session/*/*.json
 """
 
+from __future__ import annotations
+
 import logging
 import threading
 import time
