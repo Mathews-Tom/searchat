@@ -347,17 +347,26 @@ class SearchCLI:
 def main():
     """Entry point"""
     prog = Path(sys.argv[0]).name
-    argv = set(sys.argv[1:])
+    argv = list(sys.argv[1:])
+    argv_set = set(argv)
     if prog.startswith("searchat"):
-        if "--version" in argv:
+        if "--version" in argv_set:
             from searchat import __version__
 
             print(__version__)
             return
-        if "-h" in argv or "--help" in argv:
+        if argv and argv[0] == "download-model":
+            from searchat.cli.download_model import run_download_model
+
+            raise SystemExit(run_download_model(argv[1:]))
+
+        if "-h" in argv_set or "--help" in argv_set:
             print("Usage: searchat")
             print()
             print("Interactive terminal UI for searching indexed conversations.")
+            print()
+            print("Commands:")
+            print("  searchat download-model [--preset NAME] [--activate]")
             print()
             return
 

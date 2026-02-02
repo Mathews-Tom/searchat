@@ -40,6 +40,7 @@ class Readiness:
             "metadata": "idle",
             "embedder": "idle",
             "indexer": "idle",
+            "embedded_model": "idle",
         }
         self._watcher: WatcherState = "disabled"
         self._errors: dict[str, str] = {}
