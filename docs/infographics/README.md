@@ -2,6 +2,13 @@
 
 Interactive HTML visualizations of Searchat's architecture, data flows, and features.
 
+## Quick Links
+
+- **PyPI Package**: [https://pypi.org/project/searchat/](https://pypi.org/project/searchat/)
+- **Installation**: `pip install searchat` (from PyPI) or `pip install -e .` (from source)
+- **Documentation**: [Main README](../../README.md) | [Architecture](../architecture.md) | [API Reference](../api-reference.md)
+- **Source Code**: [GitHub Repository](https://github.com/Mathews-Tom/searchat)
+
 ## Available Infographics
 
 ### Core Features
