@@ -23,15 +23,19 @@ async def chat(
     if snapshot is not None:
         raise HTTPException(status_code=403, detail="Chat is disabled in snapshot mode")
     provider = request.model_provider.lower()
-    if provider not in ("openai", "ollama"):
-        raise HTTPException(status_code=400, detail="model_provider must be 'openai' or 'ollama'.")
+    if provider not in ("openai", "ollama", "embedded"):
+        raise HTTPException(status_code=400, detail="model_provider must be 'openai', 'ollama', or 'embedded'.")
 
     readiness = get_readiness().snapshot()
-    for key in ("metadata", "faiss", "embedder"):
+    required = ["metadata", "faiss", "embedder"]
+    if provider == "embedded":
+        required.append("embedded_model")
+
+    for key in required:
         if readiness.components.get(key) == "error":
             return JSONResponse(status_code=500, content=error_payload())
 
-    if any(readiness.components.get(key) != "ready" for key in ("metadata", "faiss", "embedder")):
+    if any(readiness.components.get(key) != "ready" for key in required):
         trigger_search_engine_warmup()
         return JSONResponse(status_code=503, content=warming_payload())
 
@@ -61,15 +65,19 @@ async def chat_rag(
     if snapshot is not None:
         raise HTTPException(status_code=403, detail="Chat is disabled in snapshot mode")
     provider = request.model_provider.lower()
-    if provider not in ("openai", "ollama"):
-        raise HTTPException(status_code=400, detail="model_provider must be 'openai' or 'ollama'.")
+    if provider not in ("openai", "ollama", "embedded"):
+        raise HTTPException(status_code=400, detail="model_provider must be 'openai', 'ollama', or 'embedded'.")
 
     readiness = get_readiness().snapshot()
-    for key in ("metadata", "faiss", "embedder"):
+    required = ["metadata", "faiss", "embedder"]
+    if provider == "embedded":
+        required.append("embedded_model")
+
+    for key in required:
         if readiness.components.get(key) == "error":
             return JSONResponse(status_code=500, content=error_payload())
 
-    if any(readiness.components.get(key) != "ready" for key in ("metadata", "faiss", "embedder")):
+    if any(readiness.components.get(key) != "ready" for key in required):
         trigger_search_engine_warmup()
         return JSONResponse(status_code=503, content=warming_payload())
 

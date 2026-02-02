@@ -67,6 +67,14 @@ default_provider = "ollama"
 openai_model = "gpt-4.1-mini"
 ollama_model = "ollama/gemma3"
 
+# Embedded (local GGUF via llama-cpp-python). Only used when default_provider = "embedded"
+embedded_model_path = ""
+embedded_n_ctx = 4096
+# 0 = auto
+embedded_n_threads = 0
+embedded_auto_download = true
+embedded_default_preset = "qwen2.5-coder-1.5b-instruct-q4_k_m"
+
 [chat]
 # Controls the non-streaming RAG endpoint and citation/source output.
 enable_rag = true
@@ -85,3 +93,14 @@ enabled = true
 [snapshots]
 # Read-only snapshot browsing (backup view).
 enabled = true
+
+[daemon]
+# Ghost mode daemon (proactive context). Disabled by default.
+enabled = false
+poll_seconds = 5
+rescan_seconds = 30
+notifications_enabled = true
+# auto|macos|linux
+notifications_backend = "auto"
+max_suggestions = 3
+min_query_length = 8

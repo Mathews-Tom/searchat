@@ -92,3 +92,29 @@ class RAGResponse(BaseModel):
     answer: str
     sources: list[ConversationSource]
     context_used: int
+
+
+class CodeSearchResultResponse(BaseModel):
+    conversation_id: str
+    project_id: str
+    title: str
+    file_path: str
+    tool: str
+    message_index: int
+    block_index: int
+    role: str
+    language: str
+    language_source: str
+    fence_language: str | None = None
+    lines: int
+    code: str
+    code_hash: str
+    conversation_updated_at: str
+
+
+class CodeSearchResponse(BaseModel):
+    results: list[CodeSearchResultResponse]
+    total: int
+    limit: int
+    offset: int
+    has_more: bool

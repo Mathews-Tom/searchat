@@ -166,6 +166,17 @@ def _isolate_user_agent_dirs(monkeypatch):
     """Prevent tests from scanning real user home directories."""
     monkeypatch.setattr(PathResolver, "resolve_codex_dirs", staticmethod(lambda _cfg=None: []))
     monkeypatch.setattr(PathResolver, "resolve_gemini_dirs", staticmethod(lambda _cfg=None: []))
+    monkeypatch.setattr(PathResolver, "resolve_continue_dirs", staticmethod(lambda _cfg=None: []))
+    monkeypatch.setattr(PathResolver, "resolve_cursor_dirs", staticmethod(lambda _cfg=None: []))
+    monkeypatch.setattr(PathResolver, "resolve_aider_dirs", staticmethod(lambda _cfg=None: []))
+
+
+@pytest.fixture(autouse=True)
+def _isolate_searchat_data_dir(monkeypatch, tmp_path):
+    """Force tests to use a temp SEARCHAT_DATA_DIR (avoid ~/.searchat)."""
+    data_dir = tmp_path / ".searchat"
+    (data_dir / "config").mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("SEARCHAT_DATA_DIR", str(data_dir))
 
 
 @pytest.fixture
@@ -189,9 +200,9 @@ def temp_search_dir(tmp_path):
     config_dir = search_dir / "config"
     backups_dir = search_dir / "backups"
 
-    data_dir.mkdir(parents=True)
-    config_dir.mkdir(parents=True)
-    backups_dir.mkdir(parents=True)
+    data_dir.mkdir(parents=True, exist_ok=True)
+    config_dir.mkdir(parents=True, exist_ok=True)
+    backups_dir.mkdir(parents=True, exist_ok=True)
 
     return search_dir
 

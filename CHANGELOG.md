@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## 0.4.0
+- Code search: index code blocks with extracted functions/classes/imports (tree-sitter when available), add `/api/search/code` symbol filters, and expose code-symbol endpoints.
+- Embedded LLM: run chat/RAG locally via `searchat[embedded]` with model download + activation.
+- Ghost mode: add `searchat-ghost` proactive history suggestions with desktop notifications.
+
 ## 0.3.0
 - MCP: add `searchat-mcp` server for MCP clients (Claude Desktop, etc.).
 - Connectors: add Cursor, Continue, and Aider connectors; expand tool filtering support.

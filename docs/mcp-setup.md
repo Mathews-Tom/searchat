@@ -36,6 +36,8 @@ Restart Claude Desktop.
 
 - `search_conversations`: query indexed conversations
 - `get_conversation`: fetch a conversation by id
+- `find_similar_conversations`: find conversations similar to a given conversation id
+- `ask_about_history`: ask a question using RAG over your indexed history
 - `list_projects`: list indexed project ids
 - `get_statistics`: basic index stats
 

@@ -15,6 +15,7 @@ from searchat.models.schemas import (
     CONVERSATION_SCHEMA,
     METADATA_SCHEMA,
     FILE_STATE_SCHEMA,
+    CODE_BLOCK_SCHEMA,
 )
 
 __all__ = [
@@ -34,4 +35,5 @@ __all__ = [
     "CONVERSATION_SCHEMA",
     "METADATA_SCHEMA",
     "FILE_STATE_SCHEMA",
+    "CODE_BLOCK_SCHEMA",
 ]

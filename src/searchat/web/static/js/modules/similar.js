@@ -2,6 +2,17 @@
 
 import { applySnapshotParam } from './dataset.js';
 
+function toolLabelFor(tool) {
+    if (tool === 'opencode') return 'OpenCode';
+    if (tool === 'vibe') return 'Vibe';
+    if (tool === 'codex') return 'Codex';
+    if (tool === 'gemini') return 'Gemini CLI';
+    if (tool === 'continue') return 'Continue';
+    if (tool === 'cursor') return 'Cursor';
+    if (tool === 'aider') return 'Aider';
+    return 'Claude Code';
+}
+
 /**
  * Load and display similar conversations
  */
@@ -53,21 +64,7 @@ export async function loadSimilarConversations(conversationId, container) {
         `;
 
         data.similar_conversations.forEach((conv, index) => {
-            const toolLabel = conv.tool === 'opencode'
-                ? 'OpenCode'
-                : (conv.tool === 'vibe'
-                    ? 'Vibe'
-                    : (conv.tool === 'codex'
-                        ? 'Codex'
-                        : (conv.tool === 'gemini'
-                            ? 'Gemini CLI'
-                            : (conv.tool === 'continue'
-                                ? 'Continue'
-                                : (conv.tool === 'cursor'
-                                    ? 'Cursor'
-                                    : (conv.tool === 'aider'
-                                        ? 'Aider'
-                                        : 'Claude Code')))));
+            const toolLabel = toolLabelFor(conv.tool);
             const similarityPercent = Math.round(conv.similarity_score * 100);
             const createdDate = new Date(conv.created_at).toLocaleDateString();
 

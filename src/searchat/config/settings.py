@@ -74,6 +74,18 @@ from .constants import (
     ENV_ENABLE_EXPORT_TECH_DOCS,
     ENV_ENABLE_DASHBOARDS,
     ENV_ENABLE_SNAPSHOTS,
+    ENV_LLM_EMBEDDED_MODEL_PATH,
+    ENV_LLM_EMBEDDED_N_CTX,
+    ENV_LLM_EMBEDDED_N_THREADS,
+    ENV_LLM_EMBEDDED_AUTO_DOWNLOAD,
+    ENV_LLM_EMBEDDED_DEFAULT_PRESET,
+    ENV_DAEMON_ENABLED,
+    ENV_DAEMON_POLL_SECONDS,
+    ENV_DAEMON_RESCAN_SECONDS,
+    ENV_DAEMON_NOTIFICATIONS_ENABLED,
+    ENV_DAEMON_NOTIFICATIONS_BACKEND,
+    ENV_DAEMON_MAX_SUGGESTIONS,
+    ENV_DAEMON_MIN_QUERY_LENGTH,
     ERROR_NO_CONFIG,
 )
 
@@ -295,6 +307,11 @@ class LLMConfig:
     default_provider: str
     openai_model: str | None
     ollama_model: str | None
+    embedded_model_path: str | None
+    embedded_n_ctx: int
+    embedded_n_threads: int
+    embedded_auto_download: bool
+    embedded_default_preset: str
 
     @classmethod
     def from_dict(cls, data: dict) -> "LLMConfig":
@@ -312,6 +329,27 @@ class LLMConfig:
                 "SEARCHAT_LLM_OLLAMA_MODEL",
                 data.get("ollama_model"),
             ),
+            embedded_model_path=_get_env_str(
+                ENV_LLM_EMBEDDED_MODEL_PATH,
+                data.get("embedded_model_path") or None,
+            ),
+            embedded_n_ctx=_get_env_int(
+                ENV_LLM_EMBEDDED_N_CTX,
+                int(data.get("embedded_n_ctx", 4096)),
+            ),
+            embedded_n_threads=_get_env_int(
+                ENV_LLM_EMBEDDED_N_THREADS,
+                int(data.get("embedded_n_threads", 0)),
+            ),
+            embedded_auto_download=_get_env_bool(
+                ENV_LLM_EMBEDDED_AUTO_DOWNLOAD,
+                bool(data.get("embedded_auto_download", True)),
+            ),
+            embedded_default_preset=_get_env_str(
+                ENV_LLM_EMBEDDED_DEFAULT_PRESET,
+                data.get("embedded_default_preset", "qwen2.5-coder-1.5b-instruct-q4_k_m"),
+            )
+            or "qwen2.5-coder-1.5b-instruct-q4_k_m",
         )
 
 
@@ -461,6 +499,42 @@ class SnapshotsConfig:
 
 
 @dataclass
+class DaemonConfig:
+    enabled: bool
+    poll_seconds: int
+    rescan_seconds: int
+    notifications_enabled: bool
+    notifications_backend: str
+    max_suggestions: int
+    min_query_length: int
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "DaemonConfig":
+        return cls(
+            enabled=_get_env_bool(ENV_DAEMON_ENABLED, bool(data.get("enabled", False))),
+            poll_seconds=_get_env_int(ENV_DAEMON_POLL_SECONDS, int(data.get("poll_seconds", 5))),
+            rescan_seconds=_get_env_int(ENV_DAEMON_RESCAN_SECONDS, int(data.get("rescan_seconds", 30))),
+            notifications_enabled=_get_env_bool(
+                ENV_DAEMON_NOTIFICATIONS_ENABLED,
+                bool(data.get("notifications_enabled", True)),
+            ),
+            notifications_backend=_get_env_str(
+                ENV_DAEMON_NOTIFICATIONS_BACKEND,
+                data.get("notifications_backend", "auto"),
+            )
+            or "auto",
+            max_suggestions=_get_env_int(
+                ENV_DAEMON_MAX_SUGGESTIONS,
+                int(data.get("max_suggestions", 3)),
+            ),
+            min_query_length=_get_env_int(
+                ENV_DAEMON_MIN_QUERY_LENGTH,
+                int(data.get("min_query_length", 8)),
+            ),
+        )
+
+
+@dataclass
 class Config:
     paths: PathsConfig
     indexing: IndexingConfig
@@ -474,6 +548,7 @@ class Config:
     export: ExportConfig
     dashboards: DashboardsConfig
     snapshots: SnapshotsConfig
+    daemon: DaemonConfig
     logging: LogConfig
 
     @classmethod
@@ -502,7 +577,8 @@ class Config:
             config_files = [config_path]
         else:
             # Standard search order
-            user_config = DEFAULT_DATA_DIR / DEFAULT_CONFIG_SUBDIR / SETTINGS_FILE
+            base_data_dir = Path(os.getenv(ENV_DATA_DIR, str(DEFAULT_DATA_DIR))).expanduser()
+            user_config = base_data_dir / DEFAULT_CONFIG_SUBDIR / SETTINGS_FILE
             default_config = Path(__file__).parent.parent / "config" / DEFAULT_SETTINGS_FILE
             config_files = [user_config, default_config]
 
@@ -546,5 +622,6 @@ class Config:
             export=ExportConfig.from_dict(data.get("export", {})),
             dashboards=DashboardsConfig.from_dict(data.get("dashboards", {})),
             snapshots=SnapshotsConfig.from_dict(data.get("snapshots", {})),
+            daemon=DaemonConfig.from_dict(data.get("daemon", {})),
             logging=LogConfig(**data.get("logging", {})),
         )

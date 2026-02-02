@@ -5,7 +5,7 @@ from fastapi import APIRouter, Query, HTTPException
 from fastapi.responses import JSONResponse
 
 from searchat.models import SearchMode, SearchFilters
-from searchat.api.models import SearchResultResponse
+from searchat.api.models import SearchResultResponse, CodeSearchResultResponse
 from searchat.services.highlight_service import extract_highlight_terms
 from searchat.services.llm_service import LLMServiceError
 from searchat.api.utils import detect_tool_from_path, detect_source_from_path, parse_date_filter
@@ -17,6 +17,223 @@ from searchat.api.readiness import get_readiness, warming_payload, error_payload
 
 router = APIRouter()
 _highlight_cache: dict[tuple[str, str, str, str | None], list[str]] = {}
+
+
+@router.get("/search/code")
+async def search_code(
+    q: str = Query("*", description="Code search query (use * to list recent)"),
+    language: str | None = Query(None, description="Filter by language (e.g. python)"),
+    function: str | None = Query(None, description="Filter by function name (exact match)"),
+    class_name: str | None = Query(None, description="Filter by class name (exact match)"),
+    import_name: str | None = Query(None, description="Filter by import/module name (exact match)"),
+    project: str | None = Query(None, description="Filter by project"),
+    tool: str | None = Query(
+        None,
+        description="Filter by tool: claude, vibe, opencode, codex, gemini, continue, cursor, aider",
+    ),
+    limit: int = Query(20, description="Max results per page (1-100)", ge=1, le=100),
+    offset: int = Query(0, description="Number of results to skip for pagination", ge=0),
+    snapshot: str | None = Query(None, description="Backup snapshot name (read-only)"),
+):
+    """Search fenced code blocks extracted during indexing."""
+    try:
+        try:
+            search_dir, _snapshot_name = deps.resolve_dataset_search_dir(snapshot)
+        except ValueError as exc:
+            msg = str(exc)
+            if msg == "Snapshot not found":
+                raise HTTPException(status_code=404, detail="Snapshot not found") from exc
+            raise HTTPException(status_code=400, detail=msg) from exc
+
+        code_dir = search_dir / "data" / "code"
+        if not code_dir.exists() or not any(code_dir.glob("*.parquet")):
+            raise HTTPException(
+                status_code=503,
+                detail="Code index not found. Rebuild the index to enable /api/search/code.",
+            )
+
+        filters: list[str] = []
+        params: list[object] = []
+
+        if q.strip() != "*":
+            terms = [t for t in q.strip().split() if t]
+            if not terms:
+                terms = [q.strip()]
+            for term in terms:
+                filters.append("code ILIKE '%' || ? || '%' ")
+                params.append(term)
+
+        if language:
+            filters.append("lower(language) = lower(?)")
+            params.append(language)
+        if project:
+            filters.append("project_id = ?")
+            params.append(project)
+        if tool:
+            tool_value = tool.lower()
+            if tool_value not in ("claude", "vibe", "opencode", "codex", "gemini", "continue", "cursor", "aider"):
+                raise HTTPException(status_code=400, detail="Invalid tool filter")
+            filters.append("lower(connector) = lower(?)")
+            params.append(tool_value)
+
+        where_sql = ""
+        if filters:
+            where_sql = "WHERE " + " AND ".join(filters)
+
+        query_sql = f"""
+            SELECT
+                conversation_id,
+                project_id,
+                title,
+                file_path,
+                connector,
+                message_index,
+                block_index,
+                role,
+                language,
+                language_source,
+                fence_language,
+                lines,
+                code,
+                code_hash,
+                conversation_updated_at,
+                count(*) OVER() AS total_count
+            FROM parquet_scan(?)
+            {where_sql}
+            ORDER BY conversation_updated_at DESC, message_timestamp DESC
+            LIMIT ? OFFSET ?
+        """
+
+        parquet_glob = str(code_dir / "*.parquet")
+        conn = deps.get_duckdb_store_for(search_dir)._connect()
+        try:
+            if function or class_name or import_name:
+                _ensure_code_index_has_symbol_columns(conn, parquet_glob)
+
+            if function:
+                filters.append("list_contains(functions, ?)")
+                params.append(function)
+            if class_name:
+                filters.append("list_contains(classes, ?)")
+                params.append(class_name)
+            if import_name:
+                filters.append("list_contains(imports, ?)")
+                params.append(import_name)
+
+            where_sql = ""
+            if filters:
+                where_sql = "WHERE " + " AND ".join(filters)
+
+            query_sql = f"""
+                SELECT
+                    conversation_id,
+                    project_id,
+                    title,
+                    file_path,
+                    connector,
+                    message_index,
+                    block_index,
+                    role,
+                    language,
+                    language_source,
+                    fence_language,
+                    lines,
+                    code,
+                    code_hash,
+                    conversation_updated_at,
+                    count(*) OVER() AS total_count
+                FROM parquet_scan(?)
+                {where_sql}
+                ORDER BY conversation_updated_at DESC, message_timestamp DESC
+                LIMIT ? OFFSET ?
+            """
+
+            rows = conn.execute(query_sql, [parquet_glob, *params, limit, offset]).fetchall()
+        finally:
+            conn.close()
+
+        total = int(rows[0][-1]) if rows else 0
+        results: list[CodeSearchResultResponse] = []
+        for (
+            conversation_id,
+            project_id,
+            title,
+            file_path,
+            connector,
+            message_index,
+            block_index,
+            role,
+            language_value,
+            language_source,
+            fence_language,
+            lines,
+            code,
+            code_hash,
+            conversation_updated_at,
+            _total_count,
+        ) in rows:
+            code_text = code or ""
+            # Hard cap to avoid huge payloads.
+            max_chars = 4000
+            if len(code_text) > max_chars:
+                code_text = code_text[:max_chars]
+
+            updated_at_str = (
+                conversation_updated_at
+                if isinstance(conversation_updated_at, str)
+                else conversation_updated_at.isoformat()
+            )
+            results.append(
+                CodeSearchResultResponse(
+                    conversation_id=conversation_id,
+                    project_id=project_id,
+                    title=title,
+                    file_path=file_path,
+                    tool=connector,
+                    message_index=int(message_index),
+                    block_index=int(block_index),
+                    role=role,
+                    language=language_value,
+                    language_source=language_source,
+                    fence_language=fence_language,
+                    lines=int(lines),
+                    code=code_text,
+                    code_hash=code_hash,
+                    conversation_updated_at=updated_at_str,
+                )
+            )
+
+        return {
+            "results": results,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "has_more": (offset + limit) < total,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+def _ensure_code_index_has_symbol_columns(conn, parquet_glob: str) -> None:
+    """Fail fast if the code index doesn't include symbol metadata columns."""
+    try:
+        cursor = conn.execute("SELECT * FROM parquet_scan(?) LIMIT 0", [parquet_glob])
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Failed to read code index schema: {exc}") from exc
+
+    columns: set[str] = set()
+    for desc in getattr(cursor, "description", []) or []:
+        if desc and isinstance(desc[0], str):
+            columns.add(desc[0])
+
+    required = {"functions", "classes", "imports"}
+    if not required.issubset(columns):
+        raise HTTPException(
+            status_code=503,
+            detail="Code index does not include symbol metadata. Rebuild the index to enable symbol filters.",
+        )
 
 
 @router.get("/search")

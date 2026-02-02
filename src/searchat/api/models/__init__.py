@@ -17,6 +17,8 @@ from searchat.api.models.responses import (
     BackupRestoreResponse,
     ConversationSource,
     RAGResponse,
+    CodeSearchResultResponse,
+    CodeSearchResponse,
 )
 
 __all__ = [
@@ -37,4 +39,6 @@ __all__ = [
     "BackupRestoreResponse",
     "ConversationSource",
     "RAGResponse",
+    "CodeSearchResultResponse",
+    "CodeSearchResponse",
 ]

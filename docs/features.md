@@ -296,6 +296,7 @@ curl "http://localhost:8000/api/search?q=testing&limit=50&offset=0"
 
 - **OpenAI** - GPT-4, GPT-3.5, etc. (requires API key)
 - **Ollama** - Local models (Llama, Mistral, etc.)
+- **Embedded (GGUF)** - Local GGUF models via llama-cpp-python
 
 **API:**
 
@@ -304,6 +305,12 @@ curl "http://localhost:8000/api/search?q=testing&limit=50&offset=0"
 curl -X POST "http://localhost:8000/api/chat" \
   -H "Content-Type: application/json" \
   -d '{"query": "Explain how indexing works", "model_provider": "ollama", "model_name": "ollama/gemma3"}' \
+  --no-buffer
+
+# Streaming chat response (embedded/local)
+curl -X POST "http://localhost:8000/api/chat" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "Explain how indexing works", "model_provider": "embedded"}' \
   --no-buffer
 
 # Non-streaming RAG response with citations
@@ -320,10 +327,26 @@ default_provider = "ollama"
 openai_model = "gpt-4.1-mini"
 ollama_model = "ollama/gemma3"
 
+# Embedded (local GGUF via llama-cpp-python)
+embedded_model_path = ""
+embedded_n_ctx = 4096
+embedded_n_threads = 0
+embedded_auto_download = true
+embedded_default_preset = "qwen2.5-coder-1.5b-instruct-q4_k_m"
+
 [chat]
 enable_rag = true
 enable_citations = true
 ```
+
+**Setup (embedded/local GGUF):**
+
+```bash
+pip install -e ".[embedded]"
+searchat download-model --activate
+```
+
+When `llm.default_provider = "embedded"` and `embedded_model_path` is not set, Searchat will auto-download the default preset and update `~/.searchat/config/settings.toml`.
 
 **Environment:**
 
@@ -1410,6 +1433,26 @@ See `docs/architecture.md` for extension guide.
 
 ## Developer Features
 
+### MCP Server (Optional)
+
+Searchat ships an MCP server so MCP clients can query your local index.
+
+**Install:**
+
+```bash
+pip install "searchat[mcp]"
+```
+
+**Run:**
+
+```bash
+searchat-mcp
+```
+
+**Tools:** `search_conversations`, `get_conversation`, `find_similar_conversations`, `ask_about_history`, `list_projects`, `get_statistics`
+
+See `docs/mcp-setup.md` for configuration.
+
 ### REST API
 
 **13 routers, 50+ endpoints:**
@@ -1467,6 +1510,12 @@ Terminal-friendly interface:
 ```bash
 # Interactive mode
 searchat
+
+# Download a default embedded GGUF model and update config
+searchat download-model --activate
+
+# Build the initial search index (first-time setup)
+searchat-setup-index
 ```
 
 ---
@@ -1524,6 +1573,23 @@ Searchat provides comprehensive search, AI-powered Q&A, and organization feature
 - **Snapshots** - Read-only browsing of backups
 - **Safe & fast** - Append-only, <100ms queries
 - **Cross-platform** - Windows, WSL, Linux, macOS
+
+## Standalone Installation
+
+Install Searchat as an application and run it locally:
+
+```bash
+pip install searchat
+
+# Optional: interactive config wizard (writes ~/.searchat/config/settings.toml)
+python -m searchat.setup
+
+# Build the initial search index
+searchat-setup-index
+
+# Run the web UI
+searchat-web
+```
 
 For more information:
 

@@ -121,6 +121,107 @@ async def _warmup_all() -> None:
     await asyncio.to_thread(_ensure_search_engine)
     # Then warm semantic components (FAISS, metadata, embedder)
     await asyncio.to_thread(_warmup_semantic_components)
+    # Finally, ensure embedded model is available if enabled
+    await asyncio.to_thread(_warmup_embedded_model)
+
+
+def _warmup_embedded_model() -> None:
+    """Ensure embedded GGUF model exists when embedded provider is enabled."""
+    readiness = get_readiness()
+    try:
+        config = get_config()
+    except Exception:
+        return
+
+    if config.llm.default_provider.lower() != "embedded":
+        readiness.set_component("embedded_model", "idle")
+        return
+
+    from pathlib import Path
+
+    from searchat.config.constants import DEFAULT_DATA_DIR
+    from searchat.config.user_config_writer import ensure_user_settings_exists, update_llm_settings
+    from searchat.llm.model_downloader import DownloadInProgressError, DownloadFailedError, download_file
+    from searchat.llm.model_presets import get_preset
+
+    readiness.set_component("embedded_model", "loading")
+    try:
+        configured = config.llm.embedded_model_path
+        if configured:
+            configured_path = Path(configured).expanduser()
+            if configured_path.exists():
+                readiness.set_component("embedded_model", "ready")
+                return
+
+        if not config.llm.embedded_auto_download:
+            raise RuntimeError(
+                "Embedded provider enabled but embedded_model_path is not set or missing. "
+                "Set [llm].embedded_model_path or run 'searchat download-model --activate'."
+            )
+
+        preset = get_preset(config.llm.embedded_default_preset)
+        dest_path = (DEFAULT_DATA_DIR / "models" / preset.filename).resolve()
+
+        if not dest_path.exists():
+            readiness.set_component(
+                "embedded_model",
+                "loading",
+                error="Downloading embedded model (first run)...",
+            )
+
+            import time
+
+            last_update = 0.0
+            last_percent = -1
+
+            def _progress(downloaded: int, total: int | None) -> None:
+                nonlocal last_update, last_percent
+
+                now = time.monotonic()
+                if total is None or total <= 0:
+                    if now - last_update < 0.5:
+                        return
+                    last_update = now
+                    mb = downloaded / (1024 * 1024)
+                    readiness.set_component(
+                        "embedded_model",
+                        "loading",
+                        error=f"Downloading embedded model: {mb:.0f} MB...",
+                    )
+                    return
+
+                percent = int((downloaded / total) * 100)
+                if percent == last_percent and now - last_update < 0.5:
+                    return
+                last_percent = percent
+                last_update = now
+                mb_done = downloaded / (1024 * 1024)
+                mb_total = total / (1024 * 1024)
+                readiness.set_component(
+                    "embedded_model",
+                    "loading",
+                    error=f"Downloading embedded model: {mb_done:.0f}/{mb_total:.0f} MB ({percent}%)",
+                )
+
+            download_file(url=preset.url, dest_path=dest_path, progress_cb=_progress)
+
+        cfg_path = ensure_user_settings_exists(data_dir=DEFAULT_DATA_DIR)
+        update_llm_settings(
+            config_path=cfg_path,
+            updates={
+                "embedded_model_path": str(dest_path),
+                "embedded_default_preset": preset.name,
+                "embedded_auto_download": True,
+            },
+        )
+
+        # Update in-memory config for this process.
+        config.llm.embedded_model_path = str(dest_path)
+        readiness.set_component("embedded_model", "ready")
+    except DownloadInProgressError as exc:
+        readiness.set_component("embedded_model", "loading", error=str(exc))
+    except Exception as exc:
+        readiness.set_component("embedded_model", "error", error=str(exc))
 
 
 def _warmup_duckdb_parquet() -> None:
@@ -159,7 +260,11 @@ def _warmup_semantic_components() -> None:
         engine.ensure_faiss_loaded()
         readiness.set_component("faiss", "ready")
 
-        readiness.set_component("embedder", "loading")
+        readiness.set_component(
+            "embedder",
+            "loading",
+            error="Preparing embedding model (may download on first run)...",
+        )
         engine.ensure_embedder_loaded()
         readiness.set_component("embedder", "ready")
     except Exception as e:

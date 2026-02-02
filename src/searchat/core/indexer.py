@@ -23,7 +23,8 @@ from searchat.models import (
     UpdateStats,
     CONVERSATION_SCHEMA,
     METADATA_SCHEMA,
-    FILE_STATE_SCHEMA
+    FILE_STATE_SCHEMA,
+    CODE_BLOCK_SCHEMA,
 )
 from searchat.config import Config, PathResolver
 from searchat.config.constants import (
@@ -59,6 +60,7 @@ class ConversationIndexer:
         self.data_dir = search_dir / "data"
         self.conversations_dir = self.data_dir / "conversations"
         self.indices_dir = self.data_dir / "indices"
+        self.code_dir = self.data_dir / "code"
         self.indexed_paths_path = self.indices_dir / "indexed_paths.parquet"
         self.file_state_path = self.indices_dir / "file_state.parquet"
 
@@ -150,6 +152,7 @@ class ConversationIndexer:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.conversations_dir.mkdir(exist_ok=True)
         self.indices_dir.mkdir(exist_ok=True)
+        self.code_dir.mkdir(exist_ok=True)
     
     def _chunk_text(self, text: str, chunk_size: int | None = None, overlap: int | None = None) -> list[str]:
         if chunk_size is None:
@@ -347,6 +350,7 @@ class ConversationIndexer:
         all_chunks_with_meta: list[dict] = []
         project_records_map: dict[str, list[ConversationRecord]] = {}
         file_state_entries: list[dict] = []
+        connector_name_by_file_path: dict[str, str] = {}
 
         for idx, match in enumerate(file_matches, 1):
             json_file = match.path
@@ -363,6 +367,8 @@ class ConversationIndexer:
                     continue
 
                 all_records.append(record)
+
+                connector_name_by_file_path[record.file_path] = connector.name
 
                 project_key = record.project_id
                 if project_key not in project_records_map:
@@ -430,7 +436,7 @@ class ConversationIndexer:
         for project_id, records in project_records_map.items():
             for record in records:
                 record.embedding_id = record_first_vector_id.get(record.conversation_id, 0)
-            self._write_parquet_batch(records, project_id)
+            self._write_parquet_batch(records, project_id, connector_name_by_file_path)
 
         self._write_index_metadata(
             len(all_records),
@@ -954,7 +960,12 @@ class ConversationIndexer:
         except (OSError, ValueError, TypeError):
             return None
 
-    def _write_parquet_batch(self, records: list[ConversationRecord], project_id: str) -> None:
+    def _write_parquet_batch(
+        self,
+        records: list[ConversationRecord],
+        project_id: str,
+        connector_name_by_file_path: dict[str, str],
+    ) -> None:
         output_path = self.conversations_dir / f"project_{project_id}.parquet"
         
         data = {
@@ -980,6 +991,14 @@ class ConversationIndexer:
         
         table = pa.Table.from_pydict(data, schema=CONVERSATION_SCHEMA)
         pq.write_table(table, output_path)
+
+        code_rows: list[dict] = []
+        for record in records:
+            connector_name = connector_name_by_file_path.get(record.file_path)
+            if not connector_name:
+                raise RuntimeError(f"Missing connector name for indexed file: {record.file_path}")
+            code_rows.extend(self._extract_code_block_dicts(record, connector_name))
+        self._write_code_blocks(project_id, code_rows)
 
     def _record_to_dict(self, record: ConversationRecord) -> dict:
         return {
@@ -1023,6 +1042,71 @@ class ConversationIndexer:
             pq.write_table(combined_table, project_parquet)
         else:
             pq.write_table(new_table, project_parquet)
+
+    def _code_parquet_path(self, project_id: str) -> Path:
+        return self.code_dir / f"project_{project_id}.parquet"
+
+    def _write_code_blocks(self, project_id: str, code_rows: list[dict]) -> None:
+        path = self._code_parquet_path(project_id)
+        table = pa.Table.from_pylist(code_rows, schema=CODE_BLOCK_SCHEMA)
+        pq.write_table(table, path)
+
+    def _append_code_blocks(self, project_id: str, code_rows: list[dict]) -> None:
+        if not code_rows:
+            return
+        path = self._code_parquet_path(project_id)
+        new_table = pa.Table.from_pylist(code_rows, schema=CODE_BLOCK_SCHEMA)
+        if path.exists():
+            existing_table = pq.read_table(path)
+            combined_table = pa.concat_tables([existing_table, new_table])
+            pq.write_table(combined_table, path)
+        else:
+            pq.write_table(new_table, path)
+
+    def _remove_code_blocks_for_conversation(self, project_id: str, conversation_id: str) -> None:
+        path = self._code_parquet_path(project_id)
+        if not path.exists():
+            return
+        table = pq.read_table(path)
+        filtered = table.filter(pc.field("conversation_id") != conversation_id)
+        pq.write_table(filtered, path)
+
+    def _extract_code_block_dicts(self, record: ConversationRecord, connector_name: str) -> list[dict]:
+        from searchat.core.code_extractor import extract_code_blocks
+
+        rows: list[dict] = []
+        for message in record.messages:
+            extracted = extract_code_blocks(
+                message_text=message.content,
+                message_index=message.sequence,
+                role=message.role,
+            )
+            for block in extracted:
+                rows.append(
+                    {
+                        "conversation_id": record.conversation_id,
+                        "project_id": record.project_id,
+                        "connector": connector_name,
+                        "file_path": record.file_path,
+                        "title": record.title,
+                        "conversation_created_at": record.created_at,
+                        "conversation_updated_at": record.updated_at,
+                        "message_index": block.message_index,
+                        "block_index": block.block_index,
+                        "role": block.role,
+                        "message_timestamp": message.timestamp,
+                        "fence_language": block.fence_language,
+                        "language": block.language,
+                        "language_source": block.language_source,
+                        "functions": block.functions,
+                        "classes": block.classes,
+                        "imports": block.imports,
+                        "code": block.code,
+                        "code_hash": block.code_hash,
+                        "lines": block.lines,
+                    }
+                )
+        return rows
 
     def _remove_conversation_from_project(self, project_id: str, conversation_id: str) -> None:
         project_parquet = self.conversations_dir / f"project_{project_id}.parquet"
@@ -1258,6 +1342,7 @@ class ConversationIndexer:
         new_vector_ids: list[int] = []
         new_conversation_records: dict[str, list[ConversationRecord]] = {}
         new_indexed_paths: set[str] = set()
+        connector_name_by_file_path: dict[str, str] = {}
         processed_count = 0
 
         for idx, file_path in enumerate(new_files, 1):
@@ -1279,6 +1364,8 @@ class ConversationIndexer:
                     continue
 
                 new_indexed_paths.add(record.file_path)
+
+                connector_name_by_file_path[record.file_path] = connector.name
 
                 project_key = record.project_id
                 if project_key not in new_conversation_records:
@@ -1343,6 +1430,14 @@ class ConversationIndexer:
             new_record_dicts = [self._record_to_dict(r) for r in records]
             self._append_record_dicts(project_id, new_record_dicts)
 
+            code_rows: list[dict] = []
+            for record in records:
+                connector_name = connector_name_by_file_path.get(record.file_path)
+                if not connector_name:
+                    raise RuntimeError(f"Missing connector name for indexed file: {record.file_path}")
+                code_rows.extend(self._extract_code_block_dicts(record, connector_name))
+            self._append_code_blocks(project_id, code_rows)
+
         # Update index metadata
         existing_index_metadata = self._load_existing_metadata()
         if existing_index_metadata is None:
@@ -1375,12 +1470,15 @@ class ConversationIndexer:
                 for record in records:
                     path_obj = Path(record.file_path)
                     file_size = path_obj.stat().st_size if path_obj.exists() else 0
+                    connector_name = connector_name_by_file_path.get(record.file_path)
+                    if not connector_name:
+                        raise RuntimeError(f"Missing connector name for indexed file: {record.file_path}")
                     file_state[record.file_path] = {
                         "file_path": record.file_path,
                         "file_hash": record.file_hash,
                         "file_size": file_size,
                         "indexed_at": record.indexed_at,
-                        "connector_name": detect_connector(path_obj).name,
+                        "connector_name": connector_name,
                         "conversation_id": record.conversation_id,
                         "project_id": record.project_id,
                     }
@@ -1448,6 +1546,7 @@ class ConversationIndexer:
         new_vector_ids: list[int] = []
         records_to_append: dict[str, list[ConversationRecord]] = {}
         removed_vector_ids: set[int] = set()
+        connector_name_by_file_path: dict[str, str] = {}
 
         new_count = 0
         updated_count = 0
@@ -1491,6 +1590,7 @@ class ConversationIndexer:
                 existing_metadata_table = existing_metadata_table.filter(pc.invert(mask))  # type: ignore[attr-defined]
                 if isinstance(old_project_id, str):
                     self._remove_conversation_from_project(old_project_id, old_conversation_id)
+                    self._remove_code_blocks_for_conversation(old_project_id, old_conversation_id)
                 updated_count += 1
             else:
                 new_count += 1
@@ -1514,6 +1614,7 @@ class ConversationIndexer:
                 next_vector_id += 1
 
             records_to_append.setdefault(record.project_id, []).append(record)
+            connector_name_by_file_path[record.file_path] = connector.name
             file_state[record.file_path] = {
                 "file_path": record.file_path,
                 "file_hash": file_hash,
@@ -1565,6 +1666,14 @@ class ConversationIndexer:
         for project_id, records in records_to_append.items():
             record_dicts = [self._record_to_dict(r) for r in records]
             self._append_record_dicts(project_id, record_dicts)
+
+            code_rows: list[dict] = []
+            for record in records:
+                connector_name = connector_name_by_file_path.get(record.file_path)
+                if not connector_name:
+                    raise RuntimeError(f"Missing connector name for indexed file: {record.file_path}")
+                code_rows.extend(self._extract_code_block_dicts(record, connector_name))
+            self._append_code_blocks(project_id, code_rows)
 
         if file_state:
             self._write_file_state(list(file_state.values()))
