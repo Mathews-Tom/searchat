@@ -14,7 +14,7 @@ Semantic search and RAG-powered Q&A for AI coding agent conversations. Find past
 | OpenAI Codex | `~/.codex/sessions/**/rollout-*.jsonl`                       | JSONL    |
 | Gemini CLI   | `~/.gemini/tmp/<project_hash>/chats/*.json`                  | JSON     |
 | Continue     | `~/.continue/sessions/*.json`                                | JSON     |
-| Cursor       | Cursor user data (`.../Cursor/User/.../*.vscdb`)             | SQLite   |
+| Cursor       | `.../Cursor/User/.../*.vscdb`                                | SQLite   |
 | Aider        | `.aider.chat.history.md` (set `SEARCHAT_AIDER_PROJECT_DIRS`) | Markdown |
 
 ## Features
@@ -30,6 +30,7 @@ Semantic search and RAG-powered Q&A for AI coding agent conversations. Find past
 ### AI-Powered Features
 
 - **RAG Chat** — Ask questions about your conversation history with AI-powered answers
+- **Embedded LLM** — Run RAG chat locally with a GGUF model (llama-cpp-python)
 - **Semantic Highlights** — Optional LLM-generated highlight terms for search results
 - **Conversation Similarity** — Discover related conversations using semantic similarity
 - **Code Extraction** — Extract and view code snippets with syntax highlighting
@@ -60,9 +61,31 @@ Semantic search and RAG-powered Q&A for AI coding agent conversations. Find past
 - **Cross-Platform** — Windows, WSL, Linux, macOS
 - **Local-First** — All data stays on your machine
 - **Self-Search** — Agents can search their own history via API
+- **MCP Server** — Let MCP clients (Claude Desktop, Cursor, etc.) query your local index
 - **Terminal Resume** — Resume conversations directly in terminal
 
 ## Quick Start
+
+### Install And Run (Standalone)
+
+Install Searchat and build the initial index:
+
+```bash
+pip install searchat
+
+# Optional: create ~/.searchat/config/settings.toml interactively
+python -m searchat.setup
+
+# Build the initial search index
+searchat-setup-index
+
+# Start the web server
+searchat-web
+```
+
+Open http://localhost:8000
+
+### Install From Source
 
 ```bash
 git clone https://github.com/Mathews-Tom/searchat.git
@@ -83,11 +106,31 @@ The setup script indexes all conversations from supported agents. On subsequent 
 ## MCP Server (Claude Desktop, Cursor, ...)
 
 ```bash
-pip install -e ".[mcp]"
+pip install "searchat[mcp]"
 searchat-mcp
 ```
 
 See `docs/mcp-setup.md` for client configuration.
+
+Available MCP tools:
+
+- `search_conversations`
+- `get_conversation`
+- `find_similar_conversations`
+- `ask_about_history`
+- `list_projects`
+- `get_statistics`
+
+## Embedded LLM (Local GGUF)
+
+Install the optional embedded dependency and download the default GGUF model:
+
+```bash
+pip install "searchat[embedded]"
+searchat download-model --activate
+```
+
+When `llm.default_provider = "embedded"`, the server will auto-download the default model if `embedded_model_path` is not set.
 
 ## Enable Claude Self-Search
 
@@ -117,6 +160,14 @@ curl -s "http://localhost:8000/api/conversation/CONVERSATION_ID" | jq '.messages
 curl -X POST "http://localhost:8000/api/chat" \
   -H "Content-Type: application/json" \
   -d '{"query": "How did we implement authentication?", "model_provider": "openai", "model_name": "gpt-4.1-mini"}'
+```
+
+**Ask questions (RAG, embedded/local):**
+
+```bash
+curl -X POST "http://localhost:8000/api/chat" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "How did we implement authentication?", "model_provider": "embedded"}'
 ```
 
 **When to use:**
@@ -161,6 +212,12 @@ Features:
 
 ```bash
 searchat  # interactive mode
+
+# Download a default embedded GGUF model and update ~/.searchat/config/settings.toml
+searchat download-model --activate
+
+# Build the initial index (first-time setup)
+searchat-setup-index
 ```
 
 ### API
@@ -460,6 +517,13 @@ device = "auto"  # auto|cuda|mps|cpu
 default_provider = "ollama"
 openai_model = "gpt-4.1-mini"
 ollama_model = "ollama/gemma3"
+
+# Embedded (local GGUF via llama-cpp-python)
+embedded_model_path = ""
+embedded_n_ctx = 4096
+embedded_n_threads = 0
+embedded_auto_download = true
+embedded_default_preset = "qwen2.5-coder-1.5b-instruct-q4_k_m"
 
 [chat]
 enable_rag = true
