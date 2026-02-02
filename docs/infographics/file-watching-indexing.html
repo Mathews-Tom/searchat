@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Searchat — File Watching & Live Indexing</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --c-bg: #F0F2F5; --c-surface: #FFFFFF; --c-border: #C9CDD4;
+      --c-event: #1B6AC9; --c-debounce: #D4740A; --c-queue: #8B3EC9; --c-index: #0E7C3A; --c-status: #9E6A00;
+      --c-text: #1C2127; --c-muted: #5F6B7A;
+      --shadow-sm: 0 1px 3px rgba(28,33,39,0.08); --shadow-md: 0 3px 10px rgba(28,33,39,0.13);
+      --r-sm: 3px; --r-md: 6px; --r-lg: 10px;
+    }
+    body { font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif; font-size: 13px; line-height: 1.45; color: var(--c-text); background: var(--c-bg); }
+    .page { max-width: 1140px; margin: 0 auto; padding: 20px 24px; }
+    .header { display: grid; grid-template-columns: 1fr auto; align-items: end; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 2px solid var(--c-border); }
+    .header h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; }
+    .header .meta { font-size: 11px; color: var(--c-muted); text-align: right; line-height: 1.6; }
+    .header .meta .mono { font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace; background: rgba(28,33,39,0.06); padding: 1px 5px; border-radius: 3px; }
+    .tier { position: relative; padding: 14px 16px 14px 18px; border-radius: var(--r-md); margin-bottom: 6px; }
+    .tier-label { position: absolute; top: -8px; left: 16px; font-size: 10px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; padding: 1px 8px; border-radius: 3px; color: #fff; }
+    .tier-event { background: linear-gradient(135deg, rgba(27,106,201,0.07) 0%, rgba(27,106,201,0.03) 100%); border-left: 3px solid var(--c-event); }
+    .tier-event .tier-label { background: var(--c-event); }
+    .tier-debounce { background: linear-gradient(135deg, rgba(212,116,10,0.07) 0%, rgba(212,116,10,0.03) 100%); border-left: 3px solid var(--c-debounce); }
+    .tier-debounce .tier-label { background: var(--c-debounce); }
+    .tier-queue { background: linear-gradient(135deg, rgba(139,62,201,0.07) 0%, rgba(139,62,201,0.03) 100%); border-left: 3px solid var(--c-queue); }
+    .tier-queue .tier-label { background: var(--c-queue); }
+    .tier-index { background: linear-gradient(135deg, rgba(14,124,58,0.07) 0%, rgba(14,124,58,0.03) 100%); border-left: 3px solid var(--c-index); }
+    .tier-index .tier-label { background: var(--c-index); }
+    .tier-status { background: linear-gradient(135deg, rgba(158,106,0,0.07) 0%, rgba(158,106,0,0.03) 100%); border-left: 3px solid var(--c-status); }
+    .tier-status .tier-label { background: var(--c-status); }
+    .node { display: inline-flex; align-items: center; gap: 6px; background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--r-sm); padding: 6px 10px; box-shadow: var(--shadow-sm); font-size: 12px; font-weight: 500; white-space: nowrap; }
+    .node .ic { display: inline-flex; width: 18px; height: 18px; flex-shrink: 0; }
+    .node .ic svg { width: 100%; height: 100%; }
+    .node-sub { font-size: 10px; color: var(--c-muted); display: block; font-weight: 400; margin-top: 1px; }
+    .node-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .arrow-down { display: flex; align-items: center; gap: 6px; justify-content: center; padding: 2px 0; }
+    .arrow-down svg { width: 22px; height: 22px; }
+    .flow-label { font-size: 9px; color: var(--c-muted); background: var(--c-bg); padding: 0 4px; border-radius: 2px; letter-spacing: 0.3px; }
+    .safety-note { margin-top: 12px; padding: 10px 12px; background: rgba(14,124,58,0.06); border: 1px solid rgba(14,124,58,0.2); border-radius: var(--r-md); font-size: 10px; line-height: 1.5; }
+    .safety-note strong { color: var(--c-index); }
+    .kpi-bar { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 12px; }
+    .kpi { text-align: center; background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--r-sm); padding: 8px 6px; box-shadow: var(--shadow-sm); }
+    .kpi-val { font-size: 16px; font-weight: 700; }
+    .kpi-label { font-size: 10px; color: var(--c-muted); margin-top: 2px; }
+    .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 14px; padding: 10px 14px; background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--r-md); box-shadow: var(--shadow-sm); }
+    .legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; }
+    .legend-swatch { width: 12px; height: 12px; border-radius: 2px; }
+    .footer { margin-top: 14px; padding: 10px 14px; background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--r-md); box-shadow: var(--shadow-sm); font-size: 10px; color: var(--c-muted); }
+    .mono { font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="header">
+    <div>
+      <h1>Searchat — File Watching & Live Indexing</h1>
+      <span style="font-size:12px; color:var(--c-muted);">Event-driven file monitoring · Debouncing · Queue processing · Append-only indexing</span>
+    </div>
+    <div class="meta">
+      <span class="mono">v0.4.0</span><br>
+      Python 3.9+ · watchdog · Queue · threading
+    </div>
+  </div>
+
+  <div class="tier tier-event">
+    <span class="tier-label">① FS Event Detection</span>
+    <div class="node-row">
+      <div class="node">
+        <span class="ic" style="color:var(--c-event)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></span>
+        <div>watchdog.Observer<span class="node-sub">Monitors directories recursively</span></div>
+      </div>
+      <div class="node">
+        <span class="ic" style="color:var(--c-event)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span>
+        <div>FileCreatedEvent<span class="node-sub">New .jsonl or .json file detected</span></div>
+      </div>
+      <div class="node">
+        <span class="ic" style="color:var(--c-event)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></span>
+        <div>FileModifiedEvent<span class="node-sub">Existing conversation file modified</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow-down">
+    <svg width="20" height="20" viewBox="0 0 20 20"><defs><marker id="ah1" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="var(--c-event)"/></marker></defs><line x1="10" y1="2" x2="10" y2="16" stroke="var(--c-event)" stroke-width="1.5" marker-end="url(#ah1)"/></svg>
+    <span class="flow-label">Event → Handler</span>
+  </div>
+
+  <div class="tier tier-event">
+    <span class="tier-label">② Extension Check</span>
+    <div class="node-row">
+      <div class="node">
+        <span class="ic" style="color:var(--c-event)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></span>
+        <div>supported_extensions()<span class="node-sub mono">.jsonl, .json</span></div>
+      </div>
+      <div class="node">
+        <span class="ic" style="color:var(--c-event)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></span>
+        <div>Extension Match<span class="node-sub">Verify file extension in supported list</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow-down">
+    <svg width="20" height="20" viewBox="0 0 20 20"><defs><marker id="ah2" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="var(--c-event)"/></marker></defs><line x1="10" y1="2" x2="10" y2="16" stroke="var(--c-event)" stroke-width="1.5" marker-end="url(#ah2)"/></svg>
+    <span class="flow-label">Extension valid → Connector detection</span>
+  </div>
+
+  <div class="tier tier-event">
+    <span class="tier-label">③ Connector Detection</span>
+    <div class="node-row">
+      <div class="node">
+        <span class="ic" style="color:var(--c-event)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+        <div>detect_connector(path)<span class="node-sub">Match file to agent (Claude, Vibe, OpenCode, etc.)</span></div>
+      </div>
+      <div class="node">
+        <span class="ic" style="color:var(--c-event)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg></span>
+        <div>Connector Found<span class="node-sub">Agent-specific parser identified</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow-down">
+    <svg width="20" height="20" viewBox="0 0 20 20"><defs><marker id="ah3" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="var(--c-debounce)"/></marker></defs><line x1="10" y1="2" x2="10" y2="16" stroke="var(--c-debounce)" stroke-width="1.5" marker-end="url(#ah3)"/></svg>
+    <span class="flow-label">Connector valid → Debounce gate</span>
+  </div>
+
+  <div class="tier tier-debounce">
+    <span class="tier-label">④ Debounce Gate</span>
+    <div class="node-row">
+      <div class="node">
+        <span class="ic" style="color:var(--c-debounce)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>
+        <div>New File Debounce<span class="node-sub">2 seconds (debounce_seconds)</span></div>
+      </div>
+      <div class="node">
+        <span class="ic" style="color:var(--c-debounce)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>
+        <div>Modification Debounce<span class="node-sub">5 minutes (modification_debounce_minutes * 60)</span></div>
+      </div>
+      <div class="node">
+        <span class="ic" style="color:var(--c-debounce)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></span>
+        <div>_last_event_times<span class="node-sub">Dict tracking last event timestamp per file</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow-down">
+    <svg width="20" height="20" viewBox="0 0 20 20"><defs><marker id="ah4" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="var(--c-queue)"/></marker></defs><line x1="10" y1="2" x2="10" y2="16" stroke="var(--c-queue)" stroke-width="1.5" marker-end="url(#ah4)"/></svg>
+    <span class="flow-label">Debounce passed → Queue enqueue</span>
+  </div>
+
+  <div class="tier tier-queue">
+    <span class="tier-label">⑤ Queue Enqueue</span>
+    <div class="node-row">
+      <div class="node">
+        <span class="ic" style="color:var(--c-queue)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg></span>
+        <div>pending_queue.put()<span class="node-sub">(event_type, file_path) tuple</span></div>
+      </div>
+      <div class="node">
+        <span class="ic" style="color:var(--c-queue)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg></span>
+        <div>Queue[tuple]<span class="node-sub mono">Queue from queue module</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow-down">
+    <svg width="20" height="20" viewBox="0 0 20 20"><defs><marker id="ah5" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="var(--c-queue)"/></marker></defs><line x1="10" y1="2" x2="10" y2="16" stroke="var(--c-queue)" stroke-width="1.5" marker-end="url(#ah5)"/></svg>
+    <span class="flow-label">Queued → Background thread</span>
+  </div>
+
+  <div class="tier tier-queue">
+    <span class="tier-label">⑥ Background Thread Consumption</span>
+    <div class="node-row">
+      <div class="node">
+        <span class="ic" style="color:var(--c-queue)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg></span>
+        <div>_process_pending_updates()<span class="node-sub">Daemon thread continuously processes queue</span></div>
+      </div>
+      <div class="node">
+        <span class="ic" style="color:var(--c-queue)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 9h16"/><path d="M9 4v16"/></svg></span>
+        <div>Batch Collection<span class="node-sub">Collect events for batch_delay_seconds (5s default)</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow-down">
+    <svg width="20" height="20" viewBox="0 0 20 20"><defs><marker id="ah6" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="var(--c-index)"/></marker></defs><line x1="10" y1="2" x2="10" y2="16" stroke="var(--c-index)" stroke-width="1.5" marker-end="url(#ah6)"/></svg>
+    <span class="flow-label">Batch ready → Index append</span>
+  </div>
+
+  <div class="tier tier-index">
+    <span class="tier-label">⑦ Index Append Operation</span>
+    <div class="node-row">
+      <div class="node">
+        <span class="ic" style="color:var(--c-index)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg></span>
+        <div>on_update(file_paths)<span class="node-sub">Callback with list of paths to index</span></div>
+      </div>
+      <div class="node">
+        <span class="ic" style="color:var(--c-index)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg></span>
+        <div>index_append_only()<span class="node-sub">Add to FAISS + Parquet (never deletes)</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow-down">
+    <svg width="20" height="20" viewBox="0 0 20 20"><defs><marker id="ah7" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="var(--c-status)"/></marker></defs><line x1="10" y1="2" x2="10" y2="16" stroke="var(--c-status)" stroke-width="1.5" marker-end="url(#ah7)"/></svg>
+    <span class="flow-label">Indexed → Status update</span>
+  </div>
+
+  <div class="tier tier-status">
+    <span class="tier-label">⑧ Status Tracking</span>
+    <div class="node-row">
+      <div class="node">
+        <span class="ic" style="color:var(--c-status)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg></span>
+        <div>_indexed_files<span class="node-sub">Set of indexed file paths (detects new vs modified)</span></div>
+      </div>
+      <div class="node">
+        <span class="ic" style="color:var(--c-status)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>
+        <div>_last_modified_time<span class="node-sub">Dict tracking last modification timestamp</span></div>
+      </div>
+      <div class="node">
+        <span class="ic" style="color:var(--c-status)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg></span>
+        <div>Update Complete<span class="node-sub">Ready for next event batch</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="safety-note">
+    <strong>Safety Features:</strong> Append-only indexing (never deletes) · Debouncing prevents event storms · Queue prevents blocking · Background thread isolation · Never triggers on file deletions (preserves orphaned data) · Recursive directory watching
+  </div>
+
+  <div class="kpi-bar">
+    <div class="kpi">
+      <div class="kpi-val" style="color:var(--c-debounce);">2s / 5min</div>
+      <div class="kpi-label">Debounce timings</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-val" style="color:var(--c-queue);">5s</div>
+      <div class="kpi-label">Batch delay</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-val" style="color:var(--c-event);">Recursive</div>
+      <div class="kpi-label">Directory watching</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-val" style="color:var(--c-index);">Append-only</div>
+      <div class="kpi-label">Index operations</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-val" style="color:var(--c-queue);">Daemon</div>
+      <div class="kpi-label">Background thread</div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--c-event);"></div>FS Events</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--c-debounce);"></div>Debouncing</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--c-queue);"></div>Queue Processing</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--c-index);"></div>Indexing</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--c-status);"></div>Status Tracking</div>
+  </div>
+
+  <div class="footer">
+    <strong>Source files:</strong><br>
+    <span class="mono">src/searchat/core/watcher.py</span> (323 LOC) &middot;
+    <span class="mono">src/searchat/core/indexer.py</span> (append-only indexing) &middot;
+    <span class="mono">src/searchat/core/connectors/base.py</span> (connector protocol)<br>
+    <strong>Last updated:</strong> v0.4.0 (2026-02-03)
+  </div>
+</div>
+</body>
+</html>
