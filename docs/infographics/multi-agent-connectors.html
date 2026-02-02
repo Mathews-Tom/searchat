@@ -5,26 +5,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Searchat — Multi-Agent Connector Architecture</title>
   <style>
-    /* ── Reset ─────────────────────────────────────────── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-    /* ── Palette ───────────────────────────────────────── */
     :root {
-      --c-bg:        #F0F2F5;
-      --c-surface:   #FFFFFF;
-      --c-border:    #C9CDD4;
-      --c-text:      #1C2127;
-      --c-muted:     #5F6B7A;
+      --c-bg: #F0F2F5;
+      --c-surface: #FFFFFF;
+      --c-border: #C9CDD4;
+      --c-text: #1C2127;
+      --c-muted: #5F6B7A;
 
-      --c-protocol:  #4C4EC9;
-      --c-claude:    #1B6AC9;
-      --c-vibe:      #D4740A;
-      --c-opencode:  #0E7C3A;
-      --c-cursor:    #8B3EC9;
-      --c-continue:  #0A8F8F;
-      --c-aider:     #C93B5E;
-      --c-codex:     #9E6A00;
-      --c-gemini:    #4C4EC9;
+      --c-protocol: #4C4EC9;
+      --c-claude: #1B6AC9;
+      --c-vibe: #D4740A;
+      --c-opencode: #0E7C3A;
+      --c-cursor: #8B3EC9;
+      --c-continue: #0A8F8F;
+      --c-aider: #C93B5E;
+      --c-codex: #9E6A00;
+      --c-gemini: #4C4EC9;
+      --c-filesystem: #5F6B7A;
 
       --shadow-sm: 0 1px 3px rgba(28,33,39,0.08);
       --shadow-md: 0 3px 10px rgba(28,33,39,0.13);
@@ -36,484 +35,566 @@
     }
 
     body {
-      margin: 0;
-      padding: 20px;
-      background: var(--c-bg);
+      margin: 0; padding: 20px; background: var(--c-bg);
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
-      font-size: 13px;
-      color: var(--c-text);
-      line-height: 1.5;
+      font-size: 13px; color: var(--c-text); line-height: 1.5;
     }
 
-    .page { max-width: 1140px; margin: 0 auto; }
+    .page { max-width: 1200px; margin: 0 auto; }
 
-    /* ── Header ────────────────────────────────────────── */
+    /* Header */
     .header {
-      margin-bottom: 24px;
-      padding-bottom: 16px;
+      text-align: center; margin-bottom: 32px; padding-bottom: 20px;
       border-bottom: 2px solid var(--c-border);
     }
-    .header h1 {
-      font-size: 28px;
-      font-weight: 700;
-      margin-bottom: 8px;
-      color: var(--c-text);
-    }
-    .header .subtitle {
-      font-size: 14px;
-      color: var(--c-muted);
-      margin-bottom: 12px;
-    }
+    .header h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+    .header .subtitle { font-size: 16px; color: var(--c-muted); margin-bottom: 12px; }
     .header .meta {
       font-family: 'SFMono-Regular', Consolas, monospace;
-      font-size: 12px;
-      color: var(--c-muted);
-      line-height: 1.6;
+      font-size: 11px; color: var(--c-muted);
     }
 
-    /* ── Tier Bands ────────────────────────────────────── */
-    .tier {
-      padding: 20px;
-      margin-bottom: 16px;
-      border-radius: var(--r-md);
+    /* Layer Structure */
+    .architecture { display: flex; flex-direction: column; gap: 20px; }
+
+    .layer {
+      background: var(--c-surface); border-radius: var(--r-lg);
+      padding: 24px; box-shadow: var(--shadow-md);
+      border-top: 6px solid var(--layer-color);
       position: relative;
     }
-    .tier-protocol {
-      background: linear-gradient(to right, rgba(76,78,201,0.12) 0%, rgba(76,78,201,0.04) 100%);
+
+    .layer-header {
+      display: flex; align-items: center; gap: 12px;
+      margin-bottom: 20px; padding-bottom: 12px;
+      border-bottom: 2px solid var(--c-border);
+    }
+
+    .layer-icon {
+      width: 32px; height: 32px; display: flex;
+      align-items: center; justify-content: center;
+      background: var(--layer-color); border-radius: var(--r-md);
+    }
+
+    .layer-icon svg { width: 20px; height: 20px; stroke: white; fill: none; }
+
+    .layer-title {
+      font-size: 18px; font-weight: 700;
+      color: var(--layer-color);
+    }
+
+    /* Protocol Layer Cards */
+    .protocol-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+
+    .protocol-card {
+      background: linear-gradient(135deg, rgba(76,78,201,0.08), rgba(76,78,201,0.02));
       border-left: 4px solid var(--c-protocol);
-    }
-    .tier-connectors {
-      background: linear-gradient(to right, rgba(27,106,201,0.08) 0%, rgba(27,106,201,0.02) 100%);
-      border-left: 4px solid var(--c-claude);
-    }
-    .tier-filesystem {
-      background: linear-gradient(to right, rgba(95,107,122,0.08) 0%, rgba(95,107,122,0.02) 100%);
-      border-left: 4px solid var(--c-muted);
-    }
-
-    .tier-title {
-      font-size: 16px;
-      font-weight: 600;
-      margin-bottom: 16px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    /* ── Node Cards ────────────────────────────────────── */
-    .node {
-      background: var(--c-surface);
-      border-radius: var(--r-md);
-      padding: 14px 16px;
+      padding: 20px; border-radius: var(--r-md);
       box-shadow: var(--shadow-sm);
-      border-left: 3px solid currentColor;
+    }
+
+    .protocol-card-title {
+      font-size: 16px; font-weight: 600;
+      color: var(--c-protocol); margin-bottom: 12px;
+      display: flex; align-items: center; gap: 8px;
+    }
+
+    .protocol-card-body {
+      font-size: 12px; color: var(--c-muted); line-height: 1.6;
+    }
+
+    .protocol-card-body code {
+      background: rgba(0,0,0,0.04); padding: 2px 6px;
+      border-radius: var(--r-sm);
+      font-family: 'SFMono-Regular', Consolas, monospace;
+      font-size: 11px; color: var(--c-text);
+    }
+
+    .protocol-badge {
+      display: inline-block; background: var(--c-protocol);
+      color: white; padding: 4px 10px; border-radius: 999px;
+      font-size: 10px; font-weight: 600; margin-top: 10px;
+    }
+
+    /* Connector Cards */
+    .connectors-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+
+    .connector-card {
+      background: var(--c-surface); border-radius: var(--r-lg);
+      padding: 20px; box-shadow: var(--shadow-md);
+      border-left: 5px solid var(--connector-color);
+      min-height: 180px; display: flex; flex-direction: column;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      cursor: pointer;
+    }
+
+    .connector-card:hover {
+      transform: translateY(-4px);
+      box-shadow: var(--shadow-lg);
+    }
+
+    .connector-header {
+      display: flex; align-items: center; gap: 12px;
       margin-bottom: 12px;
     }
-    .node-header {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 8px;
-    }
-    .node-icon {
-      width: 24px;
-      height: 24px;
-      flex-shrink: 0;
-    }
-    .node-name {
-      font-weight: 600;
-      font-size: 14px;
-    }
-    .node-body {
-      font-size: 12px;
-      color: var(--c-muted);
-      line-height: 1.5;
-    }
-    .node-body code {
-      background: rgba(0,0,0,0.04);
-      padding: 2px 5px;
-      border-radius: var(--r-sm);
-      font-family: 'SFMono-Regular', Consolas, monospace;
-      font-size: 11px;
-    }
 
-    /* ── Grid Layout ───────────────────────────────────── */
-    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
-
-    /* ── Connector Cards ───────────────────────────────── */
-    .connector-card {
-      background: var(--c-surface);
-      border-radius: var(--r-md);
-      padding: 12px;
-      box-shadow: var(--shadow-sm);
-      border-left: 3px solid currentColor;
-      transition: transform 0.2s, box-shadow 0.2s;
-    }
-    .connector-card:hover {
-      transform: translateY(-2px);
-      box-shadow: var(--shadow-md);
-    }
-    .connector-header {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 8px;
-    }
     .connector-icon {
-      width: 20px;
-      height: 20px;
-      flex-shrink: 0;
+      width: 40px; height: 40px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--connector-color); border-radius: var(--r-md);
     }
+
+    .connector-icon svg {
+      width: 24px; height: 24px;
+    }
+
     .connector-name {
-      font-weight: 600;
-      font-size: 13px;
+      font-size: 16px; font-weight: 700;
+      color: var(--connector-color);
     }
-    .connector-format {
-      display: inline-block;
-      background: rgba(0,0,0,0.05);
-      padding: 2px 6px;
-      border-radius: 3px;
-      font-family: 'SFMono-Regular', Consolas, monospace;
-      font-size: 10px;
-      margin-top: 6px;
-    }
-    .connector-path {
-      font-size: 11px;
-      color: var(--c-muted);
-      margin-top: 6px;
+
+    .format-badge {
+      display: inline-block; padding: 4px 10px;
+      border-radius: var(--r-sm); font-size: 11px;
+      font-weight: 600; margin-bottom: 12px;
       font-family: 'SFMono-Regular', Consolas, monospace;
     }
 
-    /* ── KPI Bar ───────────────────────────────────────── */
+    .format-jsonl { background: rgba(27,106,201,0.15); color: var(--c-claude); }
+    .format-json { background: rgba(212,116,10,0.15); color: var(--c-vibe); }
+    .format-db { background: rgba(139,62,201,0.15); color: var(--c-cursor); }
+    .format-md { background: rgba(201,59,94,0.15); color: var(--c-aider); }
+
+    .connector-paths {
+      font-size: 11px; color: var(--c-muted);
+      font-family: 'SFMono-Regular', Consolas, monospace;
+      line-height: 1.6; margin-top: auto;
+    }
+
+    /* Filesystem Layer */
+    .filesystem-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+
+    .filesystem-card {
+      background: linear-gradient(135deg, rgba(95,107,122,0.08), rgba(95,107,122,0.02));
+      border-left: 4px solid var(--c-filesystem);
+      padding: 20px; border-radius: var(--r-md);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .filesystem-card-title {
+      font-size: 16px; font-weight: 600;
+      color: var(--c-filesystem); margin-bottom: 12px;
+      display: flex; align-items: center; gap: 8px;
+    }
+
+    .filesystem-card-body {
+      font-size: 12px; color: var(--c-muted); line-height: 1.6;
+    }
+
+    .filesystem-card-body strong {
+      display: block; color: var(--c-text); margin-top: 8px;
+    }
+
+    /* Flow Arrows */
+    .flow-arrow {
+      display: flex; justify-content: center; align-items: center;
+      margin: 16px 0; position: relative;
+    }
+
+    .arrow-container {
+      display: flex; flex-direction: column; align-items: center;
+      gap: 8px;
+    }
+
+    .arrow-line {
+      width: 4px; height: 50px;
+      background: linear-gradient(to bottom, var(--arrow-from), var(--arrow-to));
+      position: relative;
+    }
+
+    .arrow-line::after {
+      content: ''; position: absolute; bottom: -8px; left: 50%;
+      transform: translateX(-50%);
+      width: 0; height: 0;
+      border-left: 8px solid transparent;
+      border-right: 8px solid transparent;
+      border-top: 10px solid var(--arrow-to);
+    }
+
+    .arrow-label {
+      font-size: 12px; font-weight: 600;
+      color: var(--c-muted);
+      background: var(--c-surface);
+      padding: 6px 14px; border-radius: 999px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    /* KPI Bar */
     .kpi-bar {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 12px;
-      margin-top: 24px;
-      padding: 16px;
-      background: var(--c-surface);
-      border-radius: var(--r-md);
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      gap: 12px; margin-top: 24px; padding: 16px;
+      background: var(--c-surface); border-radius: var(--r-md);
       box-shadow: var(--shadow-sm);
     }
+
     .kpi-item {
-      text-align: center;
-      padding: 8px;
-      border-radius: var(--r-sm);
-      background: rgba(0,0,0,0.02);
+      text-align: center; padding: 10px;
+      border-radius: var(--r-sm); background: rgba(0,0,0,0.02);
     }
+
     .kpi-value {
-      font-size: 18px;
-      font-weight: 700;
-      color: var(--c-text);
-      margin-bottom: 4px;
+      font-size: 18px; font-weight: 700;
+      color: var(--c-text); margin-bottom: 4px;
     }
+
     .kpi-label {
-      font-size: 11px;
-      color: var(--c-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
+      font-size: 10px; color: var(--c-muted);
+      text-transform: uppercase; letter-spacing: 0.5px;
     }
 
-    /* ── Legend ────────────────────────────────────────── */
+    /* Legend */
     .legend {
-      margin-top: 20px;
-      padding: 16px;
-      background: var(--c-surface);
-      border-radius: var(--r-md);
+      margin-top: 20px; padding: 16px;
+      background: var(--c-surface); border-radius: var(--r-md);
       box-shadow: var(--shadow-sm);
-    }
-    .legend-title {
-      font-weight: 600;
-      margin-bottom: 10px;
-      font-size: 13px;
-    }
-    .legend-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 10px;
-    }
-    .legend-item {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 12px;
-    }
-    .legend-color {
-      width: 14px;
-      height: 14px;
-      border-radius: 2px;
-      flex-shrink: 0;
     }
 
-    /* ── Footer ────────────────────────────────────────── */
-    .footer {
-      margin-top: 24px;
-      padding: 16px;
-      background: var(--c-surface);
-      border-radius: var(--r-md);
-      box-shadow: var(--shadow-sm);
-      font-size: 11px;
-      color: var(--c-muted);
-      line-height: 1.6;
+    .legend-title {
+      font-weight: 600; margin-bottom: 12px; font-size: 13px;
     }
+
+    .legend-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+    }
+
+    .legend-item {
+      display: flex; align-items: center; gap: 6px; font-size: 12px;
+    }
+
+    .legend-color {
+      width: 16px; height: 16px; border-radius: 3px; flex-shrink: 0;
+    }
+
+    /* Footer */
+    .footer {
+      margin-top: 24px; padding: 16px;
+      background: var(--c-surface); border-radius: var(--r-md);
+      box-shadow: var(--shadow-sm); font-size: 11px;
+      color: var(--c-muted); line-height: 1.6;
+    }
+
     .footer strong { color: var(--c-text); }
+
+    .footer code {
+      background: rgba(0,0,0,0.04); padding: 2px 5px;
+      border-radius: var(--r-sm);
+      font-family: 'SFMono-Regular', Consolas, monospace;
+    }
   </style>
 </head>
 <body>
 
   <div class="page">
-    <!-- ═══ HEADER ═══════════════════════════════════════ -->
+    <!-- Header -->
     <div class="header">
       <h1>Searchat — Multi-Agent Connector Architecture</h1>
       <div class="subtitle">
-        Extensible connector protocol supporting 8 AI coding agents · Auto-discovery registry · Platform-agnostic paths
+        Extensible Protocol · 8 Agent Connectors · Platform-Agnostic Paths · Auto-Discovery Registry
       </div>
       <div class="meta">
-        <strong>v0.4.0</strong> | Last updated: 2026-02-02<br>
-        Python 3.9+ · AgentConnector Protocol · PathResolver · 8 Connectors<br>
+        <strong>v0.4.0</strong> | Last updated: 2026-02-03<br>
+        Python 3.9+ · AgentConnector Protocol · PathResolver · 8 Implementations<br>
         Source: <code>src/searchat/core/connectors/</code> (1,100+ LOC)
       </div>
     </div>
 
-    <!-- ═══ TIER 1: PROTOCOL & REGISTRY ══════════════════ -->
-    <div class="tier tier-protocol">
-      <div class="tier-title">
-        <svg class="node-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="3" y="3" width="18" height="18" rx="2"/>
-          <path d="M9 9h6M9 12h6M9 15h6"/>
-        </svg>
-        Tier 1: AgentConnector Protocol & Registry
-      </div>
+    <!-- Architecture Layers -->
+    <div class="architecture">
 
-      <div class="grid-2">
-        <div class="node" style="color: var(--c-protocol);">
-          <div class="node-header">
-            <svg class="node-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polygon points="12 2 2 7 12 12 22 7 12 2"/>
-              <polyline points="2 17 12 22 22 17"/>
-              <polyline points="2 12 12 17 22 12"/>
-            </svg>
-            <div class="node-name">AgentConnector Protocol</div>
-          </div>
-          <div class="node-body">
-            Defines interface for all connectors:<br>
-            <code>name: str</code><br>
-            <code>supported_extensions: tuple[str, ...]</code><br>
-            <code>discover_files(config) → list[Path]</code><br>
-            <code>can_parse(path) → bool</code><br>
-            <code>parse(path, embedding_id) → ConversationRecord</code>
-          </div>
-        </div>
-
-        <div class="node" style="color: var(--c-protocol);">
-          <div class="node-header">
-            <svg class="node-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="3"/>
-              <path d="M12 1v6m0 6v6M23 12h-6m-6 0H1"/>
-            </svg>
-            <div class="node-name">Registry Pattern</div>
-          </div>
-          <div class="node-body">
-            Connector management:<br>
-            <code>register_connector(connector)</code><br>
-            <code>get_connectors() → list[AgentConnector]</code><br>
-            <code>detect_connector(path) → AgentConnector | None</code><br>
-            Auto-discovery via entry points:<br>
-            <code>discover_entrypoint_connectors()</code>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ═══ TIER 2: CONNECTOR IMPLEMENTATIONS ════════════ -->
-    <div class="tier tier-connectors">
-      <div class="tier-title">
-        <svg class="node-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="2" y="2" width="20" height="8" rx="2"/>
-          <rect x="2" y="14" width="20" height="8" rx="2"/>
-          <line x1="6" y1="6" x2="6.01" y2="6"/>
-          <line x1="6" y1="18" x2="6.01" y2="18"/>
-        </svg>
-        Tier 2: Agent Connector Implementations (8 Total)
-      </div>
-
-      <div class="grid-4">
-        <!-- Claude -->
-        <div class="connector-card" style="color: var(--c-claude);">
-          <div class="connector-header">
-            <svg class="connector-icon" viewBox="0 0 24 24" fill="currentColor">
-              <circle cx="12" cy="12" r="10"/>
-              <path d="M8 12h8M12 8v8" stroke="white" stroke-width="2"/>
-            </svg>
-            <div class="connector-name">Claude</div>
-          </div>
-          <div class="connector-format">.jsonl</div>
-          <div class="connector-path">
-            ~/.claude/projects/<br>
-            %APPDATA%/Claude/projects/
-          </div>
-        </div>
-
-        <!-- Vibe -->
-        <div class="connector-card" style="color: var(--c-vibe);">
-          <div class="connector-header">
-            <svg class="connector-icon" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-            </svg>
-            <div class="connector-name">Vibe</div>
-          </div>
-          <div class="connector-format">.json</div>
-          <div class="connector-path">
-            ~/.vibe/sessions/<br>
-            %APPDATA%/Vibe/sessions/
-          </div>
-        </div>
-
-        <!-- OpenCode -->
-        <div class="connector-card" style="color: var(--c-opencode);">
-          <div class="connector-header">
-            <svg class="connector-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="16 18 22 12 16 6"/>
-              <polyline points="8 6 2 12 8 18"/>
-            </svg>
-            <div class="connector-name">OpenCode</div>
-          </div>
-          <div class="connector-format">.json</div>
-          <div class="connector-path">
-            ~/.opencode/history/<br>
-            %APPDATA%/OpenCode/
-          </div>
-        </div>
-
-        <!-- Cursor -->
-        <div class="connector-card" style="color: var(--c-cursor);">
-          <div class="connector-header">
-            <svg class="connector-icon" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/>
-            </svg>
-            <div class="connector-name">Cursor</div>
-          </div>
-          <div class="connector-format">.db (SQLite)</div>
-          <div class="connector-path">
-            ~/.cursor/history.db<br>
-            %APPDATA%/Cursor/
-          </div>
-        </div>
-
-        <!-- Continue -->
-        <div class="connector-card" style="color: var(--c-continue);">
-          <div class="connector-header">
-            <svg class="connector-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polygon points="5 3 19 12 5 21 5 3"/>
-            </svg>
-            <div class="connector-name">Continue</div>
-          </div>
-          <div class="connector-format">.json</div>
-          <div class="connector-path">
-            ~/.continue/sessions/<br>
-            %APPDATA%/Continue/
-          </div>
-        </div>
-
-        <!-- Aider -->
-        <div class="connector-card" style="color: var(--c-aider);">
-          <div class="connector-header">
-            <svg class="connector-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
-            </svg>
-            <div class="connector-name">Aider</div>
-          </div>
-          <div class="connector-format">.md</div>
-          <div class="connector-path">
-            .aider.chat.history.md<br>
-            Project root
-          </div>
-        </div>
-
-        <!-- Codex -->
-        <div class="connector-card" style="color: var(--c-codex);">
-          <div class="connector-header">
-            <svg class="connector-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <!-- LAYER 1: Protocol & Registry -->
+      <div class="layer" style="--layer-color: var(--c-protocol);">
+        <div class="layer-header">
+          <div class="layer-icon">
+            <svg viewBox="0 0 24 24" stroke-width="2">
               <rect x="3" y="3" width="18" height="18" rx="2"/>
-              <path d="M9 9l3 3-3 3M13 15h3"/>
+              <path d="M9 9h6M9 12h6M9 15h6"/>
             </svg>
-            <div class="connector-name">Codex</div>
           </div>
-          <div class="connector-format">.json</div>
-          <div class="connector-path">
-            ~/.codex/logs/<br>
-            %APPDATA%/Codex/
-          </div>
+          <div class="layer-title">Layer 1: AgentConnector Protocol & Registry</div>
         </div>
 
-        <!-- Gemini -->
-        <div class="connector-card" style="color: var(--c-gemini);">
-          <div class="connector-header">
-            <svg class="connector-icon" viewBox="0 0 24 24" fill="currentColor">
-              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-            </svg>
-            <div class="connector-name">Gemini CLI</div>
+        <div class="protocol-grid">
+          <div class="protocol-card">
+            <div class="protocol-card-title">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+                <polyline points="2 17 12 22 22 17"/>
+                <polyline points="2 12 12 17 22 12"/>
+              </svg>
+              AgentConnector Protocol
+            </div>
+            <div class="protocol-card-body">
+              Defines interface for all connectors:<br><br>
+              <code>name: str</code><br>
+              <code>supported_extensions: tuple[str, ...]</code><br>
+              <code>discover_files(config) → list[Path]</code><br>
+              <code>can_parse(path: Path) → bool</code><br>
+              <code>parse(path, embedding_id) → ConversationRecord</code>
+              <div class="protocol-badge">PROTOCOL</div>
+            </div>
           </div>
-          <div class="connector-format">.json</div>
-          <div class="connector-path">
-            ~/.gemini-cli/history/<br>
-            %APPDATA%/GeminiCLI/
+
+          <div class="protocol-card">
+            <div class="protocol-card-title">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M12 1v6m0 6v6M23 12h-6m-6 0H1"/>
+              </svg>
+              Registry Pattern
+            </div>
+            <div class="protocol-card-body">
+              Connector management & auto-discovery:<br><br>
+              <code>register_connector(connector)</code><br>
+              <code>get_connectors() → list[AgentConnector]</code><br>
+              <code>detect_connector(path) → AgentConnector | None</code><br>
+              <code>discover_entrypoint_connectors()</code>
+              <div class="protocol-badge">AUTO-DISCOVERY</div>
+            </div>
           </div>
         </div>
       </div>
+
+      <!-- Flow Arrow -->
+      <div class="flow-arrow" style="--arrow-from: var(--c-protocol); --arrow-to: var(--c-claude);">
+        <div class="arrow-container">
+          <div class="arrow-line"></div>
+          <div class="arrow-label">Protocol → Connectors</div>
+        </div>
+      </div>
+
+      <!-- LAYER 2: Connector Implementations -->
+      <div class="layer" style="--layer-color: var(--c-claude);">
+        <div class="layer-header">
+          <div class="layer-icon">
+            <svg viewBox="0 0 24 24" stroke-width="2">
+              <rect x="2" y="2" width="20" height="8" rx="2"/>
+              <rect x="2" y="14" width="20" height="8" rx="2"/>
+              <line x1="6" y1="6" x2="6.01" y2="6"/>
+              <line x1="6" y1="18" x2="6.01" y2="18"/>
+            </svg>
+          </div>
+          <div class="layer-title">Layer 2: Agent Connector Implementations (8 Total)</div>
+        </div>
+
+        <div class="connectors-grid">
+          <!-- Claude -->
+          <div class="connector-card" style="--connector-color: var(--c-claude);">
+            <div class="connector-header">
+              <div class="connector-icon">
+                <svg viewBox="0 0 24 24" fill="white">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M8 12h8M12 8v8" stroke="currentColor" stroke-width="2"/>
+                </svg>
+              </div>
+              <div class="connector-name">Claude</div>
+            </div>
+            <div class="format-badge format-jsonl">.jsonl</div>
+            <div class="connector-paths">
+              ~/.claude/projects/<br>
+              %APPDATA%/Claude/projects/
+            </div>
+          </div>
+
+          <!-- Vibe -->
+          <div class="connector-card" style="--connector-color: var(--c-vibe);">
+            <div class="connector-header">
+              <div class="connector-icon">
+                <svg viewBox="0 0 24 24" fill="white">
+                  <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                </svg>
+              </div>
+              <div class="connector-name">Vibe</div>
+            </div>
+            <div class="format-badge format-json">.json</div>
+            <div class="connector-paths">
+              ~/.vibe/sessions/<br>
+              %APPDATA%/Vibe/sessions/
+            </div>
+          </div>
+
+          <!-- OpenCode -->
+          <div class="connector-card" style="--connector-color: var(--c-opencode);">
+            <div class="connector-header">
+              <div class="connector-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5">
+                  <polyline points="16 18 22 12 16 6"/>
+                  <polyline points="8 6 2 12 8 18"/>
+                </svg>
+              </div>
+              <div class="connector-name">OpenCode</div>
+            </div>
+            <div class="format-badge format-json">.json</div>
+            <div class="connector-paths">
+              ~/.opencode/history/<br>
+              %APPDATA%/OpenCode/
+            </div>
+          </div>
+
+          <!-- Cursor -->
+          <div class="connector-card" style="--connector-color: var(--c-cursor);">
+            <div class="connector-header">
+              <div class="connector-icon">
+                <svg viewBox="0 0 24 24" fill="white">
+                  <path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/>
+                </svg>
+              </div>
+              <div class="connector-name">Cursor</div>
+            </div>
+            <div class="format-badge format-db">.db (SQLite)</div>
+            <div class="connector-paths">
+              ~/.cursor/history.db<br>
+              %APPDATA%/Cursor/
+            </div>
+          </div>
+
+          <!-- Continue -->
+          <div class="connector-card" style="--connector-color: var(--c-continue);">
+            <div class="connector-header">
+              <div class="connector-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5">
+                  <polygon points="5 3 19 12 5 21 5 3"/>
+                </svg>
+              </div>
+              <div class="connector-name">Continue</div>
+            </div>
+            <div class="format-badge format-json">.json</div>
+            <div class="connector-paths">
+              ~/.continue/sessions/<br>
+              %APPDATA%/Continue/
+            </div>
+          </div>
+
+          <!-- Aider -->
+          <div class="connector-card" style="--connector-color: var(--c-aider);">
+            <div class="connector-header">
+              <div class="connector-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5">
+                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                </svg>
+              </div>
+              <div class="connector-name">Aider</div>
+            </div>
+            <div class="format-badge format-md">.md</div>
+            <div class="connector-paths">
+              .aider.chat.history.md<br>
+              Project root directory
+            </div>
+          </div>
+
+          <!-- Codex -->
+          <div class="connector-card" style="--connector-color: var(--c-codex);">
+            <div class="connector-header">
+              <div class="connector-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5">
+                  <rect x="3" y="3" width="18" height="18" rx="2"/>
+                  <path d="M9 9l3 3-3 3M13 15h3"/>
+                </svg>
+              </div>
+              <div class="connector-name">Codex</div>
+            </div>
+            <div class="format-badge format-json">.json</div>
+            <div class="connector-paths">
+              ~/.codex/logs/<br>
+              %APPDATA%/Codex/
+            </div>
+          </div>
+
+          <!-- Gemini -->
+          <div class="connector-card" style="--connector-color: var(--c-gemini);">
+            <div class="connector-header">
+              <div class="connector-icon">
+                <svg viewBox="0 0 24 24" fill="white">
+                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                </svg>
+              </div>
+              <div class="connector-name">Gemini CLI</div>
+            </div>
+            <div class="format-badge format-json">.json</div>
+            <div class="connector-paths">
+              ~/.gemini-cli/history/<br>
+              %APPDATA%/GeminiCLI/
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Flow Arrow -->
+      <div class="flow-arrow" style="--arrow-from: var(--c-claude); --arrow-to: var(--c-filesystem);">
+        <div class="arrow-container">
+          <div class="arrow-line"></div>
+          <div class="arrow-label">Connectors → Filesystem</div>
+        </div>
+      </div>
+
+      <!-- LAYER 3: File System & Path Resolution -->
+      <div class="layer" style="--layer-color: var(--c-filesystem);">
+        <div class="layer-header">
+          <div class="layer-icon">
+            <svg viewBox="0 0 24 24" stroke-width="2">
+              <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
+            </svg>
+          </div>
+          <div class="layer-title">Layer 3: File System & Path Resolution</div>
+        </div>
+
+        <div class="filesystem-grid">
+          <div class="filesystem-card">
+            <div class="filesystem-card-title">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12 6 12 12 16 14"/>
+              </svg>
+              Platform Detection
+            </div>
+            <div class="filesystem-card-body">
+              <strong>WSL Detection:</strong>
+              <code>/proc/version</code> contains "microsoft"<br>
+              <code>/mnt/c/Users/</code> → <code>C:\Users\</code>
+
+              <strong>Platform-specific paths:</strong>
+              • Windows: <code>%APPDATA%</code>, <code>%USERPROFILE%</code><br>
+              • Linux/macOS: <code>~/.config</code>, <code>~/.local</code><br>
+              • WSL: Hybrid with <code>/mnt/</code> translation
+            </div>
+          </div>
+
+          <div class="filesystem-card">
+            <div class="filesystem-card-title">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+              </svg>
+              Format Detection
+            </div>
+            <div class="filesystem-card-body">
+              <strong>Extension-based routing:</strong>
+              • <code>.jsonl</code> → Claude (iterate lines)<br>
+              • <code>.json</code> → Vibe/OpenCode/Continue/Codex/Gemini<br>
+              • <code>.db</code> → Cursor (SQLite queries)<br>
+              • <code>.md</code> → Aider (markdown structure)
+
+              <strong>Validation:</strong> File signature + structure checks
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
 
-    <!-- ═══ TIER 3: FILE SYSTEM & PATH RESOLUTION ════════ -->
-    <div class="tier tier-filesystem">
-      <div class="tier-title">
-        <svg class="node-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
-        </svg>
-        Tier 3: File System & Path Resolution
-      </div>
-
-      <div class="grid-2">
-        <div class="node" style="color: var(--c-muted);">
-          <div class="node-header">
-            <svg class="node-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"/>
-              <polyline points="12 6 12 12 16 14"/>
-            </svg>
-            <div class="node-name">Platform Detection</div>
-          </div>
-          <div class="node-body">
-            <strong>WSL Detection:</strong><br>
-            <code>/proc/version</code> contains "microsoft"<br>
-            <code>/mnt/c/Users/</code> → <code>C:\Users\</code><br><br>
-            <strong>Platform-specific paths:</strong><br>
-            • Windows: <code>%APPDATA%</code>, <code>%USERPROFILE%</code><br>
-            • Linux/macOS: <code>~/.config</code>, <code>~/.local</code><br>
-            • WSL: Hybrid resolution with <code>/mnt/</code> translation
-          </div>
-        </div>
-
-        <div class="node" style="color: var(--c-muted);">
-          <div class="node-header">
-            <svg class="node-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-            </svg>
-            <div class="node-name">Format Detection</div>
-          </div>
-          <div class="node-body">
-            <strong>Extension-based routing:</strong><br>
-            • <code>.jsonl</code> → Claude, iterate lines<br>
-            • <code>.json</code> → Vibe/OpenCode/Continue/Codex/Gemini<br>
-            • <code>.db</code> → Cursor, SQLite queries<br>
-            • <code>.md</code> → Aider, parse markdown structure<br><br>
-            <strong>Validation:</strong> Check file signature, structure
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ═══ KPI BAR ══════════════════════════════════════ -->
+    <!-- KPI Bar -->
     <div class="kpi-bar">
       <div class="kpi-item">
         <div class="kpi-value">8</div>
@@ -533,7 +614,7 @@
       </div>
     </div>
 
-    <!-- ═══ LEGEND ═══════════════════════════════════════ -->
+    <!-- Legend -->
     <div class="legend">
       <div class="legend-title">Color Key</div>
       <div class="legend-grid">
@@ -572,7 +653,7 @@
       </div>
     </div>
 
-    <!-- ═══ FOOTER ═══════════════════════════════════════ -->
+    <!-- Footer -->
     <div class="footer">
       <strong>Source Files:</strong><br>
       • <code>src/searchat/core/connectors/protocols.py</code> (AgentConnector protocol, 45 LOC)<br>
@@ -581,7 +662,7 @@
       • <code>src/searchat/core/connectors/claude.py</code> (ClaudeConnector implementation, 150 LOC)<br>
       • 7 additional connector implementations (Vibe, OpenCode, Cursor, Continue, Aider, Codex, Gemini)<br><br>
 
-      <strong>Extensibility:</strong> Add new connectors by implementing AgentConnector protocol + calling register_connector()<br>
+      <strong>Extensibility:</strong> Add new connectors by implementing AgentConnector protocol + calling <code>register_connector()</code><br>
       <strong>Auto-discovery:</strong> Connectors loaded via entry points in setup.py/pyproject.toml
     </div>
 
