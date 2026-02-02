@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Searchat — RAG Chat Pipeline</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --c-bg:       #F0F2F5;
+      --c-surface:  #FFFFFF;
+      --c-border:   #C9CDD4;
+      --c-query:    #1B6AC9;
+      --c-search:   #8B3EC9;
+      --c-context:  #D4740A;
+      --c-llm:      #C93B5E;
+      --c-response: #0A8F8F;
+      --c-text:     #1C2127;
+      --c-muted:    #5F6B7A;
+      --shadow-sm:  0 1px 3px rgba(28,33,39,0.08);
+      --shadow-md:  0 3px 10px rgba(28,33,39,0.13);
+      --shadow-lg:  0 8px 24px rgba(28,33,39,0.18);
+      --r-sm: 3px; --r-md: 6px; --r-lg: 10px;
+    }
+    body {
+      font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif;
+      font-size: 13px; line-height: 1.45; color: var(--c-text); background: var(--c-bg);
+    }
+    .page { max-width: 1140px; margin: 0 auto; padding: 20px 24px; }
+    .header { display: grid; grid-template-columns: 1fr auto; align-items: end; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 2px solid var(--c-border); }
+    .header h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; }
+    .header .meta { font-size: 11px; color: var(--c-muted); text-align: right; line-height: 1.6; }
+    .header .meta .mono { font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace; background: rgba(28,33,39,0.06); padding: 1px 5px; border-radius: 3px; }
+    .tier { position: relative; padding: 14px 16px 14px 18px; border-radius: var(--r-md); margin-bottom: 6px; }
+    .tier-label { position: absolute; top: -8px; left: 16px; font-size: 10px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; padding: 1px 8px; border-radius: 3px; color: #fff; }
+    .tier-query { background: linear-gradient(135deg, rgba(27,106,201,0.07) 0%, rgba(27,106,201,0.03) 100%); border-left: 3px solid var(--c-query); }
+    .tier-query .tier-label { background: var(--c-query); }
+    .tier-search { background: linear-gradient(135deg, rgba(139,62,201,0.07) 0%, rgba(139,62,201,0.03) 100%); border-left: 3px solid var(--c-search); }
+    .tier-search .tier-label { background: var(--c-search); }
+    .tier-context { background: linear-gradient(135deg, rgba(212,116,10,0.07) 0%, rgba(212,116,10,0.03) 100%); border-left: 3px solid var(--c-context); }
+    .tier-context .tier-label { background: var(--c-context); }
+    .tier-llm { background: linear-gradient(135deg, rgba(201,59,94,0.07) 0%, rgba(201,59,94,0.03) 100%); border-left: 3px solid var(--c-llm); }
+    .tier-llm .tier-label { background: var(--c-llm); }
+    .tier-response { background: linear-gradient(135deg, rgba(10,143,143,0.07) 0%, rgba(10,143,143,0.03) 100%); border-left: 3px solid var(--c-response); }
+    .tier-response .tier-label { background: var(--c-response); }
+    .node { display: inline-flex; align-items: center; gap: 6px; background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--r-sm); padding: 6px 10px; box-shadow: var(--shadow-sm); font-size: 12px; font-weight: 500; white-space: nowrap; }
+    .node .ic { display: inline-flex; width: 18px; height: 18px; flex-shrink: 0; }
+    .node .ic svg { width: 100%; height: 100%; }
+    .node-sub { font-size: 10px; color: var(--c-muted); display: block; font-weight: 400; margin-top: 1px; }
+    .node-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .arrow-down { display: flex; align-items: center; gap: 6px; justify-content: center; padding: 2px 0; }
+    .arrow-down svg { width: 22px; height: 22px; }
+    .flow-label { font-size: 9px; color: var(--c-muted); background: var(--c-bg); padding: 0 4px; border-radius: 2px; letter-spacing: 0.3px; }
+    .kpi-bar { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 12px; }
+    .kpi { text-align: center; background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--r-sm); padding: 8px 6px; box-shadow: var(--shadow-sm); }
+    .kpi-val { font-size: 16px; font-weight: 700; }
+    .kpi-label { font-size: 10px; color: var(--c-muted); margin-top: 2px; }
+    .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 14px; padding: 10px 14px; background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--r-md); box-shadow: var(--shadow-sm); }
+    .legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; }
+    .legend-swatch { width: 12px; height: 12px; border-radius: 2px; }
+    .footer { margin-top: 14px; padding: 10px 14px; background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--r-md); box-shadow: var(--shadow-sm); font-size: 10px; color: var(--c-muted); }
+    .mono { font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="header">
+    <div>
+      <h1>Searchat — RAG Chat Pipeline</h1>
+      <span style="font-size:12px; color:var(--c-muted);">AI-powered Q&A over conversation history &middot; Hybrid retrieval &middot; Streaming responses</span>
+    </div>
+    <div class="meta">
+      <span class="mono">v0.4.0</span><br>
+      Python 3.9+ &middot; FastAPI &middot; LiteLLM &middot; FAISS
+    </div>
+  </div>
+
+  <div class="tier tier-query">
+    <span class="tier-label">① Query Reception</span>
+    <div class="node-row">
+      <div class="node">
+        <span class="ic" style="color:var(--c-query)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H2v7h7V5z"/><path d="M16 2h-4v20h4V2z"/><path d="M22 8h-4v14h4V8z"/></svg></span>
+        <div>Query Parser<span class="node-sub">Extract query string, validate input</span></div>
+      </div>
+      <div class="node">
+        <span class="ic" style="color:var(--c-query)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg></span>
+        <div>Top-K Selector<span class="node-sub">6-16 chunks based on query complexity</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow-down">
+    <svg width="20" height="20" viewBox="0 0 20 20"><defs><marker id="ah1" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="var(--c-search)"/></marker></defs><line x1="10" y1="2" x2="10" y2="16" stroke="var(--c-search)" stroke-width="1.5" marker-end="url(#ah1)"/></svg>
+    <span class="flow-label">Query → SearchEngine (HYBRID mode)</span>
+  </div>
+
+  <div class="tier tier-search">
+    <span class="tier-label">② Search Retrieval</span>
+    <div class="node-row">
+      <div class="node">
+        <span class="ic" style="color:var(--c-search)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+        <div>SearchEngine.search()<span class="node-sub">Hybrid: BM25 keyword + FAISS semantic</span></div>
+      </div>
+      <div class="node">
+        <span class="ic" style="color:var(--c-search)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></span>
+        <div>Result Ranking<span class="node-sub">RRF fusion · score normalization</span></div>
+      </div>
+      <div class="node">
+        <span class="ic" style="color:var(--c-search)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg></span>
+        <div>Top-K Extraction<span class="node-sub">Default: 8 results</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow-down">
+    <svg width="20" height="20" viewBox="0 0 20 20"><defs><marker id="ah2" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="var(--c-context)"/></marker></defs><line x1="10" y1="2" x2="10" y2="16" stroke="var(--c-context)" stroke-width="1.5" marker-end="url(#ah2)"/></svg>
+    <span class="flow-label">SearchResults → Context Formatter</span>
+  </div>
+
+  <div class="tier tier-context">
+    <span class="tier-label">③ Context Formatting</span>
+    <div class="node-row">
+      <div class="node">
+        <span class="ic" style="color:var(--c-context)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span>
+        <div>Result Formatter<span class="node-sub">Extract conversation_id, updated_at, project_id, snippet</span></div>
+      </div>
+      <div class="node">
+        <span class="ic" style="color:var(--c-context)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 9h16"/><path d="M9 4v16"/></svg></span>
+        <div>Context Builder<span class="node-sub">Format chunks with metadata for LLM prompt</span></div>
+      </div>
+      <div class="node">
+        <span class="ic" style="color:var(--c-context)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg></span>
+        <div>System Prompt Injection<span class="node-sub">Add instructions + context chunks to messages</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow-down">
+    <svg width="20" height="20" viewBox="0 0 20 20"><defs><marker id="ah3" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="var(--c-llm)"/></marker></defs><line x1="10" y1="2" x2="10" y2="16" stroke="var(--c-llm)" stroke-width="1.5" marker-end="url(#ah3)"/></svg>
+    <span class="flow-label">Formatted Context → LLM Provider</span>
+  </div>
+
+  <div class="tier tier-llm">
+    <span class="tier-label">④ LLM Generation</span>
+    <div class="node-row">
+      <div class="node">
+        <span class="ic" style="color:var(--c-llm)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg></span>
+        <div>Provider Selection<span class="node-sub">OpenAI / Ollama / Embedded</span></div>
+      </div>
+      <div class="node">
+        <span class="ic" style="color:var(--c-llm)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5"/></svg></span>
+        <div>LLMService<span class="node-sub mono">.completion() or .stream_completion()</span></div>
+      </div>
+      <div class="node">
+        <span class="ic" style="color:var(--c-llm)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg></span>
+        <div>Model Resolution<span class="node-sub">Defaults from config or model_name override</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow-down">
+    <svg width="20" height="20" viewBox="0 0 20 20"><defs><marker id="ah4" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="var(--c-response)"/></marker></defs><line x1="10" y1="2" x2="10" y2="16" stroke="var(--c-response)" stroke-width="1.5" marker-end="url(#ah4)"/></svg>
+    <span class="flow-label">LLM Response → User</span>
+  </div>
+
+  <div class="tier tier-response">
+    <span class="tier-label">⑤ Response Streaming</span>
+    <div class="node-row">
+      <div class="node">
+        <span class="ic" style="color:var(--c-response)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg></span>
+        <div>Streaming Mode<span class="node-sub">Yield chunks as they arrive (Iterator[str])</span></div>
+      </div>
+      <div class="node">
+        <span class="ic" style="color:var(--c-response)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg></span>
+        <div>Non-Streaming Mode<span class="node-sub">Return full RAGGeneration object</span></div>
+      </div>
+      <div class="node">
+        <span class="ic" style="color:var(--c-response)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 007 0"/><path d="M14 13V7a2 2 0 10-4 0v6"/><circle cx="12" cy="12" r="10"/></svg></span>
+        <div>Citation Extraction<span class="node-sub">Link sources (conversation_id, date) to answer</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="kpi-bar">
+    <div class="kpi">
+      <div class="kpi-val" style="color:var(--c-search);">&lt;100ms</div>
+      <div class="kpi-label">Search latency</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-val" style="color:var(--c-llm);">&lt;2s</div>
+      <div class="kpi-label">OpenAI response</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-val" style="color:var(--c-llm);">&lt;5s</div>
+      <div class="kpi-label">Ollama response</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-val" style="color:var(--c-llm);">&lt;8s</div>
+      <div class="kpi-label">Embedded response</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-val" style="color:var(--c-query);">8</div>
+      <div class="kpi-label">Top-K default</div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--c-query);"></div>Query Parsing</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--c-search);"></div>Search Retrieval</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--c-context);"></div>Context Formatting</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--c-llm);"></div>LLM Generation</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--c-response);"></div>Response Streaming</div>
+    <div class="legend-item" style="margin-left:auto; color:var(--c-muted);">
+      <svg width="16" height="10" viewBox="0 0 16 10"><defs><marker id="ahL" markerWidth="4" markerHeight="4" refX="2" refY="2" orient="auto"><path d="M0,0 L4,2 L0,4 Z" fill="var(--c-muted)"/></marker></defs><line x1="1" y1="5" x2="13" y2="5" stroke="var(--c-muted)" stroke-width="1.2" marker-end="url(#ahL)"/></svg>
+      Data flow direction
+    </div>
+  </div>
+
+  <div class="footer">
+    <strong>Source files:</strong><br>
+    <span class="mono">src/searchat/services/chat_service.py</span> (175 LOC) &middot;
+    <span class="mono">src/searchat/services/llm_service.py</span> (200 LOC) &middot;
+    <span class="mono">src/searchat/api/routers/chat.py</span> (API endpoints)<br>
+    <strong>Last updated:</strong> v0.4.0 (2026-02-03)
+  </div>
+</div>
+</body>
+</html>
