@@ -81,6 +81,12 @@ embedded = [
     "llama-cpp-python>=0.2.0",
 ]
 
+# Code-aware symbol extraction (Phase 3)
+treesitter = [
+    "tree-sitter>=0.21.3",
+    "tree-sitter-languages>=1.10.2",
+]
+
 # Export formats
 pdf = [
     "weasyprint>=60.0",
@@ -92,6 +98,8 @@ jupyter = [
 all = [
     "mcp>=0.1.0; python_version >= '3.10'",
     "llama-cpp-python>=0.2.0",
+    "tree-sitter>=0.21.3",
+    "tree-sitter-languages>=1.10.2",
     "weasyprint>=60.0",
     "nbformat>=5.9.0",
     "pytest>=7.4.0",
@@ -114,6 +122,8 @@ gpu = [
 searchat = "searchat.cli:main"
 searchat-web = "searchat.api.app:main"
 searchat-mcp = "searchat.mcp.server:run"
+searchat-setup-index = "searchat.cli.setup_index:main"
+searchat-ghost = "searchat.daemon.ghost:main"
 
 [project.entry-points."searchat.connectors"]
 claude = "searchat.core.connectors.claude:ClaudeConnector"
