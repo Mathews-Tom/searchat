@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Searchat — Backup & Restore Flow</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --c-bg: #F0F2F5; --c-surface: #FFFFFF; --c-border: #C9CDD4;
+      --c-backup: #0E7C3A; --c-validate: #D4740A; --c-restore: #1B6AC9; --c-error: #C93B5E;
+      --c-text: #1C2127; --c-muted: #5F6B7A;
+      --shadow-sm: 0 1px 3px rgba(28,33,39,0.08); --shadow-md: 0 3px 10px rgba(28,33,39,0.13);
+      --r-sm: 3px; --r-md: 6px; --r-lg: 10px;
+    }
+    body { font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif; font-size: 13px; line-height: 1.45; color: var(--c-text); background: var(--c-bg); }
+    .page { max-width: 1140px; margin: 0 auto; padding: 20px 24px; }
+    .header { display: grid; grid-template-columns: 1fr auto; align-items: end; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 2px solid var(--c-border); }
+    .header h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; }
+    .header .meta { font-size: 11px; color: var(--c-muted); text-align: right; line-height: 1.6; }
+    .header .meta .mono { font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace; background: rgba(28,33,39,0.06); padding: 1px 5px; border-radius: 3px; }
+    .dual-flow { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .flow-col { display: flex; flex-direction: column; gap: 6px; }
+    .flow-title { font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; padding: 6px 10px; border-radius: var(--r-sm); }
+    .flow-title-backup { background: linear-gradient(135deg, rgba(14,124,58,0.1) 0%, rgba(14,124,58,0.05) 100%); color: var(--c-backup); border-left: 3px solid var(--c-backup); }
+    .flow-title-restore { background: linear-gradient(135deg, rgba(27,106,201,0.1) 0%, rgba(27,106,201,0.05) 100%); color: var(--c-restore); border-left: 3px solid var(--c-restore); }
+    .step { background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--r-md); padding: 10px 12px; box-shadow: var(--shadow-sm); }
+    .step-backup { border-left: 3px solid var(--c-backup); }
+    .step-validate { border-left: 3px solid var(--c-validate); background: linear-gradient(135deg, rgba(212,116,10,0.04) 0%, rgba(212,116,10,0.01) 100%); }
+    .step-restore { border-left: 3px solid var(--c-restore); }
+    .step-error { border-left: 3px solid var(--c-error); background: linear-gradient(135deg, rgba(201,59,94,0.04) 0%, rgba(201,59,94,0.01) 100%); }
+    .step-title { font-size: 12px; font-weight: 600; margin-bottom: 4px; display: flex; align-items: center; gap: 5px; }
+    .step-desc { font-size: 10px; color: var(--c-muted); line-height: 1.4; }
+    .ic { display: inline-flex; width: 14px; height: 14px; flex-shrink: 0; }
+    .ic svg { width: 100%; height: 100%; }
+    .arrow-down { display: flex; justify-content: center; padding: 2px 0; }
+    .arrow-down svg { width: 18px; height: 18px; }
+    .safety-note { margin-top: 12px; padding: 10px 12px; background: rgba(14,124,58,0.06); border: 1px solid rgba(14,124,58,0.2); border-radius: var(--r-md); font-size: 10px; line-height: 1.5; }
+    .safety-note strong { color: var(--c-backup); }
+    .kpi-bar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; }
+    .kpi { text-align: center; background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--r-sm); padding: 8px 6px; box-shadow: var(--shadow-sm); }
+    .kpi-val { font-size: 16px; font-weight: 700; }
+    .kpi-label { font-size: 10px; color: var(--c-muted); margin-top: 2px; }
+    .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 14px; padding: 10px 14px; background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--r-md); box-shadow: var(--shadow-sm); }
+    .legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; }
+    .legend-swatch { width: 12px; height: 12px; border-radius: 2px; }
+    .footer { margin-top: 14px; padding: 10px 14px; background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--r-md); box-shadow: var(--shadow-sm); font-size: 10px; color: var(--c-muted); }
+    .mono { font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="header">
+    <div>
+      <h1>Searchat — Backup & Restore Flow</h1>
+      <span style="font-size:12px; color:var(--c-muted);">Safe data protection · Automatic pre-restore backups · Validation gates · Atomic operations</span>
+    </div>
+    <div class="meta">
+      <span class="mono">v0.4.0</span><br>
+      Python 3.9+ &middot; shutil &middot; Path
+    </div>
+  </div>
+
+  <div class="dual-flow">
+    <!-- LEFT: Backup Creation Flow -->
+    <div class="flow-col">
+      <div class="flow-title flow-title-backup">BACKUP CREATION</div>
+
+      <div class="step step-backup">
+        <div class="step-title">
+          <span class="ic" style="color:var(--c-backup)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></span>
+          1. Check Data Directory
+        </div>
+        <div class="step-desc">Verify data_dir exists · Raise FileNotFoundError if missing</div>
+      </div>
+
+      <div class="arrow-down"><svg width="18" height="18" viewBox="0 0 18 18"><defs><marker id="ah-b1" markerWidth="5" markerHeight="5" refX="2.5" refY="2.5" orient="auto"><path d="M0,0 L5,2.5 L0,5 Z" fill="var(--c-backup)"/></marker></defs><line x1="9" y1="2" x2="9" y2="15" stroke="var(--c-backup)" stroke-width="1.5" marker-end="url(#ah-b1)"/></svg></div>
+
+      <div class="step step-backup">
+        <div class="step-title">
+          <span class="ic" style="color:var(--c-backup)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>
+          2. Generate Timestamped Name
+        </div>
+        <div class="step-desc">Format: <span class="mono">backup_YYYYMMDD_HHMMSS</span> or custom name</div>
+      </div>
+
+      <div class="arrow-down"><svg width="18" height="18" viewBox="0 0 18 18"><line x1="9" y1="2" x2="9" y2="15" stroke="var(--c-backup)" stroke-width="1.5" marker-end="url(#ah-b1)"/></svg></div>
+
+      <div class="step step-backup">
+        <div class="step-title">
+          <span class="ic" style="color:var(--c-backup)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg></span>
+          3. Copy Data & Config
+        </div>
+        <div class="step-desc">shutil.copytree(data/) · shutil.copytree(config/) · Preserve timestamps</div>
+      </div>
+
+      <div class="arrow-down"><svg width="18" height="18" viewBox="0 0 18 18"><line x1="9" y1="2" x2="9" y2="15" stroke="var(--c-backup)" stroke-width="1.5" marker-end="url(#ah-b1)"/></svg></div>
+
+      <div class="step step-backup">
+        <div class="step-title">
+          <span class="ic" style="color:var(--c-backup)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg></span>
+          4. Calculate Metrics
+        </div>
+        <div class="step-desc">Count files · Calculate total_size_bytes · Convert to MB</div>
+      </div>
+
+      <div class="arrow-down"><svg width="18" height="18" viewBox="0 0 18 18"><line x1="9" y1="2" x2="9" y2="15" stroke="var(--c-backup)" stroke-width="1.5" marker-end="url(#ah-b1)"/></svg></div>
+
+      <div class="step step-backup">
+        <div class="step-title">
+          <span class="ic" style="color:var(--c-backup)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span>
+          5. Save Metadata
+        </div>
+        <div class="step-desc">Write <span class="mono">backup_metadata.json</span> · Include timestamp, file_count, size</div>
+      </div>
+
+      <div class="arrow-down"><svg width="18" height="18" viewBox="0 0 18 18"><line x1="9" y1="2" x2="9" y2="15" stroke="var(--c-backup)" stroke-width="1.5" marker-end="url(#ah-b1)"/></svg></div>
+
+      <div class="step step-backup">
+        <div class="step-title">
+          <span class="ic" style="color:var(--c-backup)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg></span>
+          Backup Complete
+        </div>
+        <div class="step-desc">Return BackupMetadata object · Log success with file count & size</div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Restore Flow -->
+    <div class="flow-col">
+      <div class="flow-title flow-title-restore">RESTORE FLOW</div>
+
+      <div class="step step-restore">
+        <div class="step-title">
+          <span class="ic" style="color:var(--c-restore)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+          1. Check Backup Exists
+        </div>
+        <div class="step-desc">Verify backup_path exists · Raise FileNotFoundError if missing</div>
+      </div>
+
+      <div class="arrow-down"><svg width="18" height="18" viewBox="0 0 18 18"><defs><marker id="ah-r1" markerWidth="5" markerHeight="5" refX="2.5" refY="2.5" orient="auto"><path d="M0,0 L5,2.5 L0,5 Z" fill="var(--c-validate)"/></marker></defs><line x1="9" y1="2" x2="9" y2="15" stroke="var(--c-validate)" stroke-width="1.5" marker-end="url(#ah-r1)"/></svg></div>
+
+      <div class="step step-validate">
+        <div class="step-title">
+          <span class="ic" style="color:var(--c-validate)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></span>
+          2. Validate Backup Structure
+        </div>
+        <div class="step-desc">Check data/ exists · Check for .parquet files · Raise ValueError if invalid</div>
+      </div>
+
+      <div class="arrow-down"><svg width="18" height="18" viewBox="0 0 18 18"><defs><marker id="ah-r2" markerWidth="5" markerHeight="5" refX="2.5" refY="2.5" orient="auto"><path d="M0,0 L5,2.5 L0,5 Z" fill="var(--c-error)"/></marker></defs><line x1="9" y1="2" x2="9" y2="15" stroke="var(--c-error)" stroke-width="1.5" stroke-dasharray="3 2" marker-end="url(#ah-r2)"/></svg></div>
+
+      <div class="step step-error">
+        <div class="step-title">
+          <span class="ic" style="color:var(--c-error)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg></span>
+          Validation Failed
+        </div>
+        <div class="step-desc">ValueError raised · No changes made · Operation aborted</div>
+      </div>
+
+      <div class="arrow-down"><svg width="18" height="18" viewBox="0 0 18 18"><defs><marker id="ah-r3" markerWidth="5" markerHeight="5" refX="2.5" refY="2.5" orient="auto"><path d="M0,0 L5,2.5 L0,5 Z" fill="var(--c-backup)"/></marker></defs><line x1="9" y1="2" x2="9" y2="15" stroke="var(--c-backup)" stroke-width="1.5" marker-end="url(#ah-r3)"/></svg></div>
+
+      <div class="step step-backup">
+        <div class="step-title">
+          <span class="ic" style="color:var(--c-backup)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/></svg></span>
+          3. Create Pre-Restore Backup (SAFETY)
+        </div>
+        <div class="step-desc">Automatic backup of current state · backup_type="pre_restore" · Can be disabled</div>
+      </div>
+
+      <div class="arrow-down"><svg width="18" height="18" viewBox="0 0 18 18"><defs><marker id="ah-r4" markerWidth="5" markerHeight="5" refX="2.5" refY="2.5" orient="auto"><path d="M0,0 L5,2.5 L0,5 Z" fill="var(--c-restore)"/></marker></defs><line x1="9" y1="2" x2="9" y2="15" stroke="var(--c-restore)" stroke-width="1.5" marker-end="url(#ah-r4)"/></svg></div>
+
+      <div class="step step-restore">
+        <div class="step-title">
+          <span class="ic" style="color:var(--c-restore)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg></span>
+          4. Atomic Restore Operations
+        </div>
+        <div class="step-desc">Remove dest (rmtree/unlink) · Copy from backup (copytree/copy2) · Atomic swap</div>
+      </div>
+
+      <div class="arrow-down"><svg width="18" height="18" viewBox="0 0 18 18"><line x1="9" y1="2" x2="9" y2="15" stroke="var(--c-restore)" stroke-width="1.5" marker-end="url(#ah-r4)"/></svg></div>
+
+      <div class="step step-restore">
+        <div class="step-title">
+          <span class="ic" style="color:var(--c-restore)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg></span>
+          Restore Complete
+        </div>
+        <div class="step-desc">Return pre_restore_metadata · Log success · Data restored from backup</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="safety-note">
+    <strong>Safety Features:</strong> Pre-restore backup (automatic) · Validation before restore (parquet files required) · Atomic copy operations · Metadata tracking · Types: manual, pre_restore, scheduled
+  </div>
+
+  <div class="kpi-bar">
+    <div class="kpi">
+      <div class="kpi-val" style="color:var(--c-backup);">3</div>
+      <div class="kpi-label">Validation checks</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-val" style="color:var(--c-restore);">Atomic</div>
+      <div class="kpi-label">Restore operations</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-val" style="color:var(--c-backup);">Auto</div>
+      <div class="kpi-label">Pre-restore backup</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-val" style="color:var(--c-validate);">JSON</div>
+      <div class="kpi-label">Metadata format</div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--c-backup);"></div>Backup Operations</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--c-validate);"></div>Validation Gates</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--c-restore);"></div>Restore Operations</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--c-error);"></div>Error Paths</div>
+  </div>
+
+  <div class="footer">
+    <strong>Source files:</strong><br>
+    <span class="mono">src/searchat/services/backup.py</span> (370 LOC) &middot;
+    <span class="mono">src/searchat/api/routers/backup.py</span> (API endpoints) &middot;
+    <span class="mono">docs/snapshots.md</span> (feature documentation)<br>
+    <strong>Last updated:</strong> v0.4.0 (2026-02-03)
+  </div>
+</div>
+</body>
+</html>
