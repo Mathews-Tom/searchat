@@ -4,16 +4,47 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Searchat — File Watching & Live Indexing</title>
+  <link rel="stylesheet" href="shared/navigation.css">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    /* Light Theme (default) */
     :root {
-      --c-bg: #F0F2F5; --c-surface: #FFFFFF; --c-border: #C9CDD4;
-      --c-text: #1C2127; --c-muted: #5F6B7A;
+      --c-bg: #f6f8fa; --c-surface: #ffffff; --c-border: #d0d7de;
+      --c-text: #24292f; --c-muted: #57606a;
       --c-event: #1B6AC9; --c-debounce: #D4740A; --c-queue: #8B3EC9;
       --c-index: #0E7C3A; --c-status: #9E6A00;
       --shadow-sm: 0 1px 3px rgba(28,33,39,0.08);
       --shadow-md: 0 3px 10px rgba(28,33,39,0.13);
       --r-sm: 3px; --r-md: 6px; --r-lg: 10px;
+    }
+    /* Dark Theme - System preference */
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --c-bg: #0d1117; --c-surface: #161b22; --c-border: #30363d;
+        --c-text: #c9d1d9; --c-muted: #8b949e;
+        --c-event: #58a6ff; --c-debounce: #ffa657; --c-queue: #bc8cff;
+        --c-index: #3fb950; --c-status: #d29922;
+        --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
+        --shadow-md: 0 3px 10px rgba(0,0,0,0.4);
+      }
+    }
+    /* Dark Theme - Manual override */
+    :root[data-theme="dark"] {
+      --c-bg: #0d1117; --c-surface: #161b22; --c-border: #30363d;
+      --c-text: #c9d1d9; --c-muted: #8b949e;
+      --c-event: #58a6ff; --c-debounce: #ffa657; --c-queue: #bc8cff;
+      --c-index: #3fb950; --c-status: #d29922;
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
+      --shadow-md: 0 3px 10px rgba(0,0,0,0.4);
+    }
+    /* Light Theme - Manual override */
+    :root[data-theme="light"] {
+      --c-bg: #f6f8fa; --c-surface: #ffffff; --c-border: #d0d7de;
+      --c-text: #24292f; --c-muted: #57606a;
+      --c-event: #1B6AC9; --c-debounce: #D4740A; --c-queue: #8B3EC9;
+      --c-index: #0E7C3A; --c-status: #9E6A00;
+      --shadow-sm: 0 1px 3px rgba(28,33,39,0.08);
+      --shadow-md: 0 3px 10px rgba(28,33,39,0.13);
     }
     body {
       margin: 0; padding: 20px; background: var(--c-bg);
@@ -69,9 +100,52 @@
       box-shadow: var(--shadow-sm); font-size: 11px; color: var(--c-muted); line-height: 1.6;
     }
     .footer strong { color: var(--c-text); }
+    /* Theme Toggle */
+    .theme-toggle {
+      position: fixed; top: 20px; right: 20px; display: flex; gap: 8px;
+      background: var(--c-surface); border: 1px solid var(--c-border);
+      border-radius: 6px; padding: 6px; box-shadow: var(--shadow-md); z-index: 1000;
+    }
+    .theme-toggle button {
+      width: 36px; height: 36px; border: 1px solid transparent;
+      border-radius: 4px; background: transparent; color: var(--c-muted);
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      transition: all 0.2s ease; padding: 0;
+    }
+    .theme-toggle button:hover { background: var(--c-bg); color: var(--c-text); }
+    .theme-toggle button.active { background: var(--c-event); color: white; border-color: var(--c-event); }
+    .theme-toggle button svg { width: 18px; height: 18px; }
   </style>
 </head>
-<body>
+<body data-page="filewatching">
+  <!-- Theme Toggle -->
+  <div class="theme-toggle">
+    <button data-theme="light" title="Light mode" aria-label="Light mode">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="5"></circle>
+        <line x1="12" y1="1" x2="12" y2="3"></line>
+        <line x1="12" y1="21" x2="12" y2="23"></line>
+        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+        <line x1="1" y1="12" x2="3" y2="12"></line>
+        <line x1="21" y1="12" x2="23" y2="12"></line>
+        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+      </svg>
+    </button>
+    <button data-theme="dark" title="Dark mode" aria-label="Dark mode">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+      </svg>
+    </button>
+    <button data-theme="system" title="System mode" aria-label="System mode">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+        <line x1="8" y1="21" x2="16" y2="21"></line>
+        <line x1="12" y1="17" x2="12" y2="21"></line>
+      </svg>
+    </button>
+  </div>
   <div class="page">
     <div class="header">
       <h1>Searchat — File Watching & Live Indexing</h1>
@@ -207,5 +281,42 @@
       <strong>Configuration:</strong> auto_index, reindex_on_modification, modification_debounce_minutes in settings.toml
     </div>
   </div>
+  <script>
+    // Theme Management - Synced with main UI
+    function applyTheme(theme) {
+      const root = document.documentElement;
+      if (theme === 'system') {
+        root.removeAttribute('data-theme');
+      } else {
+        root.setAttribute('data-theme', theme);
+      }
+    }
+    function updateButtonStates(currentTheme) {
+      document.querySelectorAll('.theme-toggle button').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.theme === currentTheme);
+      });
+    }
+    function setTheme(theme) {
+      localStorage.setItem('theme-preference', theme);
+      applyTheme(theme);
+      updateButtonStates(theme);
+    }
+    function initTheme() {
+      const savedTheme = localStorage.getItem('theme-preference') || 'system';
+      applyTheme(savedTheme);
+      updateButtonStates(savedTheme);
+    }
+    initTheme();
+    window.addEventListener('storage', (e) => {
+      if (e.key === 'theme-preference' && e.newValue) {
+        applyTheme(e.newValue);
+        updateButtonStates(e.newValue);
+      }
+    });
+    document.querySelectorAll('.theme-toggle button').forEach(btn => {
+      btn.addEventListener('click', () => setTheme(btn.dataset.theme));
+    });
+  </script>
+  <script src="shared/navigation.js"></script>
 </body>
 </html>
