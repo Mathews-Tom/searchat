@@ -64,6 +64,17 @@ Semantic search and RAG-powered Q&A for AI coding agent conversations. Find past
 - **MCP Server** — Let MCP clients (Claude Desktop, Cursor, etc.) query your local index
 - **Terminal Resume** — Resume conversations directly in terminal
 
+## 📊 Interactive Documentation
+
+Visual architecture diagrams and flow charts:
+
+- [RAG Chat Pipeline](docs/infographics/rag-chat-pipeline.html) - AI-powered Q&A over conversations
+- [Backup & Restore](docs/infographics/backup-restore-flow.html) - Data safety and recovery procedures
+- [File Watching](docs/infographics/file-watching-indexing.html) - Live indexing and event handling
+- [Multi-Agent Connectors](docs/infographics/multi-agent-connectors.html) - Agent support architecture
+
+View in browser for interactive experience. [See all infographics →](docs/infographics/README.md)
+
 ## Quick Start
 
 ### Install And Run (Standalone)

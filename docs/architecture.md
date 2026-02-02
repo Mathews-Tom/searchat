@@ -1,5 +1,18 @@
 # Searchat Architecture
 
+## Visual Documentation
+
+For interactive visual representations of Searchat's architecture:
+
+- [Multi-Agent Connector Architecture](infographics/multi-agent-connectors.html) - Protocol-based extensibility for 8 AI agents
+- [File Watching & Live Indexing](infographics/file-watching-indexing.html) - Event-driven real-time indexing system
+- [RAG Chat Pipeline](infographics/rag-chat-pipeline.html) - Retrieval-Augmented Generation flow
+- [Backup & Restore Flow](infographics/backup-restore-flow.html) - Data safety procedures
+
+These diagrams show component relationships, data flows, and system interactions.
+
+---
+
 ## Project Structure
 
 ```

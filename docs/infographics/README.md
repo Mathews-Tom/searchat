@@ -43,7 +43,7 @@ All infographics follow a consistent design system:
 ## Viewing Infographics
 
 **In browser**: Open any `.html` file directly in Chrome, Firefox, or Safari
-**From docs**: Follow links from `README.md`, `docs/features.md`, or `docs/architecture.md`
+**From docs**: Follow links from `README.md` or `docs/architecture.md`
 
 ## Maintenance
 
