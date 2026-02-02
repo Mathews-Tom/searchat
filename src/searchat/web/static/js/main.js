@@ -2,8 +2,8 @@
 
 import { initTheme, setTheme } from './modules/theme.js';
 import { restoreSearchState } from './modules/session.js';
-import { loadProjects } from './modules/api.js';
-import { search, toggleCustomDate, loadConversationView, showSearchView, initProjectSuggestion } from './modules/search.js';
+import { loadProjects, indexMissing, shutdownServer } from './modules/api.js';
+import { search, toggleCustomDate, loadConversationView, showSearchView, initProjectSuggestion, showAllConversations, resumeSession } from './modules/search.js';
 import { initChat } from './modules/chat.js';
 import { initShortcuts, toggleHelpModal } from './modules/shortcuts.js';
 import { initSearchHistory, restoreSearchFromHistory, clearHistory } from './modules/search-history.js';
@@ -16,6 +16,7 @@ import { initSavedQueries } from './modules/saved-queries.js';
 import { showDashboards } from './modules/dashboards.js';
 import { initDatasetSelector } from './modules/dataset.js';
 import { checkAndShowSplash } from './splash.js';
+import { createBackup, showBackups } from './modules/backup.js';
 
 // Make functions globally available for inline event handlers
 window.setTheme = setTheme;
@@ -32,6 +33,12 @@ window.toggleBulkMode = function () {
 window.showAnalytics = showAnalytics;
 window.showDashboards = showDashboards;
 window.goToPage = (page) => goToPage(page, search);
+window.showAllConversations = showAllConversations;
+window.resumeSession = resumeSession;
+window.indexMissing = indexMissing;
+window.shutdownServer = shutdownServer;
+window.createBackup = createBackup;
+window.showBackups = showBackups;
 
 function safeInit(name, fn) {
     try {
@@ -62,22 +69,6 @@ safeInit('bulk-export', async () => {
     const module = await import('./modules/bulk-export.js');
     window.toggleBulkMode = module.toggleBulkMode;
     module.initBulkExport();
-});
-
-// Import and expose other functions that might be called from HTML
-import('./modules/backup.js').then(module => {
-    window.createBackup = module.createBackup;
-    window.showBackups = module.showBackups;
-});
-
-import('./modules/api.js').then(module => {
-    window.indexMissing = module.indexMissing;
-    window.shutdownServer = module.shutdownServer;
-});
-
-import('./modules/search.js').then(module => {
-    window.showAllConversations = module.showAllConversations;
-    window.resumeSession = module.resumeSession;
 });
 
 // Add event listener for search on Enter key

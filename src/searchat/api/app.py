@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import mimetypes
 import os
+import re
 import time
 import warnings
 from pathlib import Path
@@ -46,6 +47,7 @@ from searchat.api.routers import (
     dashboards_router,
 )
 from searchat.config.constants import (
+    APP_VERSION,
     DEFAULT_HOST,
     DEFAULT_PORT,
     PORT_SCAN_RANGE,
@@ -76,14 +78,42 @@ mimetypes.add_type("text/javascript", ".mjs")
 
 # Cache HTML at module load for faster responses
 _HTML_PATH = Path(__file__).parent.parent / "web" / "index.html"
-_CACHED_HTML = _HTML_PATH.read_text(encoding='utf-8')
+
+
+def _cache_bust_static_assets(html: str, version: str) -> str:
+    """Append a version query param to local /static assets.
+
+    This prevents browsers from keeping an outdated ES module graph after an
+    upgrade (a common source of "Unexpected token" and missing global handlers).
+    """
+
+    pattern = re.compile(r"(?P<attr>\b(?:src|href))=(?P<q>['\"])(?P<path>/static/[^'\"]+)(?P=q)")
+
+    def repl(match: re.Match[str]) -> str:
+        attr = match.group("attr")
+        quote = match.group("q")
+        path = match.group("path")
+
+        base, sep, fragment = path.partition("#")
+        if "?" in base:
+            return match.group(0)
+
+        busted = f"{base}?v={version}"
+        if sep:
+            busted = f"{busted}#{fragment}"
+        return f"{attr}={quote}{busted}{quote}"
+
+    return pattern.sub(repl, html)
+
+
+_CACHED_HTML = _cache_bust_static_assets(_HTML_PATH.read_text(encoding="utf-8"), APP_VERSION)
 
 
 # Create FastAPI app
 app = FastAPI(
     title="Searchat API",
     description="Semantic search for AI coding agent conversations",
-    version="0.2.0",
+    version=APP_VERSION,
 )
 
 # CORS middleware

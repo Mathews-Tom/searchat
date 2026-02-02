@@ -179,6 +179,7 @@ function updateProgress(status) {
         'parquet',
         'search_engine',
         'embedder',
+        'embedded_model',
         'faiss',
         'metadata',
         'indexer'
@@ -196,7 +197,7 @@ function updateProgress(status) {
 /**
  * Render individual progress item with spinner and bar
  */
-function renderProgressItem(name, state, error) {
+function renderProgressItem(name, state, detail) {
     const item = document.createElement('div');
     item.className = 'splash-progress-item';
 
@@ -218,17 +219,21 @@ function renderProgressItem(name, state, error) {
         statusText = 'Ready';
     } else if (state === 'loading') {
         progress = 60;
-        statusText = 'Loading...';
+        statusText = detail || 'Loading...';
     } else if (state === 'error') {
         progress = 0;
-        statusText = error || 'Error';
+        statusText = detail || 'Error';
     } else {
         progress = 0;
-        statusText = 'Idle';
+        if (name === 'embedded_model') {
+            statusText = detail || 'Not enabled';
+        } else {
+            statusText = detail || 'Idle';
+        }
     }
 
-    // Spinner (hidden for ready/error states)
-    const showSpinner = state === 'loading' || state === 'idle';
+    // Spinner only for active loading.
+    const showSpinner = state === 'loading';
     const spinnerHtml = showSpinner
         ? '<div class="splash-spinner" aria-hidden="true"></div>'
         : '';
@@ -261,6 +266,7 @@ function formatComponentName(name) {
         'faiss': 'FAISS Index',
         'metadata': 'Metadata',
         'embedder': 'AI Embeddings',
+        'embedded_model': 'Embedded LLM',
         'indexer': 'Indexer'
     };
     return names[name] || name;
