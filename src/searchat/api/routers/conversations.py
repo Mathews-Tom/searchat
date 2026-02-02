@@ -744,57 +744,9 @@ async def get_conversation_code(
 
 
 def _detect_language(code: str) -> str:
-    """Detect programming language from code content."""
-    code_lower = code.lower().strip()
+    from searchat.core.code_extractor import _detect_language as detect
 
-    # SQL indicators (check before Python to avoid 'from' keyword collision)
-    if any(kw in code_lower for kw in ['select ', 'insert ', 'update ', 'delete ', 'create table']):
-        return 'sql'
-
-    # Python indicators
-    if any(kw in code_lower for kw in ['def ', 'import ', 'from ', 'class ', 'if __name__']):
-        return 'python'
-
-    # JavaScript/TypeScript indicators
-    if any(kw in code_lower for kw in ['function ', 'const ', 'let ', 'var ', '=>', 'console.log']):
-        if 'interface ' in code_lower or ': ' in code and 'type ' in code_lower:
-            return 'typescript'
-        return 'javascript'
-
-    # Shell/Bash indicators
-    if code.startswith('#!') or any(kw in code_lower for kw in ['#!/bin/', 'echo ', 'export ', '${']):
-        return 'bash'
-
-    # JSON indicator
-    if code.strip().startswith('{') and ':' in code:
-        try:
-            json.loads(code)
-            return 'json'
-        except json.JSONDecodeError:
-            pass
-
-    # HTML indicator
-    if '<' in code and '>' in code and any(tag in code_lower for tag in ['<div', '<html', '<body', '<p>']):
-        return 'html'
-
-    # CSS indicator
-    if '{' in code and '}' in code and ':' in code and ';' in code:
-        return 'css'
-
-    # Go indicators
-    if any(kw in code_lower for kw in ['package ', 'func ', 'import (']):
-        return 'go'
-
-    # Rust indicators
-    if any(kw in code_lower for kw in ['fn ', 'let mut', 'impl ', 'use ']):
-        return 'rust'
-
-    # Java indicators
-    if any(kw in code_lower for kw in ['public class', 'private ', 'public static void main']):
-        return 'java'
-
-    # Default
-    return 'plaintext'
+    return detect(code)
 
 
 @router.get("/conversation/{conversation_id}/similar")
