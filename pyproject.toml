@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "searchat"
-version = "0.3.0"
+version = "0.4.0"
 description = "Semantic search and RAG for local AI coding agent conversations"
 authors = [{name = "Searchat Contributors"}]
 license = {text = "MIT"}
