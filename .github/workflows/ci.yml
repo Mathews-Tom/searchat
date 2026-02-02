@@ -5,9 +5,15 @@ on:
     branches: [main]
   pull_request:
 
+# Cancel in-progress runs when a new run is triggered on the same branch/PR
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -37,16 +43,23 @@ jobs:
         uses: astral-sh/setup-uv@v4
         with:
           enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
 
       - name: Sync dependencies
-        run: uv sync --group dev
+        run: |
+          echo "Installing dependencies..."
+          uv sync --group dev
+          echo "Dependencies installed successfully"
 
       - name: Run tests
-        run: uv run pytest
+        run: |
+          echo "Running tests on ${{ matrix.os }} with Python ${{ matrix.python-version }}..."
+          uv run pytest -v --tb=short
 
   build:
     needs: test
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -59,12 +72,20 @@ jobs:
         uses: astral-sh/setup-uv@v4
         with:
           enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
 
       - name: Sync dependencies
-        run: uv sync --group dev
+        run: |
+          echo "Installing build dependencies..."
+          uv sync --group dev
+          echo "Dependencies installed successfully"
 
       - name: Build sdist/wheel
-        run: uv run python -m build
+        run: |
+          echo "Building distribution packages..."
+          uv run python -m build
+          echo "Build completed. Generated files:"
+          ls -lh dist/
 
       - name: Install wheel smoke test
         run: |
