@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Searchat — Multi-Agent Connector Architecture</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --c-bg: #F0F2F5;
+      --c-surface: #FFFFFF;
+      --c-border: #C9CDD4;
+      --c-text: #1C2127;
+      --c-muted: #5F6B7A;
+
+      --c-protocol: #4C4EC9;
+      --c-claude: #1B6AC9;
+      --c-vibe: #D4740A;
+      --c-opencode: #0E7C3A;
+      --c-cursor: #8B3EC9;
+      --c-continue: #0A8F8F;
+      --c-aider: #C93B5E;
+      --c-codex: #9E6A00;
+      --c-gemini: #4C4EC9;
+      --c-filesystem: #5F6B7A;
+
+      --shadow-sm: 0 1px 3px rgba(28,33,39,0.08);
+      --shadow-md: 0 3px 10px rgba(28,33,39,0.13);
+      --shadow-lg: 0 8px 24px rgba(28,33,39,0.18);
+
+      --r-sm: 3px;
+      --r-md: 6px;
+      --r-lg: 10px;
+    }
+
+    body {
+      margin: 0; padding: 20px; background: var(--c-bg);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      font-size: 13px; color: var(--c-text); line-height: 1.5;
+    }
+
+    .page { max-width: 1200px; margin: 0 auto; }
+
+    /* Header */
+    .header {
+      text-align: center; margin-bottom: 32px; padding-bottom: 20px;
+      border-bottom: 2px solid var(--c-border);
+    }
+    .header h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+    .header .subtitle { font-size: 16px; color: var(--c-muted); margin-bottom: 12px; }
+    .header .meta {
+      font-family: 'SFMono-Regular', Consolas, monospace;
+      font-size: 11px; color: var(--c-muted);
+    }
+
+    /* Layer Structure */
+    .architecture { display: flex; flex-direction: column; gap: 20px; }
+
+    .layer {
+      background: var(--c-surface); border-radius: var(--r-lg);
+      padding: 24px; box-shadow: var(--shadow-md);
+      border-top: 6px solid var(--layer-color);
+      position: relative;
+    }
+
+    .layer-header {
+      display: flex; align-items: center; gap: 12px;
+      margin-bottom: 20px; padding-bottom: 12px;
+      border-bottom: 2px solid var(--c-border);
+    }
+
+    .layer-icon {
+      width: 32px; height: 32px; display: flex;
+      align-items: center; justify-content: center;
+      background: var(--layer-color); border-radius: var(--r-md);
+    }
+
+    .layer-icon svg { width: 20px; height: 20px; stroke: white; fill: none; }
+
+    .layer-title {
+      font-size: 18px; font-weight: 700;
+      color: var(--layer-color);
+    }
+
+    /* Protocol Layer Cards */
+    .protocol-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+
+    .protocol-card {
+      background: linear-gradient(135deg, rgba(76,78,201,0.08), rgba(76,78,201,0.02));
+      border-left: 4px solid var(--c-protocol);
+      padding: 20px; border-radius: var(--r-md);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .protocol-card-title {
+      font-size: 16px; font-weight: 600;
+      color: var(--c-protocol); margin-bottom: 12px;
+      display: flex; align-items: center; gap: 8px;
+    }
+
+    .protocol-card-body {
+      font-size: 12px; color: var(--c-muted); line-height: 1.6;
+    }
+
+    .protocol-card-body code {
+      background: rgba(0,0,0,0.04); padding: 2px 6px;
+      border-radius: var(--r-sm);
+      font-family: 'SFMono-Regular', Consolas, monospace;
+      font-size: 11px; color: var(--c-text);
+    }
+
+    .protocol-badge {
+      display: inline-block; background: var(--c-protocol);
+      color: white; padding: 4px 10px; border-radius: 999px;
+      font-size: 10px; font-weight: 600; margin-top: 10px;
+    }
+
+    /* Connector Cards */
+    .connectors-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+
+    .connector-card {
+      background: var(--c-surface); border-radius: var(--r-lg);
+      padding: 20px; box-shadow: var(--shadow-md);
+      border-left: 5px solid var(--connector-color);
+      min-height: 180px; display: flex; flex-direction: column;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      cursor: pointer;
+    }
+
+    .connector-card:hover {
+      transform: translateY(-4px);
+      box-shadow: var(--shadow-lg);
+    }
+
+    .connector-header {
+      display: flex; align-items: center; gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .connector-icon {
+      width: 40px; height: 40px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--connector-color); border-radius: var(--r-md);
+    }
+
+    .connector-icon svg {
+      width: 24px; height: 24px;
+    }
+
+    .connector-name {
+      font-size: 16px; font-weight: 700;
+      color: var(--connector-color);
+    }
+
+    .format-badge {
+      display: inline-block; padding: 4px 10px;
+      border-radius: var(--r-sm); font-size: 11px;
+      font-weight: 600; margin-bottom: 12px;
+      font-family: 'SFMono-Regular', Consolas, monospace;
+    }
+
+    .format-jsonl { background: rgba(27,106,201,0.15); color: var(--c-claude); }
+    .format-json { background: rgba(212,116,10,0.15); color: var(--c-vibe); }
+    .format-db { background: rgba(139,62,201,0.15); color: var(--c-cursor); }
+    .format-md { background: rgba(201,59,94,0.15); color: var(--c-aider); }
+
+    .connector-paths {
+      font-size: 11px; color: var(--c-muted);
+      font-family: 'SFMono-Regular', Consolas, monospace;
+      line-height: 1.6; margin-top: auto;
+    }
+
+    /* Filesystem Layer */
+    .filesystem-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+
+    .filesystem-card {
+      background: linear-gradient(135deg, rgba(95,107,122,0.08), rgba(95,107,122,0.02));
+      border-left: 4px solid var(--c-filesystem);
+      padding: 20px; border-radius: var(--r-md);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .filesystem-card-title {
+      font-size: 16px; font-weight: 600;
+      color: var(--c-filesystem); margin-bottom: 12px;
+      display: flex; align-items: center; gap: 8px;
+    }
+
+    .filesystem-card-body {
+      font-size: 12px; color: var(--c-muted); line-height: 1.6;
+    }
+
+    .filesystem-card-body strong {
+      display: block; color: var(--c-text); margin-top: 8px;
+    }
+
+    /* Flow Arrows */
+    .flow-arrow {
+      display: flex; justify-content: center; align-items: center;
+      margin: 16px 0; position: relative;
+    }
+
+    .arrow-container {
+      display: flex; flex-direction: column; align-items: center;
+      gap: 8px;
+    }
+
+    .arrow-line {
+      width: 4px; height: 50px;
+      background: linear-gradient(to bottom, var(--arrow-from), var(--arrow-to));
+      position: relative;
+    }
+
+    .arrow-line::after {
+      content: ''; position: absolute; bottom: -8px; left: 50%;
+      transform: translateX(-50%);
+      width: 0; height: 0;
+      border-left: 8px solid transparent;
+      border-right: 8px solid transparent;
+      border-top: 10px solid var(--arrow-to);
+    }
+
+    .arrow-label {
+      font-size: 12px; font-weight: 600;
+      color: var(--c-muted);
+      background: var(--c-surface);
+      padding: 6px 14px; border-radius: 999px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    /* KPI Bar */
+    .kpi-bar {
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      gap: 12px; margin-top: 24px; padding: 16px;
+      background: var(--c-surface); border-radius: var(--r-md);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .kpi-item {
+      text-align: center; padding: 10px;
+      border-radius: var(--r-sm); background: rgba(0,0,0,0.02);
+    }
+
+    .kpi-value {
+      font-size: 18px; font-weight: 700;
+      color: var(--c-text); margin-bottom: 4px;
+    }
+
+    .kpi-label {
+      font-size: 10px; color: var(--c-muted);
+      text-transform: uppercase; letter-spacing: 0.5px;
+    }
+
+    /* Legend */
+    .legend {
+      margin-top: 20px; padding: 16px;
+      background: var(--c-surface); border-radius: var(--r-md);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .legend-title {
+      font-weight: 600; margin-bottom: 12px; font-size: 13px;
+    }
+
+    .legend-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+    }
+
+    .legend-item {
+      display: flex; align-items: center; gap: 6px; font-size: 12px;
+    }
+
+    .legend-color {
+      width: 16px; height: 16px; border-radius: 3px; flex-shrink: 0;
+    }
+
+    /* Footer */
+    .footer {
+      margin-top: 24px; padding: 16px;
+      background: var(--c-surface); border-radius: var(--r-md);
+      box-shadow: var(--shadow-sm); font-size: 11px;
+      color: var(--c-muted); line-height: 1.6;
+    }
+
+    .footer strong { color: var(--c-text); }
+
+    .footer code {
+      background: rgba(0,0,0,0.04); padding: 2px 5px;
+      border-radius: var(--r-sm);
+      font-family: 'SFMono-Regular', Consolas, monospace;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="page">
+    <!-- Header -->
+    <div class="header">
+      <h1>Searchat — Multi-Agent Connector Architecture</h1>
+      <div class="subtitle">
+        Extensible Protocol · 8 Agent Connectors · Platform-Agnostic Paths · Auto-Discovery Registry
+      </div>
+      <div class="meta">
+        <strong>v0.4.0</strong> | Last updated: 2026-02-03<br>
+        Python 3.9+ · AgentConnector Protocol · PathResolver · 8 Implementations<br>
+        Source: <code>src/searchat/core/connectors/</code> (1,100+ LOC)
+      </div>
+    </div>
+
+    <!-- Architecture Layers -->
+    <div class="architecture">
+
+      <!-- LAYER 1: Protocol & Registry -->
+      <div class="layer" style="--layer-color: var(--c-protocol);">
+        <div class="layer-header">
+          <div class="layer-icon">
+            <svg viewBox="0 0 24 24" stroke-width="2">
+              <rect x="3" y="3" width="18" height="18" rx="2"/>
+              <path d="M9 9h6M9 12h6M9 15h6"/>
+            </svg>
+          </div>
+          <div class="layer-title">Layer 1: AgentConnector Protocol & Registry</div>
+        </div>
+
+        <div class="protocol-grid">
+          <div class="protocol-card">
+            <div class="protocol-card-title">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+                <polyline points="2 17 12 22 22 17"/>
+                <polyline points="2 12 12 17 22 12"/>
+              </svg>
+              AgentConnector Protocol
+            </div>
+            <div class="protocol-card-body">
+              Defines interface for all connectors:<br><br>
+              <code>name: str</code><br>
+              <code>supported_extensions: tuple[str, ...]</code><br>
+              <code>discover_files(config) → list[Path]</code><br>
+              <code>can_parse(path: Path) → bool</code><br>
+              <code>parse(path, embedding_id) → ConversationRecord</code>
+              <div class="protocol-badge">PROTOCOL</div>
+            </div>
+          </div>
+
+          <div class="protocol-card">
+            <div class="protocol-card-title">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M12 1v6m0 6v6M23 12h-6m-6 0H1"/>
+              </svg>
+              Registry Pattern
+            </div>
+            <div class="protocol-card-body">
+              Connector management & auto-discovery:<br><br>
+              <code>register_connector(connector)</code><br>
+              <code>get_connectors() → list[AgentConnector]</code><br>
+              <code>detect_connector(path) → AgentConnector | None</code><br>
+              <code>discover_entrypoint_connectors()</code>
+              <div class="protocol-badge">AUTO-DISCOVERY</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Flow Arrow -->
+      <div class="flow-arrow" style="--arrow-from: var(--c-protocol); --arrow-to: var(--c-claude);">
+        <div class="arrow-container">
+          <div class="arrow-line"></div>
+          <div class="arrow-label">Protocol → Connectors</div>
+        </div>
+      </div>
+
+      <!-- LAYER 2: Connector Implementations -->
+      <div class="layer" style="--layer-color: var(--c-claude);">
+        <div class="layer-header">
+          <div class="layer-icon">
+            <svg viewBox="0 0 24 24" stroke-width="2">
+              <rect x="2" y="2" width="20" height="8" rx="2"/>
+              <rect x="2" y="14" width="20" height="8" rx="2"/>
+              <line x1="6" y1="6" x2="6.01" y2="6"/>
+              <line x1="6" y1="18" x2="6.01" y2="18"/>
+            </svg>
+          </div>
+          <div class="layer-title">Layer 2: Agent Connector Implementations (8 Total)</div>
+        </div>
+
+        <div class="connectors-grid">
+          <!-- Claude -->
+          <div class="connector-card" style="--connector-color: var(--c-claude);">
+            <div class="connector-header">
+              <div class="connector-icon">
+                <svg viewBox="0 0 24 24" fill="white">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M8 12h8M12 8v8" stroke="currentColor" stroke-width="2"/>
+                </svg>
+              </div>
+              <div class="connector-name">Claude</div>
+            </div>
+            <div class="format-badge format-jsonl">.jsonl</div>
+            <div class="connector-paths">
+              ~/.claude/projects/<br>
+              %APPDATA%/Claude/projects/
+            </div>
+          </div>
+
+          <!-- Vibe -->
+          <div class="connector-card" style="--connector-color: var(--c-vibe);">
+            <div class="connector-header">
+              <div class="connector-icon">
+                <svg viewBox="0 0 24 24" fill="white">
+                  <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                </svg>
+              </div>
+              <div class="connector-name">Vibe</div>
+            </div>
+            <div class="format-badge format-json">.json</div>
+            <div class="connector-paths">
+              ~/.vibe/sessions/<br>
+              %APPDATA%/Vibe/sessions/
+            </div>
+          </div>
+
+          <!-- OpenCode -->
+          <div class="connector-card" style="--connector-color: var(--c-opencode);">
+            <div class="connector-header">
+              <div class="connector-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5">
+                  <polyline points="16 18 22 12 16 6"/>
+                  <polyline points="8 6 2 12 8 18"/>
+                </svg>
+              </div>
+              <div class="connector-name">OpenCode</div>
+            </div>
+            <div class="format-badge format-json">.json</div>
+            <div class="connector-paths">
+              ~/.opencode/history/<br>
+              %APPDATA%/OpenCode/
+            </div>
+          </div>
+
+          <!-- Cursor -->
+          <div class="connector-card" style="--connector-color: var(--c-cursor);">
+            <div class="connector-header">
+              <div class="connector-icon">
+                <svg viewBox="0 0 24 24" fill="white">
+                  <path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/>
+                </svg>
+              </div>
+              <div class="connector-name">Cursor</div>
+            </div>
+            <div class="format-badge format-db">.db (SQLite)</div>
+            <div class="connector-paths">
+              ~/.cursor/history.db<br>
+              %APPDATA%/Cursor/
+            </div>
+          </div>
+
+          <!-- Continue -->
+          <div class="connector-card" style="--connector-color: var(--c-continue);">
+            <div class="connector-header">
+              <div class="connector-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5">
+                  <polygon points="5 3 19 12 5 21 5 3"/>
+                </svg>
+              </div>
+              <div class="connector-name">Continue</div>
+            </div>
+            <div class="format-badge format-json">.json</div>
+            <div class="connector-paths">
+              ~/.continue/sessions/<br>
+              %APPDATA%/Continue/
+            </div>
+          </div>
+
+          <!-- Aider -->
+          <div class="connector-card" style="--connector-color: var(--c-aider);">
+            <div class="connector-header">
+              <div class="connector-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5">
+                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                </svg>
+              </div>
+              <div class="connector-name">Aider</div>
+            </div>
+            <div class="format-badge format-md">.md</div>
+            <div class="connector-paths">
+              .aider.chat.history.md<br>
+              Project root directory
+            </div>
+          </div>
+
+          <!-- Codex -->
+          <div class="connector-card" style="--connector-color: var(--c-codex);">
+            <div class="connector-header">
+              <div class="connector-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5">
+                  <rect x="3" y="3" width="18" height="18" rx="2"/>
+                  <path d="M9 9l3 3-3 3M13 15h3"/>
+                </svg>
+              </div>
+              <div class="connector-name">Codex</div>
+            </div>
+            <div class="format-badge format-json">.json</div>
+            <div class="connector-paths">
+              ~/.codex/logs/<br>
+              %APPDATA%/Codex/
+            </div>
+          </div>
+
+          <!-- Gemini -->
+          <div class="connector-card" style="--connector-color: var(--c-gemini);">
+            <div class="connector-header">
+              <div class="connector-icon">
+                <svg viewBox="0 0 24 24" fill="white">
+                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                </svg>
+              </div>
+              <div class="connector-name">Gemini CLI</div>
+            </div>
+            <div class="format-badge format-json">.json</div>
+            <div class="connector-paths">
+              ~/.gemini-cli/history/<br>
+              %APPDATA%/GeminiCLI/
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Flow Arrow -->
+      <div class="flow-arrow" style="--arrow-from: var(--c-claude); --arrow-to: var(--c-filesystem);">
+        <div class="arrow-container">
+          <div class="arrow-line"></div>
+          <div class="arrow-label">Connectors → Filesystem</div>
+        </div>
+      </div>
+
+      <!-- LAYER 3: File System & Path Resolution -->
+      <div class="layer" style="--layer-color: var(--c-filesystem);">
+        <div class="layer-header">
+          <div class="layer-icon">
+            <svg viewBox="0 0 24 24" stroke-width="2">
+              <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
+            </svg>
+          </div>
+          <div class="layer-title">Layer 3: File System & Path Resolution</div>
+        </div>
+
+        <div class="filesystem-grid">
+          <div class="filesystem-card">
+            <div class="filesystem-card-title">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12 6 12 12 16 14"/>
+              </svg>
+              Platform Detection
+            </div>
+            <div class="filesystem-card-body">
+              <strong>WSL Detection:</strong>
+              <code>/proc/version</code> contains "microsoft"<br>
+              <code>/mnt/c/Users/</code> → <code>C:\Users\</code>
+
+              <strong>Platform-specific paths:</strong>
+              • Windows: <code>%APPDATA%</code>, <code>%USERPROFILE%</code><br>
+              • Linux/macOS: <code>~/.config</code>, <code>~/.local</code><br>
+              • WSL: Hybrid with <code>/mnt/</code> translation
+            </div>
+          </div>
+
+          <div class="filesystem-card">
+            <div class="filesystem-card-title">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+              </svg>
+              Format Detection
+            </div>
+            <div class="filesystem-card-body">
+              <strong>Extension-based routing:</strong>
+              • <code>.jsonl</code> → Claude (iterate lines)<br>
+              • <code>.json</code> → Vibe/OpenCode/Continue/Codex/Gemini<br>
+              • <code>.db</code> → Cursor (SQLite queries)<br>
+              • <code>.md</code> → Aider (markdown structure)
+
+              <strong>Validation:</strong> File signature + structure checks
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- KPI Bar -->
+    <div class="kpi-bar">
+      <div class="kpi-item">
+        <div class="kpi-value">8</div>
+        <div class="kpi-label">Connectors</div>
+      </div>
+      <div class="kpi-item">
+        <div class="kpi-value">4</div>
+        <div class="kpi-label">File Formats</div>
+      </div>
+      <div class="kpi-item">
+        <div class="kpi-value">3</div>
+        <div class="kpi-label">Platforms</div>
+      </div>
+      <div class="kpi-item">
+        <div class="kpi-value">Auto</div>
+        <div class="kpi-label">Discovery</div>
+      </div>
+    </div>
+
+    <!-- Legend -->
+    <div class="legend">
+      <div class="legend-title">Color Key</div>
+      <div class="legend-grid">
+        <div class="legend-item">
+          <div class="legend-color" style="background: var(--c-protocol);"></div>
+          <span>Protocol/Registry</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color" style="background: var(--c-claude);"></div>
+          <span>Claude (.jsonl)</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color" style="background: var(--c-vibe);"></div>
+          <span>Vibe (.json)</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color" style="background: var(--c-opencode);"></div>
+          <span>OpenCode (.json)</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color" style="background: var(--c-cursor);"></div>
+          <span>Cursor (.db)</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color" style="background: var(--c-continue);"></div>
+          <span>Continue (.json)</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color" style="background: var(--c-aider);"></div>
+          <span>Aider (.md)</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color" style="background: var(--c-codex);"></div>
+          <span>Codex (.json)</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      <strong>Source Files:</strong><br>
+      • <code>src/searchat/core/connectors/protocols.py</code> (AgentConnector protocol, 45 LOC)<br>
+      • <code>src/searchat/core/connectors/registry.py</code> (Registry pattern, 120 LOC)<br>
+      • <code>src/searchat/core/connectors/__init__.py</code> (8 connector registrations, 35 LOC)<br>
+      • <code>src/searchat/core/connectors/claude.py</code> (ClaudeConnector implementation, 150 LOC)<br>
+      • 7 additional connector implementations (Vibe, OpenCode, Cursor, Continue, Aider, Codex, Gemini)<br><br>
+
+      <strong>Extensibility:</strong> Add new connectors by implementing AgentConnector protocol + calling <code>register_connector()</code><br>
+      <strong>Auto-discovery:</strong> Connectors loaded via entry points in setup.py/pyproject.toml
+    </div>
+
+  </div>
+
+</body>
+</html>

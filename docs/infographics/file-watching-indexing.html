@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Searchat — File Watching & Live Indexing</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --c-bg: #F0F2F5; --c-surface: #FFFFFF; --c-border: #C9CDD4;
+      --c-text: #1C2127; --c-muted: #5F6B7A;
+      --c-event: #1B6AC9; --c-debounce: #D4740A; --c-queue: #8B3EC9;
+      --c-index: #0E7C3A; --c-status: #9E6A00;
+      --shadow-sm: 0 1px 3px rgba(28,33,39,0.08);
+      --shadow-md: 0 3px 10px rgba(28,33,39,0.13);
+      --r-sm: 3px; --r-md: 6px; --r-lg: 10px;
+    }
+    body {
+      margin: 0; padding: 20px; background: var(--c-bg);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      font-size: 13px; color: var(--c-text); line-height: 1.5;
+    }
+    .page { max-width: 900px; margin: 0 auto; }
+    .header { text-align: center; margin-bottom: 32px; padding-bottom: 20px; border-bottom: 2px solid var(--c-border); }
+    .header h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+    .header .subtitle { font-size: 16px; color: var(--c-muted); margin-bottom: 12px; }
+    .header .meta { font-family: 'SFMono-Regular', Consolas, monospace; font-size: 11px; color: var(--c-muted); }
+
+    /* Timeline */
+    .timeline { position: relative; padding-left: 60px; }
+    .timeline::before {
+      content: ''; position: absolute; left: 20px; top: 0; bottom: 80px;
+      width: 4px; background: linear-gradient(to bottom, var(--c-event), var(--c-debounce), var(--c-queue), var(--c-index), var(--c-status));
+    }
+    .timeline-event {
+      position: relative; margin-bottom: 24px; background: var(--c-surface);
+      padding: 16px; border-radius: var(--r-md); box-shadow: var(--shadow-md);
+      border-left: 4px solid var(--event-color);
+    }
+    .timeline-event::before {
+      content: ''; position: absolute; left: -49px; top: 20px;
+      width: 16px; height: 16px; border-radius: 50%;
+      background: var(--event-color); border: 3px solid var(--c-bg);
+    }
+    .event-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+    .event-number {
+      width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+      background: var(--event-color); color: white; border-radius: 50%; font-weight: 700; font-size: 12px;
+    }
+    .event-title { font-weight: 700; color: var(--event-color); font-size: 15px; }
+    .event-desc { font-size: 12px; color: var(--c-muted); margin-bottom: 8px; }
+    .event-detail {
+      background: rgba(0,0,0,0.02); padding: 10px; border-radius: var(--r-sm);
+      font-size: 12px; border-left: 3px solid var(--event-color);
+    }
+    .time-badge {
+      display: inline-block; background: var(--event-color); color: white;
+      padding: 3px 8px; border-radius: 999px; font-size: 10px; font-weight: 600; margin-left: 8px;
+    }
+    .kpi-bar {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px;
+      padding: 16px; background: var(--c-surface); border-radius: var(--r-md); box-shadow: var(--shadow-sm);
+    }
+    .kpi-item { text-align: center; padding: 10px; border-radius: var(--r-sm); background: rgba(0,0,0,0.02); }
+    .kpi-value { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+    .kpi-label { font-size: 10px; color: var(--c-muted); text-transform: uppercase; }
+    .footer {
+      padding: 16px; background: var(--c-surface); border-radius: var(--r-md);
+      box-shadow: var(--shadow-sm); font-size: 11px; color: var(--c-muted); line-height: 1.6;
+    }
+    .footer strong { color: var(--c-text); }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="header">
+      <h1>Searchat — File Watching & Live Indexing</h1>
+      <div class="subtitle">Event-Driven · Debounced · Queue-Based · Append-Only</div>
+      <div class="meta">
+        <strong>v0.4.0</strong> | Last updated: 2026-02-03<br>
+        Python 3.9+ · watchdog · Queue · Background Thread
+      </div>
+    </div>
+
+    <div class="timeline">
+      <div class="timeline-event" style="--event-color: var(--c-event);">
+        <div class="event-header">
+          <div class="event-number">1</div>
+          <div class="event-title">File System Event Detection</div>
+        </div>
+        <div class="event-desc">watchdog.Observer monitors conversation directories for file changes</div>
+        <div class="event-detail">
+          <strong>Monitored Events:</strong> Created, Modified<br>
+          <strong>Watched Directories:</strong> ~/.claude/projects/, ~/.vibe/logs/, ~/.local/share/opencode/
+        </div>
+      </div>
+
+      <div class="timeline-event" style="--event-color: var(--c-event);">
+        <div class="event-header">
+          <div class="event-number">2</div>
+          <div class="event-title">Extension Check & Connector Detection</div>
+        </div>
+        <div class="event-desc">Identifies file type and selects appropriate connector</div>
+        <div class="event-detail">
+          <strong>Supported:</strong> .jsonl (Claude), .json (Vibe/OpenCode), .db (Cursor), .md (Aider)<br>
+          <strong>Action:</strong> Unsupported extensions ignored
+        </div>
+      </div>
+
+      <div class="timeline-event" style="--event-color: var(--c-debounce);">
+        <div class="event-header">
+          <div class="event-number">3</div>
+          <div class="event-title">Debounce Gate<span class="time-badge">2s / 5min</span></div>
+        </div>
+        <div class="event-desc">Time-based delay prevents indexing in-progress files</div>
+        <div class="event-detail">
+          <strong>New Files:</strong> 2s delay (fast indexing for completed files)<br>
+          <strong>Modified Files:</strong> 5min delay (prevents re-indexing during active editing)
+        </div>
+      </div>
+
+      <div class="timeline-event" style="--event-color: var(--c-queue);">
+        <div class="event-header">
+          <div class="event-number">4</div>
+          <div class="event-title">Queue Enqueue</div>
+        </div>
+        <div class="event-desc">Event added to pending updates queue</div>
+        <div class="event-detail">
+          <strong>Queue Type:</strong> Python Queue (thread-safe)<br>
+          <strong>Batch Delay:</strong> 5s (groups multiple events)
+        </div>
+      </div>
+
+      <div class="timeline-event" style="--event-color: var(--c-queue);">
+        <div class="event-header">
+          <div class="event-number">5</div>
+          <div class="event-title">Background Thread Consumption</div>
+        </div>
+        <div class="event-desc">Separate thread processes queued events without blocking</div>
+        <div class="event-detail">
+          <strong>Method:</strong> _process_pending_updates()<br>
+          <strong>Isolation:</strong> Indexing runs in background, UI remains responsive
+        </div>
+      </div>
+
+      <div class="timeline-event" style="--event-color: var(--c-index);">
+        <div class="event-header">
+          <div class="event-number">6</div>
+          <div class="event-title">Index Append Operation</div>
+        </div>
+        <div class="event-desc">Safe append-only indexing (never deletes existing data)</div>
+        <div class="event-detail">
+          <strong>Method:</strong> indexer.index_append_only(file_paths)<br>
+          <strong>Safety:</strong> Only adds new conversations, preserves all existing data
+        </div>
+      </div>
+
+      <div class="timeline-event" style="--event-color: var(--c-status);">
+        <div class="event-header">
+          <div class="event-number">7</div>
+          <div class="event-title">Watcher Stats Update</div>
+        </div>
+        <div class="event-desc">Updates statistics: indexed_count, last_update, in_progress flag</div>
+        <div class="event-detail">
+          <strong>Tracked:</strong> Files indexed since start, timestamp of last update<br>
+          <strong>API:</strong> GET /api/watcher/status
+        </div>
+      </div>
+
+      <div class="timeline-event" style="--event-color: var(--c-status);">
+        <div class="event-header">
+          <div class="event-number">8</div>
+          <div class="event-title">UI Refresh (Optional)</div>
+        </div>
+        <div class="event-desc">Web UI can poll for updated statistics and refresh results</div>
+        <div class="event-detail">
+          <strong>Polling:</strong> Optional real-time updates via periodic API calls<br>
+          <strong>Auto-Discovery:</strong> New conversations appear in search automatically
+        </div>
+      </div>
+    </div>
+
+    <div class="kpi-bar">
+      <div class="kpi-item">
+        <div class="kpi-value">2s / 5min</div>
+        <div class="kpi-label">Debounce Times</div>
+      </div>
+      <div class="kpi-item">
+        <div class="kpi-value">5s</div>
+        <div class="kpi-label">Batch Delay</div>
+      </div>
+      <div class="kpi-item">
+        <div class="kpi-value">Queue</div>
+        <div class="kpi-label">Thread-Safe</div>
+      </div>
+      <div class="kpi-item">
+        <div class="kpi-value">Append-Only</div>
+        <div class="kpi-label">Safe Indexing</div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <strong>Source Files:</strong><br>
+      • <code>src/searchat/core/watcher.py</code> (ConversationWatcher + ConversationEventHandler, 323 LOC)<br>
+      • <code>src/searchat/core/indexer.py</code> (index_append_only method)<br>
+      • <code>src/searchat/core/connectors/base.py</code> (AgentConnector protocol)<br><br>
+      <strong>Configuration:</strong> auto_index, reindex_on_modification, modification_debounce_minutes in settings.toml
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Searchat — RAG Chat Pipeline</title>
+  <style>
+    /* ── Reset ─────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* ── Palette ───────────────────────────────────────── */
+    :root {
+      --c-bg: #F0F2F5;
+      --c-surface: #FFFFFF;
+      --c-border: #C9CDD4;
+      --c-text: #1C2127;
+      --c-muted: #5F6B7A;
+
+      --c-query: #1B6AC9;
+      --c-search: #8B3EC9;
+      --c-context: #D4740A;
+      --c-llm: #C93B5E;
+      --c-response: #0A8F8F;
+
+      --shadow-sm: 0 1px 3px rgba(28,33,39,0.08);
+      --shadow-md: 0 3px 10px rgba(28,33,39,0.13);
+      --shadow-lg: 0 8px 24px rgba(28,33,39,0.18);
+
+      --r-sm: 3px;
+      --r-md: 6px;
+      --r-lg: 10px;
+    }
+
+    body {
+      margin: 0;
+      padding: 20px;
+      background: var(--c-bg);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      font-size: 13px;
+      color: var(--c-text);
+      line-height: 1.5;
+    }
+
+    .page {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    /* ── Header ────────────────────────────────────────── */
+    .header {
+      text-align: center;
+      margin-bottom: 32px;
+      padding-bottom: 20px;
+      border-bottom: 2px solid var(--c-border);
+    }
+    .header h1 {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .header .subtitle {
+      font-size: 16px;
+      color: var(--c-muted);
+      margin-bottom: 12px;
+    }
+    .header .meta {
+      font-family: 'SFMono-Regular', Consolas, monospace;
+      font-size: 11px;
+      color: var(--c-muted);
+      line-height: 1.6;
+    }
+
+    /* ── Pipeline Stages ───────────────────────────────── */
+    .pipeline {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0;
+    }
+
+    .stage {
+      width: 100%;
+      max-width: 700px;
+      position: relative;
+    }
+
+    .stage-card {
+      background: var(--c-surface);
+      border: 2px solid var(--stage-color);
+      border-radius: var(--r-lg);
+      padding: 20px;
+      box-shadow: var(--shadow-md);
+      position: relative;
+    }
+
+    .stage-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .stage-icon {
+      width: 40px;
+      height: 40px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--stage-color);
+      border-radius: var(--r-md);
+    }
+
+    .stage-icon svg {
+      width: 24px;
+      height: 24px;
+      stroke: white;
+      fill: none;
+    }
+
+    .stage-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--stage-color);
+    }
+
+    .stage-subtitle {
+      font-size: 12px;
+      color: var(--c-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .stage-content {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .sub-node {
+      background: rgba(0,0,0,0.02);
+      border-left: 3px solid var(--stage-color);
+      padding: 10px 14px;
+      border-radius: var(--r-sm);
+      font-size: 13px;
+    }
+
+    .sub-node strong {
+      color: var(--stage-color);
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .branches {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    .branch {
+      background: var(--c-surface);
+      border: 1px solid var(--c-border);
+      padding: 10px;
+      border-radius: var(--r-sm);
+      text-align: center;
+      font-size: 12px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .branch-name {
+      font-weight: 600;
+      color: var(--stage-color);
+      margin-bottom: 4px;
+    }
+
+    .branch-time {
+      color: var(--c-muted);
+      font-size: 11px;
+    }
+
+    .badge {
+      display: inline-block;
+      background: var(--stage-color);
+      color: white;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      margin-left: 8px;
+    }
+
+    /* ── Arrow Connectors ──────────────────────────────── */
+    .arrow {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin: 16px 0;
+      gap: 8px;
+    }
+
+    .arrow-line {
+      width: 3px;
+      height: 40px;
+      background: linear-gradient(to bottom, var(--arrow-from), var(--arrow-to));
+      position: relative;
+    }
+
+    .arrow-line::after {
+      content: '';
+      position: absolute;
+      bottom: -6px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 6px solid transparent;
+      border-right: 6px solid transparent;
+      border-top: 8px solid var(--arrow-to);
+    }
+
+    .arrow-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--c-muted);
+      background: var(--c-bg);
+      padding: 4px 12px;
+      border-radius: var(--r-sm);
+      border: 1px solid var(--c-border);
+    }
+
+    /* ── KPI Bar ───────────────────────────────────────── */
+    .kpi-bar {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 10px;
+      margin-top: 32px;
+      padding: 16px;
+      background: var(--c-surface);
+      border-radius: var(--r-md);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .kpi-item {
+      text-align: center;
+      padding: 10px;
+      border-radius: var(--r-sm);
+      background: rgba(0,0,0,0.02);
+    }
+
+    .kpi-value {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--c-text);
+      margin-bottom: 4px;
+    }
+
+    .kpi-label {
+      font-size: 10px;
+      color: var(--c-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* ── Footer ────────────────────────────────────────── */
+    .footer {
+      margin-top: 24px;
+      padding: 16px;
+      background: var(--c-surface);
+      border-radius: var(--r-md);
+      box-shadow: var(--shadow-sm);
+      font-size: 11px;
+      color: var(--c-muted);
+      line-height: 1.6;
+    }
+
+    .footer strong {
+      color: var(--c-text);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="page">
+    <!-- ═══ HEADER ═══════════════════════════════════════ -->
+    <div class="header">
+      <h1>Searchat — RAG Chat Pipeline</h1>
+      <div class="subtitle">Query → Search → Context → LLM → Response</div>
+      <div class="meta">
+        <strong>v0.4.0</strong> | Last updated: 2026-02-03<br>
+        Python 3.9+ · FastAPI · LiteLLM · FAISS · Hybrid Search (BM25 + Vector)
+      </div>
+    </div>
+
+    <!-- ═══ PIPELINE ═════════════════════════════════════ -->
+    <div class="pipeline">
+
+      <!-- Stage 1: Query Reception -->
+      <div class="stage" style="--stage-color: var(--c-query);">
+        <div class="stage-card">
+          <div class="stage-header">
+            <div class="stage-icon">
+              <svg viewBox="0 0 24 24" stroke-width="2">
+                <circle cx="11" cy="11" r="8"/>
+                <path d="m21 21-4.35-4.35"/>
+              </svg>
+            </div>
+            <div>
+              <div class="stage-subtitle">Stage 1</div>
+              <div class="stage-title">Query Reception</div>
+            </div>
+          </div>
+          <div class="stage-content">
+            <div class="sub-node">
+              <strong>User Query Input</strong>
+              Natural language question from user interface
+            </div>
+            <div class="sub-node">
+              <strong>Query Parser</strong>
+              Extracts intent, validates input, prepares for search
+            </div>
+            <div class="sub-node">
+              <strong>Top-K Selector</strong>
+              Determines context size: 6 (simple), 8 (default), 16 (complex)
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Arrow 1 -->
+      <div class="arrow" style="--arrow-from: var(--c-query); --arrow-to: var(--c-search);">
+        <div class="arrow-line"></div>
+        <div class="arrow-label">Parsed Query</div>
+      </div>
+
+      <!-- Stage 2: Search Retrieval -->
+      <div class="stage" style="--stage-color: var(--c-search);">
+        <div class="stage-card">
+          <div class="stage-header">
+            <div class="stage-icon">
+              <svg viewBox="0 0 24 24" stroke-width="2">
+                <path d="M12 2v20M17 7l-5 5-5-5M7 17l5-5 5 5"/>
+              </svg>
+            </div>
+            <div>
+              <div class="stage-subtitle">Stage 2</div>
+              <div class="stage-title">
+                Hybrid Search Engine
+                <span class="badge">&lt;100ms</span>
+              </div>
+            </div>
+          </div>
+          <div class="stage-content">
+            <div class="sub-node">
+              <strong>BM25 Keyword Search</strong>
+              Traditional text matching for exact terms and code identifiers
+            </div>
+            <div class="sub-node">
+              <strong>FAISS Semantic Search</strong>
+              Vector similarity using all-MiniLM-L6-v2 embeddings (384-dim)
+            </div>
+            <div class="sub-node">
+              <strong>RRF Fusion</strong>
+              Reciprocal Rank Fusion merges BM25 + FAISS results
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Arrow 2 -->
+      <div class="arrow" style="--arrow-from: var(--c-search); --arrow-to: var(--c-context);">
+        <div class="arrow-line"></div>
+        <div class="arrow-label">Top-K Results (default: 8)</div>
+      </div>
+
+      <!-- Stage 3: Context Formatting -->
+      <div class="stage" style="--stage-color: var(--c-context);">
+        <div class="stage-card">
+          <div class="stage-header">
+            <div class="stage-icon">
+              <svg viewBox="0 0 24 24" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2"/>
+                <path d="M9 9h6M9 12h6M9 15h3"/>
+              </svg>
+            </div>
+            <div>
+              <div class="stage-subtitle">Stage 3</div>
+              <div class="stage-title">Context Builder</div>
+            </div>
+          </div>
+          <div class="stage-content">
+            <div class="sub-node">
+              <strong>Result Formatter</strong>
+              Extracts conversation_id, updated_at, project_id, snippet from each result
+            </div>
+            <div class="sub-node">
+              <strong>System Prompt Injection</strong>
+              Combines instruction template with formatted context chunks for LLM
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Arrow 3 -->
+      <div class="arrow" style="--arrow-from: var(--c-context); --arrow-to: var(--c-llm);">
+        <div class="arrow-line"></div>
+        <div class="arrow-label">Formatted Context + Prompt</div>
+      </div>
+
+      <!-- Stage 4: LLM Generation -->
+      <div class="stage" style="--stage-color: var(--c-llm);">
+        <div class="stage-card">
+          <div class="stage-header">
+            <div class="stage-icon">
+              <svg viewBox="0 0 24 24" stroke-width="2">
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+                <line x1="12" y1="22.08" x2="12" y2="12"/>
+              </svg>
+            </div>
+            <div>
+              <div class="stage-subtitle">Stage 4</div>
+              <div class="stage-title">LLM Provider Selection</div>
+            </div>
+          </div>
+          <div class="stage-content">
+            <div class="branches">
+              <div class="branch">
+                <div class="branch-name">OpenAI</div>
+                <div class="branch-time">&lt;2s</div>
+              </div>
+              <div class="branch">
+                <div class="branch-name">Ollama</div>
+                <div class="branch-time">&lt;5s</div>
+              </div>
+              <div class="branch">
+                <div class="branch-name">Embedded</div>
+                <div class="branch-time">&lt;8s</div>
+              </div>
+            </div>
+            <div class="sub-node" style="margin-top: 12px;">
+              <strong>Model Resolution</strong>
+              Uses config defaults or user-specified model name
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Arrow 4 -->
+      <div class="arrow" style="--arrow-from: var(--c-llm); --arrow-to: var(--c-response);">
+        <div class="arrow-line"></div>
+        <div class="arrow-label">Generated Response</div>
+      </div>
+
+      <!-- Stage 5: Response Streaming -->
+      <div class="stage" style="--stage-color: var(--c-response);">
+        <div class="stage-card">
+          <div class="stage-header">
+            <div class="stage-icon">
+              <svg viewBox="0 0 24 24" stroke-width="2">
+                <polygon points="5 3 19 12 5 21 5 3"/>
+              </svg>
+            </div>
+            <div>
+              <div class="stage-subtitle">Stage 5</div>
+              <div class="stage-title">Response Delivery</div>
+            </div>
+          </div>
+          <div class="stage-content">
+            <div class="sub-node">
+              <strong>Streaming Mode (SSE)</strong>
+              Yields response chunks as they arrive from LLM
+            </div>
+            <div class="sub-node">
+              <strong>Non-Streaming Mode</strong>
+              Returns complete RAGGeneration object with full answer
+            </div>
+            <div class="sub-node">
+              <strong>Citation Extraction</strong>
+              Links answer segments to source conversations
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ═══ KPI BAR ══════════════════════════════════════ -->
+    <div class="kpi-bar">
+      <div class="kpi-item">
+        <div class="kpi-value">&lt;100ms</div>
+        <div class="kpi-label">Search</div>
+      </div>
+      <div class="kpi-item">
+        <div class="kpi-value">&lt;2s</div>
+        <div class="kpi-label">OpenAI</div>
+      </div>
+      <div class="kpi-item">
+        <div class="kpi-value">&lt;5s</div>
+        <div class="kpi-label">Ollama</div>
+      </div>
+      <div class="kpi-item">
+        <div class="kpi-value">&lt;8s</div>
+        <div class="kpi-label">Embedded</div>
+      </div>
+      <div class="kpi-item">
+        <div class="kpi-value">8</div>
+        <div class="kpi-label">Top-K</div>
+      </div>
+    </div>
+
+    <!-- ═══ FOOTER ═══════════════════════════════════════ -->
+    <div class="footer">
+      <strong>Source Files:</strong><br>
+      • <code>src/searchat/services/chat_service.py</code> (RagChatService class, 175 LOC)<br>
+      • <code>src/searchat/services/llm_service.py</code> (LLMService with 3 providers, 200 LOC)<br>
+      • <code>src/searchat/api/routers/chat.py</code> (API endpoints)<br><br>
+
+      <strong>Key Features:</strong> Hybrid retrieval (BM25 + FAISS) · Adaptive context size (6-16 chunks) · Multi-provider LLM support · Streaming responses · Citation linking
+    </div>
+
+  </div>
+
+</body>
+</html>

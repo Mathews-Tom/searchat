@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Searchat — Backup & Restore Flow</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --c-bg: #F0F2F5;
+      --c-surface: #FFFFFF;
+      --c-border: #C9CDD4;
+      --c-text: #1C2127;
+      --c-muted: #5F6B7A;
+
+      --c-backup: #0E7C3A;
+      --c-validate: #D4740A;
+      --c-restore: #1B6AC9;
+      --c-error: #C93B5E;
+      --c-safety: #8B3EC9;
+
+      --shadow-sm: 0 1px 3px rgba(28,33,39,0.08);
+      --shadow-md: 0 3px 10px rgba(28,33,39,0.13);
+      --shadow-lg: 0 8px 24px rgba(28,33,39,0.18);
+
+      --r-sm: 3px;
+      --r-md: 6px;
+      --r-lg: 10px;
+    }
+
+    body {
+      margin: 0;
+      padding: 20px;
+      background: var(--c-bg);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      font-size: 13px;
+      color: var(--c-text);
+      line-height: 1.5;
+    }
+
+    .page { max-width: 1140px; margin: 0 auto; }
+
+    .header {
+      text-align: center;
+      margin-bottom: 32px;
+      padding-bottom: 20px;
+      border-bottom: 2px solid var(--c-border);
+    }
+    .header h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+    .header .subtitle { font-size: 16px; color: var(--c-muted); margin-bottom: 12px; }
+    .header .meta {
+      font-family: 'SFMono-Regular', Consolas, monospace;
+      font-size: 11px;
+      color: var(--c-muted);
+      line-height: 1.6;
+    }
+
+    /* Dual-column layout */
+    .dual-flow {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-bottom: 24px;
+    }
+
+    .column {
+      background: var(--c-surface);
+      border-radius: var(--r-lg);
+      padding: 20px;
+      box-shadow: var(--shadow-md);
+      border-top: 4px solid var(--column-color);
+    }
+
+    .column-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--c-border);
+    }
+
+    .column-icon {
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--column-color);
+      border-radius: var(--r-md);
+    }
+
+    .column-icon svg { width: 20px; height: 20px; stroke: white; fill: none; }
+
+    .column-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--column-color);
+    }
+
+    .flow-step {
+      margin-bottom: 16px;
+      position: relative;
+      padding-left: 40px;
+    }
+
+    .step-number {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--column-color);
+      color: white;
+      border-radius: 50%;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .step-content {
+      background: rgba(0,0,0,0.02);
+      padding: 12px;
+      border-radius: var(--r-sm);
+      border-left: 3px solid var(--column-color);
+    }
+
+    .step-title {
+      font-weight: 600;
+      color: var(--column-color);
+      margin-bottom: 4px;
+    }
+
+    .step-desc {
+      font-size: 12px;
+      color: var(--c-muted);
+    }
+
+    .decision-gate {
+      background: linear-gradient(135deg, rgba(212,116,10,0.1), rgba(212,116,10,0.05));
+      border: 2px solid var(--c-validate);
+      border-radius: var(--r-md);
+      padding: 14px;
+      margin: 16px 0;
+      position: relative;
+    }
+
+    .decision-gate::before {
+      content: '⚠';
+      position: absolute;
+      top: -12px;
+      left: 12px;
+      background: var(--c-validate);
+      color: white;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+    }
+
+    .decision-gate strong {
+      color: var(--c-validate);
+      display: block;
+      margin-bottom: 6px;
+      margin-top: 4px;
+    }
+
+    .error-path {
+      background: linear-gradient(135deg, rgba(201,59,94,0.1), rgba(201,59,94,0.05));
+      border: 2px dashed var(--c-error);
+      border-radius: var(--r-md);
+      padding: 12px;
+      margin: 12px 0;
+      font-size: 12px;
+    }
+
+    .error-path strong {
+      color: var(--c-error);
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .safety-note {
+      background: linear-gradient(135deg, rgba(139,62,201,0.1), rgba(139,62,201,0.05));
+      border-left: 4px solid var(--c-safety);
+      padding: 12px;
+      border-radius: var(--r-sm);
+      margin: 16px 0;
+      font-size: 12px;
+    }
+
+    .safety-note strong {
+      color: var(--c-safety);
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .kpi-bar {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      padding: 16px;
+      background: var(--c-surface);
+      border-radius: var(--r-md);
+      box-shadow: var(--shadow-sm);
+      margin-bottom: 20px;
+    }
+
+    .kpi-item {
+      text-align: center;
+      padding: 10px;
+      border-radius: var(--r-sm);
+      background: rgba(0,0,0,0.02);
+    }
+
+    .kpi-value {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--c-text);
+      margin-bottom: 4px;
+    }
+
+    .kpi-label {
+      font-size: 10px;
+      color: var(--c-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .footer {
+      padding: 16px;
+      background: var(--c-surface);
+      border-radius: var(--r-md);
+      box-shadow: var(--shadow-sm);
+      font-size: 11px;
+      color: var(--c-muted);
+      line-height: 1.6;
+    }
+
+    .footer strong { color: var(--c-text); }
+  </style>
+</head>
+<body>
+
+  <div class="page">
+    <div class="header">
+      <h1>Searchat — Backup & Restore Flow</h1>
+      <div class="subtitle">Data Safety · Validation Gates · Atomic Operations</div>
+      <div class="meta">
+        <strong>v0.4.0</strong> | Last updated: 2026-02-03<br>
+        Python 3.9+ · Parquet · FAISS · Atomic File Operations
+      </div>
+    </div>
+
+    <div class="dual-flow">
+      <!-- LEFT COLUMN: BACKUP CREATION -->
+      <div class="column" style="--column-color: var(--c-backup);">
+        <div class="column-header">
+          <div class="column-icon">
+            <svg viewBox="0 0 24 24" stroke-width="2">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+            </svg>
+          </div>
+          <div class="column-title">Backup Creation Flow</div>
+        </div>
+
+        <div class="flow-step">
+          <div class="step-number">1</div>
+          <div class="step-content">
+            <div class="step-title">User Initiates Backup</div>
+            <div class="step-desc">Triggered from Web UI or API endpoint</div>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="step-number">2</div>
+          <div class="step-content">
+            <div class="step-title">Generate Timestamp</div>
+            <div class="step-desc">Creates unique backup name: backup_YYYYMMDD_HHMMSS</div>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="step-number">3</div>
+          <div class="step-content">
+            <div class="step-title">Copy Data Directory</div>
+            <div class="step-desc">
+              Copies conversations/*.parquet + indices/ to backup location<br>
+              ~/.searchat/backups/backup_YYYYMMDD_HHMMSS/
+            </div>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="step-number">4</div>
+          <div class="step-content">
+            <div class="step-title">Copy Configuration</div>
+            <div class="step-desc">Backs up settings.toml, bookmarks.json, dashboards.json</div>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="step-number">5</div>
+          <div class="step-content">
+            <div class="step-title">Generate Metadata</div>
+            <div class="step-desc">
+              Creates backup_metadata.json with:<br>
+              • Timestamp • File count • Total size • Config hash
+            </div>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="step-number">6</div>
+          <div class="step-content">
+            <div class="step-title">Backup Complete</div>
+            <div class="step-desc">Returns backup name and metadata to user</div>
+          </div>
+        </div>
+
+        <div class="safety-note">
+          <strong>🔒 Safety Features</strong>
+          • No deletion of active data<br>
+          • Atomic directory copy<br>
+          • Metadata validation<br>
+          • Indefinite retention (manual cleanup)
+        </div>
+      </div>
+
+      <!-- RIGHT COLUMN: RESTORE FLOW -->
+      <div class="column" style="--column-color: var(--c-restore);">
+        <div class="column-header">
+          <div class="column-icon">
+            <svg viewBox="0 0 24 24" stroke-width="2">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+            </svg>
+          </div>
+          <div class="column-title">Restore Flow</div>
+        </div>
+
+        <div class="flow-step">
+          <div class="step-number">1</div>
+          <div class="step-content">
+            <div class="step-title">User Selects Backup</div>
+            <div class="step-desc">Chooses backup from list with timestamp + metadata</div>
+          </div>
+        </div>
+
+        <div class="safety-note" style="margin-bottom: 16px;">
+          <strong>🛡️ Automatic Pre-Restore Backup</strong>
+          System automatically creates backup of current state before restore:<br>
+          backup_pre_restore_YYYYMMDD_HHMMSS/
+        </div>
+
+        <div class="decision-gate">
+          <strong>Validation Gate #1: Backup Exists</strong>
+          Checks if backup directory and metadata.json exist
+          <div class="error-path">
+            <strong>❌ Validation Failed</strong>
+            Return error: "Backup not found or corrupted"
+          </div>
+        </div>
+
+        <div class="decision-gate">
+          <strong>Validation Gate #2: Structure Check</strong>
+          Verifies presence of:<br>
+          • data/ directory<br>
+          • conversations/*.parquet files<br>
+          • indices/embeddings.faiss
+          <div class="error-path">
+            <strong>❌ Validation Failed</strong>
+            Return error: "Invalid backup structure"
+          </div>
+        </div>
+
+        <div class="decision-gate">
+          <strong>Validation Gate #3: Integrity Check</strong>
+          Validates parquet file integrity + metadata consistency
+          <div class="error-path">
+            <strong>❌ Validation Failed</strong>
+            Return error: "Corrupted backup data"
+          </div>
+        </div>
+
+        <div class="flow-step" style="margin-top: 16px;">
+          <div class="step-number">2</div>
+          <div class="step-content">
+            <div class="step-title">Atomic Restore</div>
+            <div class="step-desc">
+              Replaces active data/ with backup data/<br>
+              Uses atomic directory swap operation
+            </div>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="step-number">3</div>
+          <div class="step-content">
+            <div class="step-title">Restore Configuration</div>
+            <div class="step-desc">Restores settings.toml if included in backup</div>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="step-number">4</div>
+          <div class="step-content">
+            <div class="step-title">Reload Search Engine</div>
+            <div class="step-desc">Reinitializes search engine with restored data</div>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="step-number">5</div>
+          <div class="step-content">
+            <div class="step-title">Restore Complete</div>
+            <div class="step-desc">System now running with restored data</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="kpi-bar">
+      <div class="kpi-item">
+        <div class="kpi-value">&lt;5s</div>
+        <div class="kpi-label">Backup Time</div>
+      </div>
+      <div class="kpi-item">
+        <div class="kpi-value">&lt;10s</div>
+        <div class="kpi-label">Restore Time</div>
+      </div>
+      <div class="kpi-item">
+        <div class="kpi-value">3</div>
+        <div class="kpi-label">Validation Gates</div>
+      </div>
+      <div class="kpi-item">
+        <div class="kpi-value">Auto</div>
+        <div class="kpi-label">Pre-Restore Backup</div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <strong>Source Files:</strong><br>
+      • <code>src/searchat/services/backup.py</code> (BackupManager class, 370 LOC)<br>
+      • <code>src/searchat/api/routers/backup.py</code> (API endpoints)<br><br>
+
+      <strong>Storage Location:</strong> <code>~/.searchat/backups/</code><br>
+      <strong>Snapshot Mode:</strong> Read-only browsing of backups without overwriting active index
+    </div>
+  </div>
+
+</body>
+</html>
