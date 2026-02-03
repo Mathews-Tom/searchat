@@ -48,9 +48,15 @@ def mock_backup_manager():
     }
 
     mock.create_backup.return_value = mock_metadata
+    mock.create_incremental_backup.return_value = mock_metadata
     mock.list_backups.return_value = [mock_metadata]
     mock.restore_from_backup.return_value = None
     mock.delete_backup.return_value = None
+    mock.validate_backup_artifact.return_value = {
+        "backup_name": "backup_20250120_100000",
+        "valid": True,
+        "errors": [],
+    }
 
     return mock
 
@@ -202,6 +208,24 @@ class TestCreateBackupEndpoint:
 
 
 @pytest.mark.unit
+class TestCreateIncrementalBackupEndpoint:
+    """Tests for POST /api/backup/incremental/create endpoint."""
+
+    def test_create_incremental_backup_success(self, client, mock_backup_manager):
+        with patch('searchat.api.routers.backup.get_backup_manager', return_value=mock_backup_manager):
+            resp = client.post("/api/backup/incremental/create?parent=backup_20250120_100000")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        assert "backup" in data
+        mock_backup_manager.create_incremental_backup.assert_called_once_with(
+            parent_name="backup_20250120_100000",
+            backup_name=None,
+        )
+
+
+@pytest.mark.unit
 class TestListBackupsEndpoint:
     """Tests for GET /api/backup/list endpoint."""
 
@@ -218,6 +242,22 @@ class TestListBackupsEndpoint:
             assert "backup_directory" in data
             assert data["total"] == 1
             assert len(data["backups"]) == 1
+
+
+@pytest.mark.unit
+class TestValidateBackupEndpoint:
+    """Tests for GET /api/backup/validate/{backup_name} endpoint."""
+
+    def test_validate_backup_success(self, client, mock_backup_manager):
+        with patch('searchat.api.routers.backup.get_backup_manager', return_value=mock_backup_manager):
+            resp = client.get("/api/backup/validate/backup_20250120_100000")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["valid"] is True
+        mock_backup_manager.validate_backup_artifact.assert_called_once_with(
+            "backup_20250120_100000",
+            verify_hashes=False,
+        )
 
     def test_list_backups_empty(self, client, mock_backup_manager):
         """Test listing when no backups exist."""
