@@ -367,7 +367,12 @@ def resolve_dataset_search_dir(snapshot: str | None) -> tuple[Path, str | None]:
         raise ValueError("Invalid snapshot path")
     if not snapshot_dir.exists():
         raise ValueError("Snapshot not found")
-    if not backup_manager.validate_backup(snapshot_dir):
+    # Only allow snapshot browsing for backups that are explicitly marked as browsable.
+    try:
+        artifact = backup_manager.validate_backup_artifact(snapshot, verify_hashes=False)
+    except AttributeError:
+        artifact = {"snapshot_browsable": backup_manager.validate_backup(snapshot_dir)}
+    if not artifact.get("snapshot_browsable"):
         raise ValueError("Snapshot validation failed")
     return snapshot_dir, snapshot
 

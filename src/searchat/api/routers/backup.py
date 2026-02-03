@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 @router.post("/create")
 async def create_backup(
     backup_name: str | None = None,
+    encrypted: bool = False,
     snapshot: str | None = Query(None, description="Backup snapshot name (read-only)"),
 ):
     """Create a new backup of the index and data."""
@@ -27,7 +28,7 @@ async def create_backup(
     try:
         backup_manager = get_backup_manager()
         logger.info(f"Creating backup: {backup_name or 'auto'}")
-        metadata = backup_manager.create_backup(backup_name=backup_name)
+        metadata = backup_manager.create_backup(backup_name=backup_name, encrypted=encrypted)
 
         return {
             "success": True,
@@ -44,6 +45,7 @@ async def create_backup(
 async def create_incremental_backup(
     parent: str,
     backup_name: str | None = None,
+    encrypted: bool = False,
     snapshot: str | None = Query(None, description="Backup snapshot name (read-only)"),
 ):
     """Create an incremental backup based on a parent backup."""
@@ -52,7 +54,7 @@ async def create_incremental_backup(
     try:
         backup_manager = get_backup_manager()
         logger.info(f"Creating incremental backup from parent: {parent}")
-        metadata = backup_manager.create_incremental_backup(parent_name=parent, backup_name=backup_name)
+        metadata = backup_manager.create_incremental_backup(parent_name=parent, backup_name=backup_name, encrypted=encrypted)
 
         return {
             "success": True,
@@ -81,6 +83,27 @@ async def validate_backup(
         raise
     except Exception as e:
         logger.error(f"Failed to validate backup: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/chain/{backup_name}")
+async def get_backup_chain(backup_name: str):
+    """Return the resolved backup chain (base -> target)."""
+    try:
+        backup_manager = get_backup_manager()
+        if not hasattr(backup_manager, "resolve_backup_chain"):
+            raise HTTPException(status_code=500, detail="Backup chain resolution is not available")
+
+        chain = backup_manager.resolve_backup_chain(backup_name)
+        return {
+            "backup_name": backup_name,
+            "chain": chain,
+            "chain_length": len(chain),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to resolve backup chain: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
