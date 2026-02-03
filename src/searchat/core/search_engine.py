@@ -118,7 +118,14 @@ class SearchEngine:
             )
 
         if self.faiss_index is None:
-            self.faiss_index = faiss.read_index(str(self.index_path))
+            if getattr(self.config.performance, "faiss_mmap", False):
+                try:
+                    flags = faiss.IO_FLAG_MMAP | faiss.IO_FLAG_READ_ONLY
+                except Exception as e:
+                    raise RuntimeError("FAISS mmap flags are not supported by this build") from e
+                self.faiss_index = faiss.read_index(str(self.index_path), flags)
+            else:
+                self.faiss_index = faiss.read_index(str(self.index_path))
 
 
     def _ensure_embedder_loaded_locked(self) -> None:
@@ -642,6 +649,30 @@ class SearchEngine:
             in_semantic = any(r.conversation_id == conv_id for r in semantic)
             if in_keyword and in_semantic:
                 scores[conv_id] *= 1.2  # 20% boost for appearing in both
+
+        # Optional temporal decay: multiply by a recency-based factor.
+        if getattr(self.config.search, "temporal_decay_enabled", False):
+            import math
+            from datetime import datetime, timezone
+
+            factor = float(getattr(self.config.search, "temporal_decay_factor", 0.0))
+            weight = float(getattr(self.config.search, "temporal_weight", 0.0))
+            if factor < 0:
+                raise ValueError("temporal_decay_factor must be >= 0")
+            if weight < 0:
+                raise ValueError("temporal_weight must be >= 0")
+
+            now = datetime.now(timezone.utc)
+            for conv_id in list(scores.keys()):
+                r = result_map.get(conv_id)
+                if r is None or r.updated_at is None:
+                    continue
+                updated = r.updated_at
+                if updated.tzinfo is None:
+                    updated = updated.replace(tzinfo=timezone.utc)
+                age_days = max(0.0, (now - updated).total_seconds() / 86400.0)
+                decay = math.exp(-factor * age_days)
+                scores[conv_id] *= (1.0 + weight * decay)
         
         final_results = sorted(scores.items(), key=lambda x: x[1], reverse=True)
         
