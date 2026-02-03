@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## 0.5.0
+- Backups: add incremental backups, backup-chain validation, and encrypted backups (AES-GCM) with secure extras.
+- Search: add FAISS mmap option and temporal decay scoring.
+- Export: add conversation downloads as TXT/HTML.
+- Web/UI: add conversation viewer page; improve snapshot browsing and fix sidebar overflow/contrast.
+- Connectors: improve Continue session indexing and metadata.
+- Docs/Tools: add unified search architecture docs, benchmarking scripts, and refreshed infographics.
+
 ## 0.4.0
 - Code search: index code blocks with extracted functions/classes/imports (tree-sitter when available), add `/api/search/code` symbol filters, and expose code-symbol endpoints.
 - Embedded LLM: run chat/RAG locally via `searchat[embedded]` with model download + activation.
