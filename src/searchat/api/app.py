@@ -112,7 +112,7 @@ _CACHED_HTML = _cache_bust_static_assets(_HTML_PATH.read_text(encoding="utf-8"),
 # Create FastAPI app
 app = FastAPI(
     title="Searchat API",
-    description="Semantic search for AI coding agent conversations",
+    description="Local search for your AI coding conversations",
     version=APP_VERSION,
 )
 

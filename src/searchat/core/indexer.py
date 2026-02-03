@@ -1352,7 +1352,13 @@ class ConversationIndexer:
                 logger.warning(f"File not found, skipping: {file_path}")
                 continue
 
-            connector = detect_connector(json_path)
+            try:
+                connector = detect_connector(json_path)
+            except ValueError as exc:
+                progress.update_file_progress(idx, len(new_files), f"unknown | {json_path.name}")
+                logger.warning("%s; skipping: %s", exc, file_path)
+                continue
+
             display_name = f"{connector.name} | {json_path.name}"
             progress.update_file_progress(idx, len(new_files), display_name)
 
