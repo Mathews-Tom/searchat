@@ -34,6 +34,9 @@ class ContinueConnector:
         if path.name == "sessions.json":
             return False
 
+        normalized = str(path).lower().replace("\\", "/")
+        likely_continue = ("/.continue/" in normalized) and ("/sessions/" in normalized)
+
         try:
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
@@ -43,27 +46,31 @@ class ContinueConnector:
         if not isinstance(data, dict):
             return False
 
-        # Avoid collisions with other JSON connectors.
-        if "metadata" in data and "messages" in data:
-            return False
-        if "projectID" in data and "sessionID" in data:
-            return False
-        if ("history" in data or "turns" in data) and ("chats" in str(path).lower()):
-            return False
-
-        items = data.get("messages") or data.get("history")
+        items = data.get("history") or data.get("messages")
         if not isinstance(items, list) or not items:
             return False
 
-        for entry in items[:10]:
+        def candidate_message(entry: object) -> dict | None:
             if not isinstance(entry, dict):
+                return None
+            inner = entry.get("message")
+            if isinstance(inner, dict):
+                return inner
+            return entry
+
+        for entry in items[:10]:
+            msg = candidate_message(entry)
+            if not isinstance(msg, dict):
                 continue
-            role = entry.get("role") or entry.get("author")
-            content = entry.get("content") or entry.get("text") or entry.get("message")
-            if isinstance(role, str) and role.strip() and isinstance(content, str) and content.strip():
+            role = msg.get("role") or msg.get("author")
+            content = msg.get("content") or msg.get("text") or msg.get("message")
+            if isinstance(role, str) and role.strip() and (
+                (isinstance(content, str) and content.strip()) or isinstance(content, (list, dict))
+            ):
                 return True
 
-        return False
+        # If the file lives under Continue's sessions dir, accept it once it looks vaguely session-like.
+        return bool(likely_continue)
 
     def parse(self, path: Path, embedding_id: int) -> ConversationRecord:
         with open(path, "r", encoding="utf-8") as f:
@@ -72,7 +79,7 @@ class ContinueConnector:
         if not isinstance(data, dict):
             raise ValueError(f"Invalid Continue session format: {path}")
 
-        items = data.get("messages") or data.get("history") or []
+        items = data.get("history") or data.get("messages") or []
         if not isinstance(items, list):
             items = []
 
@@ -87,18 +94,32 @@ class ContinueConnector:
             if not isinstance(entry, dict):
                 continue
 
-            role = entry.get("role") or entry.get("author") or "user"
+            inner = entry.get("message")
+            msg_obj: dict
+            if isinstance(inner, dict):
+                msg_obj = inner
+            else:
+                msg_obj = entry
+
+            role = msg_obj.get("role") or msg_obj.get("author") or "user"
             if not isinstance(role, str):
                 role = "user"
             role = role.lower().strip()
             if role not in ("user", "assistant", "system", "tool"):
                 continue
 
-            content = self._extract_content(entry)
+            content = self._extract_content(msg_obj)
             if not content:
                 continue
 
-            timestamp = self._parse_timestamp(entry.get("timestamp") or entry.get("createdAt") or entry.get("time"))
+            timestamp = self._parse_timestamp(
+                entry.get("timestamp")
+                or entry.get("createdAt")
+                or entry.get("time")
+                or msg_obj.get("timestamp")
+                or msg_obj.get("createdAt")
+                or msg_obj.get("time")
+            )
             if timestamp is None:
                 timestamp = datetime.fromtimestamp(path.stat().st_mtime)
 
@@ -118,8 +139,21 @@ class ContinueConnector:
             full_text_parts.append(content)
 
         file_hash = hashlib.sha256(path.read_bytes()).hexdigest()
-        conversation_id = path.stem
-        title = self._title_from_messages(messages) or "Untitled Continue Session"
+        conversation_id = (
+            data.get("sessionId")
+            or data.get("sessionID")
+            or data.get("id")
+            or path.stem
+        )
+        if not isinstance(conversation_id, str) or not conversation_id.strip():
+            conversation_id = path.stem
+        raw_title = data.get("title")
+        title: str | None = None
+        if isinstance(raw_title, str):
+            candidate = raw_title.strip()
+            if candidate and re.search(r"[A-Za-z0-9]", candidate) and len(candidate) >= 4:
+                title = candidate
+        title = title or (self._title_from_messages(messages) or "Untitled Continue Session")
         full_text = "\n\n".join(full_text_parts)
 
         created_at = messages[0].timestamp if messages else datetime.fromtimestamp(path.stat().st_mtime)

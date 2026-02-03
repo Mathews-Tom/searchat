@@ -994,7 +994,7 @@ async def root():
             </div>
 
             <h1 style="margin-bottom: 4px;"><span style="color: #4a9eff">sear</span><span style="background: linear-gradient(to right, #4a9eff, #ff9500); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">ch</span><span style="color: #ff9500">at</span></h1>
-            <p style="margin: 0 0 20px 0; font-size: 13px; color: #888;">Semantic search for AI coding agent conversations — Claude Code + Mistral Vibe</p>
+            <p style="margin: 0 0 20px 0; font-size: 13px; color: #888;">Local search for your AI coding conversations</p>
             <input type="text" id="search" class="search-box" placeholder="Search conversations..." />
 
             <div class="filters">
