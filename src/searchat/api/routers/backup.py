@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -18,6 +19,7 @@ logger = logging.getLogger(__name__)
 @router.post("/create")
 async def create_backup(
     backup_name: str | None = None,
+    encrypted: bool = False,
     snapshot: str | None = Query(None, description="Backup snapshot name (read-only)"),
 ):
     """Create a new backup of the index and data."""
@@ -26,7 +28,7 @@ async def create_backup(
     try:
         backup_manager = get_backup_manager()
         logger.info(f"Creating backup: {backup_name or 'auto'}")
-        metadata = backup_manager.create_backup(backup_name=backup_name)
+        metadata = backup_manager.create_backup(backup_name=backup_name, encrypted=encrypted)
 
         return {
             "success": True,
@@ -39,6 +41,72 @@ async def create_backup(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/incremental/create")
+async def create_incremental_backup(
+    parent: str,
+    backup_name: str | None = None,
+    encrypted: bool = False,
+    snapshot: str | None = Query(None, description="Backup snapshot name (read-only)"),
+):
+    """Create an incremental backup based on a parent backup."""
+    if snapshot is not None:
+        raise HTTPException(status_code=403, detail="Backup operations are disabled in snapshot mode")
+    try:
+        backup_manager = get_backup_manager()
+        logger.info(f"Creating incremental backup from parent: {parent}")
+        metadata = backup_manager.create_incremental_backup(parent_name=parent, backup_name=backup_name, encrypted=encrypted)
+
+        return {
+            "success": True,
+            "backup": metadata.to_dict(),
+            "message": f"Incremental backup created: {metadata.backup_path.name}",
+        }
+    except Exception as e:
+        logger.error(f"Failed to create incremental backup: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/validate/{backup_name}")
+async def validate_backup(
+    backup_name: str,
+    verify_hashes: bool = Query(False, description="Verify file hashes from manifest"),
+):
+    """Validate a backup's manifests/chain and optionally file hashes."""
+    try:
+        backup_manager = get_backup_manager()
+        if not hasattr(backup_manager, "validate_backup_artifact"):
+            raise HTTPException(status_code=500, detail="Backup validation is not available")
+
+        result = backup_manager.validate_backup_artifact(backup_name, verify_hashes=verify_hashes)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to validate backup: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/chain/{backup_name}")
+async def get_backup_chain(backup_name: str):
+    """Return the resolved backup chain (base -> target)."""
+    try:
+        backup_manager = get_backup_manager()
+        if not hasattr(backup_manager, "resolve_backup_chain"):
+            raise HTTPException(status_code=500, detail="Backup chain resolution is not available")
+
+        chain = backup_manager.resolve_backup_chain(backup_name)
+        return {
+            "backup_name": backup_name,
+            "chain": chain,
+            "chain_length": len(chain),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to resolve backup chain: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/list")
 async def list_backups():
     """List all available backups."""
@@ -46,9 +114,44 @@ async def list_backups():
         backup_manager = get_backup_manager()
         backups = backup_manager.list_backups()
 
+        from searchat.services.backup import BackupManager
+
+        enriched: list[dict] = []
+        for b in backups:
+            entry = b.to_dict()
+            backup_path = str(entry.get("backup_path", ""))
+            name = Path(backup_path).name if backup_path else ""
+
+            if isinstance(backup_manager, BackupManager) and name:
+                try:
+                    entry.update(backup_manager.get_backup_summary(name))
+                except Exception:
+                    entry.update({
+                        "name": name,
+                        "backup_mode": "full",
+                        "encrypted": False,
+                        "parent_name": None,
+                        "chain_length": 0,
+                        "snapshot_browsable": False,
+                        "has_manifest": False,
+                    })
+            else:
+                # In tests backup_manager may be a mock; keep response stable.
+                entry.update({
+                    "name": name,
+                    "backup_mode": "full",
+                    "encrypted": False,
+                    "parent_name": None,
+                    "chain_length": 1 if name else 0,
+                    "snapshot_browsable": False,
+                    "has_manifest": False,
+                })
+
+            enriched.append(entry)
+
         return {
-            "backups": [b.to_dict() for b in backups],
-            "total": len(backups),
+            "backups": enriched,
+            "total": len(enriched),
             "backup_directory": str(backup_manager.backup_dir)
         }
 

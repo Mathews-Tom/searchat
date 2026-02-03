@@ -25,6 +25,9 @@ enable_adaptive_indexing = true
 default_mode = "hybrid"
 max_results = 100
 snippet_length = 200
+temporal_decay_enabled = false
+temporal_decay_factor = 0.001
+temporal_weight = 1.0
 
 [embedding]
 model = "all-MiniLM-L6-v2"
@@ -47,6 +50,7 @@ highlight_color = "#FFEB3B"
 memory_limit_mb = 3000
 query_cache_size = 100
 enable_profiling = false
+faiss_mmap = false
 
 [analytics]
 # Opt-in analytics tracking. When disabled, searches are NOT logged.

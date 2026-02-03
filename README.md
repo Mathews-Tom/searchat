@@ -398,20 +398,40 @@ curl -X POST "http://localhost:8000/api/shutdown?force=true"
 #### Backups
 
 ```bash
-# Create backup
+# Create full backup (plaintext)
 curl -X POST "http://localhost:8000/api/backup/create"
+
+# Create full backup (encrypted; backups only)
+# Requires: SEARCHAT_BACKUP_KEY_B64 (base64-encoded 32 bytes)
+curl -X POST "http://localhost:8000/api/backup/create?encrypted=true"
+
+# Create incremental backup (delta) based on a parent backup
+curl -X POST "http://localhost:8000/api/backup/incremental/create?parent=backup_YYYYMMDD_HHMMSS"
+
+# Create encrypted incremental backup (parent must also be encrypted)
+curl -X POST "http://localhost:8000/api/backup/incremental/create?parent=backup_YYYYMMDD_HHMMSS&encrypted=true"
 
 # List backups
 curl "http://localhost:8000/api/backup/list"
 
+# Validate a backup chain and (optionally) verify hashes
+curl "http://localhost:8000/api/backup/validate/backup_YYYYMMDD_HHMMSS?verify_hashes=true"
+
+# Inspect ancestry chain (base -> target)
+curl "http://localhost:8000/api/backup/chain/backup_YYYYMMDD_HHMMSS"
+
 # Restore backup
-curl -X POST "http://localhost:8000/api/backup/restore" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "backup_YYYYMMDD_HHMMSS"}'
+curl -X POST "http://localhost:8000/api/backup/restore?backup_name=backup_YYYYMMDD_HHMMSS"
 
 # Delete backup
 curl -X DELETE "http://localhost:8000/api/backup/delete/backup_YYYYMMDD_HHMMSS"
 ```
+
+Notes:
+
+- Snapshot browsing (`?snapshot=...`) only supports snapshot-browsable backups (plaintext full backups). Incremental and encrypted backups are restore-only.
+- Incremental backups support chained deltas, with a max total chain length of 10.
+- Generate a new encryption key (example): `python -c "import os,base64; print(base64.b64encode(os.urandom(32)).decode())"`
 
 ### Utilities
 

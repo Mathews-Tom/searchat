@@ -91,6 +91,14 @@ async function _loadSnapshotOptions(select) {
     const data = await response.json();
     const backups = Array.isArray(data.backups) ? data.backups : [];
     return backups
+        .filter(function (b) {
+            // Prefer server-provided flag when available.
+            if (Object.prototype.hasOwnProperty.call(b, 'snapshot_browsable')) {
+                return Boolean(b.snapshot_browsable);
+            }
+            // Backward compatibility: older servers only return plaintext full backups.
+            return true;
+        })
         .map(function (b) {
             const path = String(b.backup_path || '');
             const name = path.split(/[/\\]/).pop();
