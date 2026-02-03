@@ -9,11 +9,76 @@ from __future__ import annotations
 import shutil
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from datetime import datetime
 import logging
+import hashlib
 
 logger = logging.getLogger(__name__)
+
+
+BACKUP_MANIFEST_FILE = "backup_manifest.json"
+
+
+def _sha256_file(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+class BackupManifest:
+    """Manifest describing backup contents and ancestry.
+
+    This is the source of truth for:
+    - backup type (full vs incremental)
+    - whether payload files are encrypted
+    - file-level integrity metadata
+    - chain resolution (parent pointers)
+    """
+
+    def __init__(
+        self,
+        *,
+        manifest_version: int,
+        backup_mode: str,
+        encrypted: bool,
+        created_at: str,
+        parent_name: str | None,
+        files: dict[str, dict[str, object]],
+        deleted_files: list[str],
+    ):
+        self.manifest_version = manifest_version
+        self.backup_mode = backup_mode
+        self.encrypted = encrypted
+        self.created_at = created_at
+        self.parent_name = parent_name
+        self.files = files
+        self.deleted_files = deleted_files
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "manifest_version": self.manifest_version,
+            "backup_mode": self.backup_mode,
+            "encrypted": self.encrypted,
+            "created_at": self.created_at,
+            "parent_name": self.parent_name,
+            "files": self.files,
+            "deleted_files": self.deleted_files,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "BackupManifest":
+        return cls(
+            manifest_version=int(data.get("manifest_version", 1)),
+            backup_mode=str(data.get("backup_mode", "full")),
+            encrypted=bool(data.get("encrypted", False)),
+            created_at=str(data.get("created_at", "")),
+            parent_name=cast(str | None, data.get("parent_name")),
+            files=cast(dict[str, dict[str, object]], data.get("files", {})),
+            deleted_files=list(data.get("deleted_files", [])),
+        )
 
 
 class BackupMetadata:
@@ -92,6 +157,117 @@ class BackupManager:
                 total += item.stat().st_size
         return total
 
+    def _write_manifest(self, backup_path: Path, manifest: BackupManifest) -> None:
+        manifest_path = backup_path / BACKUP_MANIFEST_FILE
+        with open(manifest_path, "w", encoding="utf-8") as f:
+            json.dump(manifest.to_dict(), f, indent=2)
+
+    def _load_manifest(self, backup_path: Path) -> BackupManifest | None:
+        manifest_path = backup_path / BACKUP_MANIFEST_FILE
+        if not manifest_path.exists():
+            return None
+        with open(manifest_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return BackupManifest.from_dict(data)
+
+    def _copy_tree_with_manifest(
+        self,
+        source_root: Path,
+        dest_root: Path,
+        *,
+        relative_prefix: str,
+        manifest_files: dict[str, dict[str, object]],
+    ) -> tuple[int, int]:
+        file_count = 0
+        total_size = 0
+        for src in source_root.rglob("*"):
+            if not src.is_file():
+                continue
+            rel_inside = src.relative_to(source_root)
+            dest = dest_root / rel_inside
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dest)
+
+            file_count += 1
+            st = dest.stat()
+            total_size += st.st_size
+
+            rel_key = str(Path(relative_prefix) / rel_inside).replace("\\", "/")
+            manifest_files[rel_key] = {
+                "sha256": _sha256_file(dest),
+                "size_bytes": int(st.st_size),
+                "mtime_epoch": float(st.st_mtime),
+            }
+        return file_count, total_size
+
+    def resolve_backup_chain(self, backup_name: str, *, max_chain_length: int = 10) -> list[str]:
+        """Resolve ancestry chain from base full backup to target.
+
+        Chain length counts total entries including the base full backup.
+        """
+        chain: list[str] = []
+        seen: set[str] = set()
+        current = backup_name
+        while True:
+            if current in seen:
+                raise ValueError("Backup chain contains a cycle")
+            seen.add(current)
+            chain.append(current)
+            if len(chain) > max_chain_length:
+                raise ValueError(f"Backup chain length exceeds max ({max_chain_length})")
+
+            current_path = self.backup_dir / current
+            if not current_path.exists() or not current_path.is_dir():
+                raise ValueError(f"Backup not found in chain: {current}")
+            manifest = self._load_manifest(current_path)
+            if manifest is None or not manifest.parent_name:
+                break
+            current = manifest.parent_name
+
+        chain.reverse()
+        return chain
+
+    def get_backup_summary(self, backup_name: str) -> dict[str, object]:
+        backup_path = self.backup_dir / backup_name
+        manifest = self._load_manifest(backup_path)
+
+        backup_mode = "full"
+        encrypted = False
+        parent_name: str | None = None
+        chain_length = 1
+
+        if manifest is not None:
+            backup_mode = manifest.backup_mode
+            encrypted = bool(manifest.encrypted)
+            parent_name = manifest.parent_name
+            try:
+                chain_length = len(self.resolve_backup_chain(backup_name))
+            except Exception:
+                chain_length = 0
+        else:
+            # Older backups without a manifest are treated as plaintext full backups.
+            backup_mode = "full"
+            encrypted = False
+            parent_name = None
+            chain_length = 1
+
+        snapshot_browsable = False
+        if backup_mode == "full" and not encrypted:
+            try:
+                snapshot_browsable = self.validate_backup(backup_path)
+            except Exception:
+                snapshot_browsable = False
+
+        return {
+            "name": backup_name,
+            "backup_mode": backup_mode,
+            "encrypted": encrypted,
+            "parent_name": parent_name,
+            "chain_length": chain_length,
+            "snapshot_browsable": snapshot_browsable,
+            "has_manifest": manifest is not None,
+        }
+
     def _count_files(self, path: Path) -> int:
         """Count all files in a directory."""
         return sum(1 for item in path.rglob("*") if item.is_file())
@@ -132,29 +308,44 @@ class BackupManager:
         # Create backup directory
         backup_path.mkdir(parents=True, exist_ok=True)
 
-        # Items to backup
-        items_to_backup = [
+        # Items to backup (plaintext full backup).
+        items_to_backup: list[tuple[str, Path]] = [
             ("data", self.data_dir / "data"),
             ("config", self.data_dir / "config"),
         ]
 
         file_count = 0
         total_size = 0
+        manifest_files: dict[str, dict[str, object]] = {}
 
         for item_name, source_path in items_to_backup:
-            if source_path.exists():
-                dest_path = backup_path / item_name
+            if not source_path.exists():
+                continue
 
-                if source_path.is_dir():
-                    logger.info(f"  Copying directory: {item_name}")
-                    shutil.copytree(source_path, dest_path)
-                    file_count += self._count_files(dest_path)
-                    total_size += self._get_directory_size(dest_path)
-                else:
-                    logger.info(f"  Copying file: {item_name}")
-                    shutil.copy2(source_path, dest_path)
-                    file_count += 1
-                    total_size += dest_path.stat().st_size
+            dest_path = backup_path / item_name
+            if source_path.is_dir():
+                logger.info(f"  Copying directory: {item_name}")
+                dest_path.mkdir(parents=True, exist_ok=True)
+                fc, ts = self._copy_tree_with_manifest(
+                    source_path,
+                    dest_path,
+                    relative_prefix=item_name,
+                    manifest_files=manifest_files,
+                )
+                file_count += fc
+                total_size += ts
+            else:
+                logger.info(f"  Copying file: {item_name}")
+                dest_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source_path, dest_path)
+                file_count += 1
+                st = dest_path.stat()
+                total_size += st.st_size
+                manifest_files[item_name] = {
+                    "sha256": _sha256_file(dest_path),
+                    "size_bytes": int(st.st_size),
+                    "mtime_epoch": float(st.st_mtime),
+                }
 
         # Create metadata
         metadata = BackupMetadata(
@@ -170,6 +361,18 @@ class BackupManager:
         metadata_path = backup_path / self.METADATA_FILE
         with open(metadata_path, "w", encoding="utf-8") as f:
             json.dump(metadata.to_dict(), f, indent=2)
+
+        # Save manifest (new backups always include it).
+        manifest = BackupManifest(
+            manifest_version=1,
+            backup_mode="full",
+            encrypted=False,
+            created_at=datetime.now().isoformat(),
+            parent_name=None,
+            files=manifest_files,
+            deleted_files=[],
+        )
+        self._write_manifest(backup_path, manifest)
 
         logger.info(
             f"Backup created: {folder_name} "
