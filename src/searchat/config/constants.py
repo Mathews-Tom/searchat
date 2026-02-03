@@ -68,6 +68,11 @@ DEFAULT_SEARCH_MODE = "hybrid"
 DEFAULT_MAX_RESULTS = 100
 DEFAULT_SNIPPET_LENGTH = 200
 
+# Temporal scoring
+DEFAULT_TEMPORAL_DECAY_ENABLED = False
+DEFAULT_TEMPORAL_DECAY_FACTOR = 0.001
+DEFAULT_TEMPORAL_WEIGHT = 1.0
+
 # Index metadata versions
 INDEX_SCHEMA_VERSION = "1.2"
 INDEX_FORMAT_VERSION = "1.0"
@@ -81,6 +86,7 @@ INDEX_METADATA_FILENAME = "index_metadata.json"
 DEFAULT_MEMORY_LIMIT_MB = 3000
 DEFAULT_QUERY_CACHE_SIZE = 100
 DEFAULT_ENABLE_PROFILING = False
+DEFAULT_FAISS_MMAP = False
 
 # =========================================================================
 # Analytics Defaults

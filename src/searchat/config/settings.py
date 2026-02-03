@@ -38,9 +38,13 @@ from .constants import (
     DEFAULT_SEARCH_MODE,
     DEFAULT_MAX_RESULTS,
     DEFAULT_SNIPPET_LENGTH,
+    DEFAULT_TEMPORAL_DECAY_ENABLED,
+    DEFAULT_TEMPORAL_DECAY_FACTOR,
+    DEFAULT_TEMPORAL_WEIGHT,
     DEFAULT_MEMORY_LIMIT_MB,
     DEFAULT_QUERY_CACHE_SIZE,
     DEFAULT_ENABLE_PROFILING,
+    DEFAULT_FAISS_MMAP,
     DEFAULT_ANALYTICS_ENABLED,
     DEFAULT_ANALYTICS_RETENTION_DAYS,
     DEFAULT_ENABLE_RAG_CHAT,
@@ -143,6 +147,17 @@ def _get_env_bool(key: str, default: bool) -> bool:
     return value.lower() in ("true", "1", "yes", "on")
 
 
+def _get_env_float(key: str, default: float) -> float:
+    """Get float value from environment variable."""
+    value = os.getenv(key)
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except ValueError:
+        return default
+
+
 @dataclass
 class PathsConfig:
     claude_directory_windows: str
@@ -228,6 +243,9 @@ class SearchConfig:
     default_mode: str
     max_results: int
     snippet_length: int
+    temporal_decay_enabled: bool
+    temporal_decay_factor: float
+    temporal_weight: float
 
     @classmethod
     def from_dict(cls, data: dict) -> "SearchConfig":
@@ -244,6 +262,18 @@ class SearchConfig:
             snippet_length=_get_env_int(
                 "SEARCHAT_SNIPPET_LENGTH",
                 data.get("snippet_length", DEFAULT_SNIPPET_LENGTH)
+            ),
+            temporal_decay_enabled=_get_env_bool(
+                "SEARCHAT_TEMPORAL_DECAY_ENABLED",
+                bool(data.get("temporal_decay_enabled", DEFAULT_TEMPORAL_DECAY_ENABLED)),
+            ),
+            temporal_decay_factor=_get_env_float(
+                "SEARCHAT_TEMPORAL_DECAY_FACTOR",
+                float(data.get("temporal_decay_factor", DEFAULT_TEMPORAL_DECAY_FACTOR)),
+            ),
+            temporal_weight=_get_env_float(
+                "SEARCHAT_TEMPORAL_WEIGHT",
+                float(data.get("temporal_weight", DEFAULT_TEMPORAL_WEIGHT)),
             ),
         )
 
@@ -388,6 +418,7 @@ class PerformanceConfig:
     memory_limit_mb: int
     query_cache_size: int
     enable_profiling: bool
+    faiss_mmap: bool
 
     @classmethod
     def from_dict(cls, data: dict) -> "PerformanceConfig":
@@ -404,6 +435,10 @@ class PerformanceConfig:
             enable_profiling=_get_env_bool(
                 ENV_PROFILING,
                 data.get("enable_profiling", DEFAULT_ENABLE_PROFILING)
+            ),
+            faiss_mmap=_get_env_bool(
+                "SEARCHAT_FAISS_MMAP",
+                bool(data.get("faiss_mmap", DEFAULT_FAISS_MMAP)),
             ),
         )
 
