@@ -40,6 +40,50 @@ async def create_backup(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/incremental/create")
+async def create_incremental_backup(
+    parent: str,
+    backup_name: str | None = None,
+    snapshot: str | None = Query(None, description="Backup snapshot name (read-only)"),
+):
+    """Create an incremental backup based on a parent backup."""
+    if snapshot is not None:
+        raise HTTPException(status_code=403, detail="Backup operations are disabled in snapshot mode")
+    try:
+        backup_manager = get_backup_manager()
+        logger.info(f"Creating incremental backup from parent: {parent}")
+        metadata = backup_manager.create_incremental_backup(parent_name=parent, backup_name=backup_name)
+
+        return {
+            "success": True,
+            "backup": metadata.to_dict(),
+            "message": f"Incremental backup created: {metadata.backup_path.name}",
+        }
+    except Exception as e:
+        logger.error(f"Failed to create incremental backup: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/validate/{backup_name}")
+async def validate_backup(
+    backup_name: str,
+    verify_hashes: bool = Query(False, description="Verify file hashes from manifest"),
+):
+    """Validate a backup's manifests/chain and optionally file hashes."""
+    try:
+        backup_manager = get_backup_manager()
+        if not hasattr(backup_manager, "validate_backup_artifact"):
+            raise HTTPException(status_code=500, detail="Backup validation is not available")
+
+        result = backup_manager.validate_backup_artifact(backup_name, verify_hashes=verify_hashes)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to validate backup: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/list")
 async def list_backups():
     """List all available backups."""
