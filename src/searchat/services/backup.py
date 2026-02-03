@@ -13,6 +13,7 @@ from typing import Any, cast
 from datetime import datetime
 import logging
 import hashlib
+import tempfile
 
 logger = logging.getLogger(__name__)
 
@@ -227,6 +228,108 @@ class BackupManager:
         chain.reverse()
         return chain
 
+    def validate_backup_artifact(
+        self,
+        backup_name: str,
+        *,
+        verify_hashes: bool = False,
+        max_chain_length: int = 10,
+    ) -> dict[str, object]:
+        """Validate backup manifests, chain, and optional file hashes.
+
+        This is separate from validate_backup(), which checks snapshot-browsable structure.
+        """
+        errors: list[str] = []
+
+        backup_path = self.backup_dir / backup_name
+        if not backup_path.exists() or not backup_path.is_dir():
+            return {
+                "backup_name": backup_name,
+                "valid": False,
+                "errors": [f"Backup not found: {backup_name}"],
+            }
+
+        manifest = self._load_manifest(backup_path)
+        if manifest is None:
+            # Older backups: structural checks only.
+            if verify_hashes:
+                errors.append("Backup manifest missing")
+            structural_ok = self.validate_backup(backup_path)
+            return {
+                "backup_name": backup_name,
+                "backup_mode": "full",
+                "encrypted": False,
+                "parent_name": None,
+                "chain_length": 1,
+                "snapshot_browsable": structural_ok,
+                "has_manifest": False,
+                "valid": structural_ok and not errors,
+                "errors": errors,
+            }
+
+        try:
+            chain = self.resolve_backup_chain(backup_name, max_chain_length=max_chain_length)
+        except Exception as e:
+            return {
+                "backup_name": backup_name,
+                "backup_mode": manifest.backup_mode,
+                "encrypted": bool(manifest.encrypted),
+                "parent_name": manifest.parent_name,
+                "has_manifest": True,
+                "valid": False,
+                "errors": [str(e)],
+            }
+
+        chain_manifests: list[tuple[str, BackupManifest]] = []
+        for name in chain:
+            m = self._load_manifest(self.backup_dir / name)
+            if m is None:
+                errors.append(f"Backup manifest missing: {name}")
+                continue
+            chain_manifests.append((name, m))
+
+        if chain_manifests:
+            base_name, base_manifest = chain_manifests[0]
+            if base_manifest.backup_mode != "full":
+                errors.append(f"Backup chain base must be full: {base_name}")
+        else:
+            errors.append("Backup chain has no manifests")
+
+        if any(m.encrypted for _, m in chain_manifests):
+            errors.append("Encrypted backups are not supported yet")
+
+        if verify_hashes:
+            for name, m in chain_manifests:
+                bpath = self.backup_dir / name
+                for rel_path, meta in m.files.items():
+                    expected = meta.get("sha256")
+                    if not isinstance(expected, str) or not expected:
+                        errors.append(f"Invalid sha256 for {rel_path} in {name}")
+                        continue
+                    fpath = bpath / Path(rel_path)
+                    if not fpath.exists() or not fpath.is_file():
+                        errors.append(f"Missing file {rel_path} in {name}")
+                        continue
+                    actual = _sha256_file(fpath)
+                    if actual != expected:
+                        errors.append(f"Hash mismatch for {rel_path} in {name}")
+
+        snapshot_browsable = False
+        if manifest.backup_mode == "full" and not manifest.encrypted:
+            snapshot_browsable = self.validate_backup(backup_path)
+
+        return {
+            "backup_name": backup_name,
+            "backup_mode": manifest.backup_mode,
+            "encrypted": bool(manifest.encrypted),
+            "parent_name": manifest.parent_name,
+            "chain_length": len(chain),
+            "snapshot_browsable": snapshot_browsable,
+            "has_manifest": True,
+            "valid": not errors,
+            "errors": errors,
+        }
+
     def get_backup_summary(self, backup_name: str) -> dict[str, object]:
         backup_path = self.backup_dir / backup_name
         manifest = self._load_manifest(backup_path)
@@ -271,6 +374,199 @@ class BackupManager:
     def _count_files(self, path: Path) -> int:
         """Count all files in a directory."""
         return sum(1 for item in path.rglob("*") if item.is_file())
+
+    def _iter_live_backup_files(self) -> list[tuple[str, Path]]:
+        """Return (relative_path, absolute_path) for all files in backup scope."""
+        items_to_backup: list[tuple[str, Path]] = [
+            ("data", self.data_dir / "data"),
+            ("config", self.data_dir / "config"),
+        ]
+        files: list[tuple[str, Path]] = []
+        for prefix, root in items_to_backup:
+            if not root.exists():
+                continue
+            if root.is_file():
+                files.append((prefix, root))
+                continue
+            for src in root.rglob("*"):
+                if not src.is_file():
+                    continue
+                rel_key = str(Path(prefix) / src.relative_to(root)).replace("\\", "/")
+                files.append((rel_key, src))
+        return files
+
+    def _effective_state_from_chain(self, chain: list[str]) -> dict[str, str]:
+        """Compute effective file sha map for a chain.
+
+        The returned mapping is relative_path -> sha256.
+
+        Notes:
+        - Requires manifests for all backups in the chain.
+        - Only supports plaintext backups (encrypted=False).
+        """
+        if not chain:
+            raise ValueError("Empty backup chain")
+
+        state: dict[str, str] = {}
+        for idx, name in enumerate(chain):
+            backup_path = self.backup_dir / name
+            manifest = self._load_manifest(backup_path)
+            if manifest is None:
+                raise ValueError(f"Backup manifest missing: {name}")
+            if manifest.encrypted:
+                raise ValueError("Encrypted backups are not supported yet")
+            if idx == 0 and manifest.backup_mode != "full":
+                raise ValueError("Backup chain base must be a full backup")
+
+            for rel_path in manifest.deleted_files:
+                state.pop(rel_path, None)
+
+            for rel_path, meta in manifest.files.items():
+                sha = meta.get("sha256")
+                if not isinstance(sha, str) or not sha:
+                    raise ValueError(f"Invalid sha256 for {rel_path} in {name}")
+                state[rel_path] = sha
+
+        return state
+
+    def create_incremental_backup(
+        self,
+        *,
+        parent_name: str,
+        backup_name: str | None = None,
+        backup_type: str = "manual",
+        max_chain_length: int = 10,
+    ) -> BackupMetadata:
+        """Create an incremental (delta) backup using parent chain manifests.
+
+        Chain length counts total entries including the base full backup.
+        """
+        parent_chain = self.resolve_backup_chain(parent_name, max_chain_length=max_chain_length)
+        if len(parent_chain) + 1 > max_chain_length:
+            raise ValueError(f"Backup chain length exceeds max ({max_chain_length})")
+
+        # Ensure we can compute parent effective state.
+        parent_state = self._effective_state_from_chain(parent_chain)
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        if backup_name:
+            folder_name = f"{backup_name}_{timestamp}"
+        else:
+            folder_name = f"incremental_{timestamp}"
+        backup_path = self.backup_dir / folder_name
+        backup_path.mkdir(parents=True, exist_ok=True)
+
+        live_files = self._iter_live_backup_files()
+
+        live_state: dict[str, str] = {}
+        changed_files: list[tuple[str, Path, str]] = []
+        for rel_key, src in live_files:
+            sha = _sha256_file(src)
+            live_state[rel_key] = sha
+            if parent_state.get(rel_key) != sha:
+                changed_files.append((rel_key, src, sha))
+
+        deleted_files = sorted(set(parent_state.keys()) - set(live_state.keys()))
+
+        file_count = 0
+        total_size = 0
+        manifest_files: dict[str, dict[str, object]] = {}
+
+        for rel_key, src, sha in changed_files:
+            dest = backup_path / Path(rel_key)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dest)
+            st = src.stat()
+            file_count += 1
+            total_size += int(st.st_size)
+            manifest_files[rel_key] = {
+                "sha256": sha,
+                "size_bytes": int(st.st_size),
+                "mtime_epoch": float(st.st_mtime),
+            }
+
+        metadata = BackupMetadata(
+            timestamp=timestamp,
+            backup_path=backup_path,
+            source_path=self.data_dir,
+            file_count=file_count,
+            total_size_bytes=total_size,
+            backup_type=backup_type,
+        )
+
+        metadata_path = backup_path / self.METADATA_FILE
+        with open(metadata_path, "w", encoding="utf-8") as f:
+            json.dump(metadata.to_dict(), f, indent=2)
+
+        manifest = BackupManifest(
+            manifest_version=1,
+            backup_mode="incremental",
+            encrypted=False,
+            created_at=datetime.now().isoformat(),
+            parent_name=parent_name,
+            files=manifest_files,
+            deleted_files=deleted_files,
+        )
+        self._write_manifest(backup_path, manifest)
+
+        return metadata
+
+    def materialize_backup(
+        self,
+        *,
+        backup_name: str,
+        dest_dir: Path,
+        verify_hashes: bool = True,
+        max_chain_length: int = 10,
+    ) -> None:
+        """Materialize a backup chain into a plaintext dataset directory."""
+        if dest_dir.exists() and any(dest_dir.iterdir()):
+            raise ValueError(f"Destination directory is not empty: {dest_dir}")
+        dest_dir.mkdir(parents=True, exist_ok=True)
+
+        chain = self.resolve_backup_chain(backup_name, max_chain_length=max_chain_length)
+        if not chain:
+            raise ValueError("Empty backup chain")
+
+        base_manifest = self._load_manifest(self.backup_dir / chain[0])
+        if base_manifest is None:
+            raise ValueError(f"Backup manifest missing: {chain[0]}")
+        if base_manifest.backup_mode != "full":
+            raise ValueError("Backup chain base must be a full backup")
+        for name in chain:
+            backup_path = self.backup_dir / name
+            manifest = self._load_manifest(backup_path)
+            if manifest is None:
+                raise ValueError(f"Backup manifest missing: {name}")
+            if manifest.encrypted:
+                raise ValueError("Encrypted backups are not supported yet")
+
+            # Apply file overlays.
+            for rel_path, meta in manifest.files.items():
+                src = backup_path / Path(rel_path)
+                if not src.exists() or not src.is_file():
+                    raise FileNotFoundError(f"Backup file missing: {src}")
+                dst = dest_dir / Path(rel_path)
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, dst)
+
+                if verify_hashes:
+                    expected = meta.get("sha256")
+                    if not isinstance(expected, str) or not expected:
+                        raise ValueError(f"Invalid sha256 for {rel_path} in {name}")
+                    actual = _sha256_file(dst)
+                    if actual != expected:
+                        raise ValueError(f"Hash mismatch for {rel_path} in {name}")
+
+            # Apply deletions.
+            for rel_path in manifest.deleted_files:
+                target = dest_dir / Path(rel_path)
+                if not target.exists():
+                    continue
+                if target.is_dir():
+                    shutil.rmtree(target)
+                else:
+                    target.unlink()
 
     def create_backup(
         self,
@@ -479,7 +775,8 @@ class BackupManager:
     def restore_from_backup(
         self,
         backup_path: Path,
-        create_pre_restore_backup: bool = True
+        create_pre_restore_backup: bool = True,
+        verify_hashes: bool = True,
     ) -> BackupMetadata | None:
         """
         Restore data from a backup.
@@ -506,9 +803,27 @@ class BackupManager:
         if not backup_path.exists():
             raise FileNotFoundError(f"Backup not found: {backup_path}")
 
-        # Validate backup
-        if not self.validate_backup(backup_path):
-            raise ValueError(f"Backup validation failed: {backup_path}")
+        manifest = self._load_manifest(backup_path)
+        if manifest is not None and manifest.backup_mode == "incremental":
+            if manifest.encrypted:
+                raise ValueError("Encrypted backups are not supported yet")
+        else:
+            # Validate plaintext full backup structure for direct restore.
+            if not self.validate_backup(backup_path):
+                raise ValueError(f"Backup validation failed: {backup_path}")
+
+            if manifest is not None and verify_hashes:
+                # Verify backup file hashes before restoring.
+                for rel_path, meta in manifest.files.items():
+                    expected = meta.get("sha256")
+                    if not isinstance(expected, str) or not expected:
+                        raise ValueError(f"Invalid sha256 for {rel_path} in {backup_path.name}")
+                    fpath = backup_path / Path(rel_path)
+                    if not fpath.exists() or not fpath.is_file():
+                        raise FileNotFoundError(f"Backup file missing: {fpath}")
+                    actual = _sha256_file(fpath)
+                    if actual != expected:
+                        raise ValueError(f"Hash mismatch for {rel_path} in {backup_path.name}")
 
         # Create pre-restore backup
         pre_restore_metadata = None
@@ -521,32 +836,46 @@ class BackupManager:
 
         logger.info(f"Restoring from backup: {backup_path}")
 
-        # Restore items
-        items_to_restore = [
-            ("data", backup_path / "data", self.data_dir / "data"),
-            ("config", backup_path / "config", self.data_dir / "config"),
-        ]
+        source_root = backup_path
+        temp_dir_cm: tempfile.TemporaryDirectory[str] | None = None
+        if manifest is not None and manifest.backup_mode == "incremental":
+            # Materialize into a staging directory, then restore from it.
+            backup_name = backup_path.name
+            temp_dir_cm = tempfile.TemporaryDirectory(prefix="searchat_materialize_", dir=str(self.backup_dir))
+            staging_root = Path(temp_dir_cm.name)
+            self.materialize_backup(backup_name=backup_name, dest_dir=staging_root)
+            source_root = staging_root
 
-        for item_name, source, dest in items_to_restore:
-            if not source.exists():
-                logger.warning(f"Backup missing {item_name}, skipping")
-                continue
+        try:
+            # Restore items
+            items_to_restore = [
+                ("data", source_root / "data", self.data_dir / "data"),
+                ("config", source_root / "config", self.data_dir / "config"),
+            ]
 
-            # Remove existing destination
-            if dest.exists():
-                logger.info(f"  Removing existing {item_name}")
-                if dest.is_dir():
-                    shutil.rmtree(dest)
+            for item_name, source, dest in items_to_restore:
+                if not source.exists():
+                    logger.warning(f"Backup missing {item_name}, skipping")
+                    continue
+
+                # Remove existing destination
+                if dest.exists():
+                    logger.info(f"  Removing existing {item_name}")
+                    if dest.is_dir():
+                        shutil.rmtree(dest)
+                    else:
+                        dest.unlink()
+
+                # Copy from backup
+                logger.info(f"  Restoring {item_name}")
+                if source.is_dir():
+                    shutil.copytree(source, dest)
                 else:
-                    dest.unlink()
-
-            # Copy from backup
-            logger.info(f"  Restoring {item_name}")
-            if source.is_dir():
-                shutil.copytree(source, dest)
-            else:
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(source, dest)
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(source, dest)
+        finally:
+            if temp_dir_cm is not None:
+                temp_dir_cm.cleanup()
 
         logger.info(f"Restore complete from: {backup_path.name}")
 
