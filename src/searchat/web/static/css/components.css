@@ -394,6 +394,47 @@
     margin-bottom: 6px;
 }
 
+.message-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 6px;
+}
+
+.message-header .role {
+    margin-bottom: 0;
+}
+
+.message-actions {
+    display: flex;
+    gap: 8px;
+    flex: 0 0 auto;
+}
+
+.message-copy {
+    background: transparent;
+    color: var(--text-primary);
+    border: 1px solid var(--border-default);
+    border-radius: 4px;
+    padding: 3px 8px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.message-copy:hover {
+    border-color: var(--accent-primary);
+    color: var(--accent-primary);
+    background: var(--bg-surface);
+}
+
+.message-copy.copied {
+    border-color: var(--success);
+    background: var(--success);
+    color: white;
+}
+
 .message .content {
     white-space: pre-wrap;
     color: var(--text-primary);
