@@ -73,12 +73,14 @@ class BackupManifest:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "BackupManifest":
+        parent = data.get("parent_name")
+        parent_name = None if parent is None else str(parent)
         return cls(
             manifest_version=int(data.get("manifest_version", 1)),
             backup_mode=str(data.get("backup_mode", "full")),
             encrypted=bool(data.get("encrypted", False)),
             created_at=str(data.get("created_at", "")),
-            parent_name=cast(str | None, data.get("parent_name")),
+            parent_name=parent_name,
             files=cast(dict[str, dict[str, object]], data.get("files", {})),
             deleted_files=list(data.get("deleted_files", [])),
         )

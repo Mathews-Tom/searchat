@@ -48,7 +48,7 @@ jobs:
       - name: Sync dependencies
         run: |
           echo "Installing dependencies..."
-          uv sync --group dev
+          uv sync --group dev --extra secure
           echo "Dependencies installed successfully"
 
       - name: Run tests
