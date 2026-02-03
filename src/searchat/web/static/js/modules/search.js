@@ -381,6 +381,26 @@ function _sleep(ms) {
     });
 }
 
+async function copyTextToClipboard(text, buttonEl) {
+    const value = String(text || '');
+    if (!value) return;
+
+    try {
+        await navigator.clipboard.writeText(value);
+        if (!buttonEl) return;
+
+        const original = buttonEl.textContent;
+        buttonEl.textContent = 'Copied';
+        buttonEl.classList.add('copied');
+        setTimeout(function () {
+            buttonEl.textContent = original;
+            buttonEl.classList.remove('copied');
+        }, 1500);
+    } catch (error) {
+        console.error('Failed to copy text:', error);
+    }
+ }
+
 export async function search(resetPage = true, attempt = 0) {
     _searchNonce += 1;
     const nonce = _searchNonce;
@@ -1156,15 +1176,34 @@ export async function loadConversationView(conversationId, pushState = true) {
                 const msgDiv = document.createElement('div');
                 msgDiv.className = `message ${msg.role || 'unknown'}`;
 
+                const headerRow = document.createElement('div');
+                headerRow.className = 'message-header';
+
                 const roleDiv = document.createElement('div');
                 roleDiv.className = 'role';
                 roleDiv.textContent = `${(msg.role || 'unknown').toUpperCase()} - Message ${i + 1}`;
+
+                const actionsDiv = document.createElement('div');
+                actionsDiv.className = 'message-actions';
+
+                const copyBtn = document.createElement('button');
+                copyBtn.className = 'message-copy';
+                copyBtn.type = 'button';
+                copyBtn.textContent = 'Copy';
+                copyBtn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    await copyTextToClipboard(msg.content || '', copyBtn);
+                });
+
+                actionsDiv.appendChild(copyBtn);
+                headerRow.appendChild(roleDiv);
+                headerRow.appendChild(actionsDiv);
 
                 const contentDiv = document.createElement('div');
                 contentDiv.className = 'content';
                 contentDiv.textContent = msg.content || '';
 
-                msgDiv.appendChild(roleDiv);
+                msgDiv.appendChild(headerRow);
                 msgDiv.appendChild(contentDiv);
                 messagesContainer.appendChild(msgDiv);
             });
