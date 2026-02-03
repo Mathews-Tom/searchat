@@ -9,6 +9,7 @@ import re
 import time
 from pathlib import Path
 from datetime import datetime
+from typing import Annotated
 
 from fastapi import APIRouter, Query, HTTPException
 from fastapi.responses import Response, StreamingResponse
@@ -438,7 +439,10 @@ async def get_all_conversations(
 @router.get("/conversation/{conversation_id}")
 async def get_conversation(
     conversation_id: str,
-    snapshot: str | None = Query(None, description="Backup snapshot name (read-only)"),
+    snapshot: Annotated[
+        str | None,
+        Query(description="Backup snapshot name (read-only)"),
+    ] = None,
 ):
     """Get a specific conversation with all messages."""
     try:
