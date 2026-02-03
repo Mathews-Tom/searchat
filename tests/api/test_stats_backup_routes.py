@@ -57,6 +57,10 @@ def mock_backup_manager():
         "valid": True,
         "errors": [],
     }
+    mock.resolve_backup_chain.return_value = [
+        "backup_20250120_090000",
+        "backup_20250120_100000",
+    ]
 
     return mock
 
@@ -186,7 +190,7 @@ class TestCreateBackupEndpoint:
             assert "message" in data
             assert "Backup created" in data["message"]
 
-            mock_backup_manager.create_backup.assert_called_once_with(backup_name=None)
+            mock_backup_manager.create_backup.assert_called_once_with(backup_name=None, encrypted=False)
 
     def test_create_backup_with_name(self, client, mock_backup_manager):
         """Test creating a backup with custom name."""
@@ -194,7 +198,7 @@ class TestCreateBackupEndpoint:
             response = client.post("/api/backup/create?backup_name=my_backup")
 
             assert response.status_code == 200
-            mock_backup_manager.create_backup.assert_called_once_with(backup_name="my_backup")
+            mock_backup_manager.create_backup.assert_called_once_with(backup_name="my_backup", encrypted=False)
 
     def test_create_backup_error(self, client, mock_backup_manager):
         """Test error handling when backup fails."""
@@ -222,6 +226,7 @@ class TestCreateIncrementalBackupEndpoint:
         mock_backup_manager.create_incremental_backup.assert_called_once_with(
             parent_name="backup_20250120_100000",
             backup_name=None,
+            encrypted=False,
         )
 
 
@@ -258,6 +263,22 @@ class TestValidateBackupEndpoint:
             "backup_20250120_100000",
             verify_hashes=False,
         )
+
+
+@pytest.mark.unit
+class TestGetBackupChainEndpoint:
+    """Tests for GET /api/backup/chain/{backup_name} endpoint."""
+
+    def test_get_backup_chain_success(self, client, mock_backup_manager):
+        with patch('searchat.api.routers.backup.get_backup_manager', return_value=mock_backup_manager):
+            resp = client.get("/api/backup/chain/backup_20250120_100000")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["backup_name"] == "backup_20250120_100000"
+        assert data["chain_length"] == 2
+        assert data["chain"] == ["backup_20250120_090000", "backup_20250120_100000"]
+        mock_backup_manager.resolve_backup_chain.assert_called_once_with("backup_20250120_100000")
 
     def test_list_backups_empty(self, client, mock_backup_manager):
         """Test listing when no backups exist."""
