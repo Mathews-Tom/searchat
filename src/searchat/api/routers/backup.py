@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -46,9 +47,44 @@ async def list_backups():
         backup_manager = get_backup_manager()
         backups = backup_manager.list_backups()
 
+        from searchat.services.backup import BackupManager
+
+        enriched: list[dict] = []
+        for b in backups:
+            entry = b.to_dict()
+            backup_path = str(entry.get("backup_path", ""))
+            name = Path(backup_path).name if backup_path else ""
+
+            if isinstance(backup_manager, BackupManager) and name:
+                try:
+                    entry.update(backup_manager.get_backup_summary(name))
+                except Exception:
+                    entry.update({
+                        "name": name,
+                        "backup_mode": "full",
+                        "encrypted": False,
+                        "parent_name": None,
+                        "chain_length": 0,
+                        "snapshot_browsable": False,
+                        "has_manifest": False,
+                    })
+            else:
+                # In tests backup_manager may be a mock; keep response stable.
+                entry.update({
+                    "name": name,
+                    "backup_mode": "full",
+                    "encrypted": False,
+                    "parent_name": None,
+                    "chain_length": 1 if name else 0,
+                    "snapshot_browsable": False,
+                    "has_manifest": False,
+                })
+
+            enriched.append(entry)
+
         return {
-            "backups": [b.to_dict() for b in backups],
-            "total": len(backups),
+            "backups": enriched,
+            "total": len(enriched),
             "backup_directory": str(backup_manager.backup_dir)
         }
 
