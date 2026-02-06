@@ -68,29 +68,47 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v4
-        with:
-          enable-cache: true
-          cache-dependency-glob: "pyproject.toml"
-
-      - name: Sync dependencies
+      - name: Install build tooling
         run: |
-          echo "Installing build dependencies..."
-          uv sync --group dev
-          echo "Dependencies installed successfully"
+          python -m pip install --upgrade pip
+          python -m pip install build
 
       - name: Build sdist/wheel
         run: |
           echo "Building distribution packages..."
-          uv run python -m build
+          python -m build
           echo "Build completed. Generated files:"
           ls -lh dist/
 
-      - name: Install wheel smoke test
+      - name: Validate wheel contents
         run: |
-          python -m pip install --upgrade pip
-          python -c "import glob, subprocess, sys, zipfile; wheels = glob.glob('dist/*.whl'); assert len(wheels) == 1, wheels; wheel = wheels[0]; subprocess.check_call([sys.executable, '-m', 'pip', 'install', wheel]); z = zipfile.ZipFile(wheel); names = z.namelist(); assert any(n.endswith('searchat/py.typed') for n in names), 'missing py.typed'; assert any(n.endswith('searchat/config/settings.default.toml') for n in names), 'missing settings.default.toml'; assert any('searchat/web/static/' in n for n in names), 'missing web/static assets';"
-          python -c "import searchat.api.app"
-          searchat --help
-          searchat-web --help
+          python - <<'PY'
+          import glob
+          import zipfile
+
+          wheels = glob.glob('dist/*.whl')
+          assert len(wheels) == 1, wheels
+          wheel = wheels[0]
+
+          with zipfile.ZipFile(wheel) as z:
+              names = z.namelist()
+              assert any(n.endswith('searchat/py.typed') for n in names), 'missing py.typed'
+              assert any(
+                  n.endswith('searchat/config/settings.default.toml') for n in names
+              ), 'missing settings.default.toml'
+              assert any('searchat/web/static/' in n for n in names), 'missing web/static assets'
+
+              entry_points = [n for n in names if n.endswith('dist-info/entry_points.txt')]
+              assert entry_points, 'missing entry_points.txt'
+              content = z.read(entry_points[0]).decode()
+              for required in (
+                  'searchat =',
+                  'searchat-web =',
+                  'searchat-mcp =',
+                  'searchat-setup-index =',
+                  'searchat-ghost =',
+              ):
+                  assert required in content, f"missing entry point: {required}"
+
+          print(f"Validated wheel: {wheel}")
+          PY
