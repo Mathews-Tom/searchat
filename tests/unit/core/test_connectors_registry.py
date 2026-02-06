@@ -32,6 +32,16 @@ def test_detect_connector_codex(tmp_path):
     assert connector.name == "codex"
 
 
+def test_detect_connector_codex_history_jsonl(tmp_path):
+    file_path = tmp_path / "history.jsonl"
+    file_path.write_text(
+        json.dumps({"session_id": "sid-1", "ts": 1_760_000_000, "text": "hello"}) + "\n",
+        encoding="utf-8",
+    )
+    connector = detect_connector(file_path)
+    assert connector.name == "codex"
+
+
 def test_detect_connector_gemini(tmp_path):
     file_path = tmp_path / "chat.json"
     file_path.write_text(json.dumps({"history": [{"role": "user", "content": "Hi"}]}), encoding="utf-8")
