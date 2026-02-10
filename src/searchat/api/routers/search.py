@@ -4,6 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Query, HTTPException
 from fastapi.responses import JSONResponse
 
+from searchat.config.constants import VALID_TOOL_NAMES
 from searchat.models import SearchMode, SearchFilters
 from searchat.api.models import SearchResultResponse, CodeSearchResultResponse
 from searchat.services.highlight_service import extract_highlight_terms
@@ -71,7 +72,7 @@ async def search_code(
             params.append(project)
         if tool:
             tool_value = tool.lower()
-            if tool_value not in ("claude", "vibe", "opencode", "codex", "gemini", "continue", "cursor", "aider"):
+            if tool_value not in VALID_TOOL_NAMES:
                 raise HTTPException(status_code=400, detail="Invalid tool filter")
             filters.append("lower(connector) = lower(?)")
             params.append(tool_value)
@@ -302,7 +303,7 @@ async def search(
 
         if tool:
             tool_value = tool.lower()
-            if tool_value not in ("claude", "vibe", "opencode", "codex", "gemini", "continue", "cursor", "aider"):
+            if tool_value not in VALID_TOOL_NAMES:
                 raise HTTPException(status_code=400, detail="Invalid tool filter")
             filters.tool = tool_value
 

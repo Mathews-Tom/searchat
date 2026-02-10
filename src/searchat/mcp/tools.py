@@ -7,6 +7,7 @@ from pathlib import Path
 from searchat.api.duckdb_store import DuckDBStore
 from searchat.api.utils import detect_tool_from_path
 from searchat.config import Config, PathResolver
+from searchat.config.constants import VALID_TOOL_NAMES
 from searchat.core.search_engine import SearchEngine
 from searchat.models import SearchFilters, SearchMode
 from searchat.services.llm_service import LLMService
@@ -59,9 +60,8 @@ def parse_tool(tool: str | None) -> str | None:
     value = tool.lower().strip()
     if not value:
         return None
-    allowed = {"claude", "vibe", "opencode", "codex", "gemini", "cursor", "continue", "aider"}
-    if value not in allowed:
-        raise ValueError(f"Invalid tool; expected one of: {', '.join(sorted(allowed))}")
+    if value not in VALID_TOOL_NAMES:
+        raise ValueError(f"Invalid tool; expected one of: {', '.join(sorted(VALID_TOOL_NAMES))}")
     return value
 
 

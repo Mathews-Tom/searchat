@@ -15,6 +15,7 @@ from fastapi import APIRouter, Query, HTTPException
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
+from searchat.config.constants import VALID_TOOL_NAMES
 from searchat.api.models import (
     SearchResultResponse,
     ConversationMessage,
@@ -378,7 +379,7 @@ async def get_all_conversations(
 
         if tool:
             tool_value = tool.lower()
-            if tool_value not in ("claude", "vibe", "opencode", "codex", "gemini", "continue", "cursor", "aider"):
+            if tool_value not in VALID_TOOL_NAMES:
                 raise HTTPException(status_code=400, detail="Invalid tool filter")
             tool = tool_value
 

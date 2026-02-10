@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from searchat.core.filters import tool_sql_conditions
+
 
 ConversationSort = str
 
@@ -126,32 +128,7 @@ class DuckDBStore:
             params.append(project_id)
 
         if tool:
-            tool_value = tool.lower()
-            if tool_value == "opencode":
-                conditions.append("project_id LIKE 'opencode-%'")
-            elif tool_value == "vibe":
-                conditions.append("project_id LIKE 'vibe-%'")
-            elif tool_value == "codex":
-                conditions.append("(project_id = 'codex' OR file_path ILIKE '%/.codex/%')")
-            elif tool_value == "gemini":
-                conditions.append(
-                    "(project_id = 'gemini' OR project_id LIKE 'gemini-%' OR file_path ILIKE '%/.gemini/tmp/%/chats/%')"
-                )
-            elif tool_value == "continue":
-                conditions.append("(project_id LIKE 'continue-%' OR file_path ILIKE '%/.continue/sessions/%')")
-            elif tool_value == "cursor":
-                conditions.append("(project_id LIKE 'cursor-%' OR file_path ILIKE '%.vscdb.cursor/%')")
-            elif tool_value == "aider":
-                conditions.append("(project_id LIKE 'aider-%' OR file_path ILIKE '%/.aider.chat.history.md')")
-            elif tool_value == "claude":
-                conditions.append("project_id NOT LIKE 'opencode-%'")
-                conditions.append("project_id NOT LIKE 'vibe-%'")
-                conditions.append("project_id NOT LIKE 'gemini-%'")
-                conditions.append("project_id NOT LIKE 'continue-%'")
-                conditions.append("project_id NOT LIKE 'cursor-%'")
-                conditions.append("project_id NOT LIKE 'aider-%'")
-                conditions.append("project_id != 'gemini'")
-                conditions.append("project_id != 'codex'")
+            conditions.extend(tool_sql_conditions(tool.lower()))
 
         if date_from:
             conditions.append("updated_at >= ?")
@@ -219,32 +196,7 @@ class DuckDBStore:
             params.append(project_id)
 
         if tool:
-            tool_value = tool.lower()
-            if tool_value == "opencode":
-                conditions.append("project_id LIKE 'opencode-%'")
-            elif tool_value == "vibe":
-                conditions.append("project_id LIKE 'vibe-%'")
-            elif tool_value == "codex":
-                conditions.append("(project_id = 'codex' OR file_path ILIKE '%/.codex/%')")
-            elif tool_value == "gemini":
-                conditions.append(
-                    "(project_id = 'gemini' OR project_id LIKE 'gemini-%' OR file_path ILIKE '%/.gemini/tmp/%/chats/%')"
-                )
-            elif tool_value == "continue":
-                conditions.append("(project_id LIKE 'continue-%' OR file_path ILIKE '%/.continue/sessions/%')")
-            elif tool_value == "cursor":
-                conditions.append("(project_id LIKE 'cursor-%' OR file_path ILIKE '%.vscdb.cursor/%')")
-            elif tool_value == "aider":
-                conditions.append("(project_id LIKE 'aider-%' OR file_path ILIKE '%/.aider.chat.history.md')")
-            elif tool_value == "claude":
-                conditions.append("project_id NOT LIKE 'opencode-%'")
-                conditions.append("project_id NOT LIKE 'vibe-%'")
-                conditions.append("project_id NOT LIKE 'gemini-%'")
-                conditions.append("project_id NOT LIKE 'continue-%'")
-                conditions.append("project_id NOT LIKE 'cursor-%'")
-                conditions.append("project_id NOT LIKE 'aider-%'")
-                conditions.append("project_id != 'gemini'")
-                conditions.append("project_id != 'codex'")
+            conditions.extend(tool_sql_conditions(tool.lower()))
 
         if date_from:
             conditions.append("updated_at >= ?")
