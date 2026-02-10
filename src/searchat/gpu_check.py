@@ -1,8 +1,8 @@
 """GPU availability check and helpful warnings."""
+from __future__ import annotations
 
 import logging
 import subprocess
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +21,7 @@ def check_nvidia_gpu() -> bool:
         return False
 
 
-def get_gpu_name() -> Optional[str]:
+def get_gpu_name() -> str | None:
     """Get GPU name if available."""
     try:
         result = subprocess.run(

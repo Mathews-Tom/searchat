@@ -4,11 +4,12 @@ Interactive setup wizard for Claude Search.
 Run with: python -m searchat.setup
 """
 
+from __future__ import annotations
+
 import os
 import sys
 import shutil
 from pathlib import Path
-from typing import Optional, List
 
 from searchat.config.constants import (
     DEFAULT_DATA_DIR,
@@ -29,7 +30,7 @@ class SetupManager:
 
     def __init__(self):
         self.platform = PathResolver.detect_platform()
-        self.claude_dirs: List[Path] = []
+        self.claude_dirs: list[Path] = []
         self.data_dir = DEFAULT_DATA_DIR
         self.config_dir = self.data_dir / DEFAULT_CONFIG_SUBDIR
 
