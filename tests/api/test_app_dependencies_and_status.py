@@ -180,21 +180,31 @@ async def test_app_shutdown_stops_watcher(monkeypatch: pytest.MonkeyPatch) -> No
     api_app = _api_app_module()
 
     watcher = MagicMock()
+    set_watcher_mock = MagicMock()
     monkeypatch.setattr(api_app, "get_watcher", lambda: watcher)
-    monkeypatch.setattr(api_app, "set_watcher", MagicMock())
+    monkeypatch.setattr(api_app, "set_watcher", set_watcher_mock)
+    monkeypatch.setattr(api_app, "initialize_services", MagicMock())
+    monkeypatch.setattr(api_app, "start_background_warmup", MagicMock())
+    monkeypatch.setattr(api_app, "get_config", lambda: SimpleNamespace(logging=SimpleNamespace()))
+    monkeypatch.setattr(api_app, "setup_logging", MagicMock())
+    monkeypatch.setattr(api_app.asyncio, "create_task", lambda coro: (coro.close(), MagicMock())[1])
 
-    await api_app.shutdown_event()
+    async with api_app.lifespan(MagicMock()):
+        pass  # shutdown runs after yield
+
     watcher.stop.assert_called_once()
+    set_watcher_mock.assert_called_with(None)
 
 
 @pytest.mark.asyncio
-async def test_app_startup_event_initializes_services_and_schedules_watcher(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_app_lifespan_initializes_services_and_schedules_watcher(monkeypatch: pytest.MonkeyPatch) -> None:
     api_app = _api_app_module()
 
     monkeypatch.setattr(api_app, "initialize_services", MagicMock())
     monkeypatch.setattr(api_app, "start_background_warmup", MagicMock())
     monkeypatch.setattr(api_app, "get_config", lambda: SimpleNamespace(logging=SimpleNamespace()))
     monkeypatch.setattr(api_app, "setup_logging", MagicMock())
+    monkeypatch.setattr(api_app, "get_watcher", lambda: None)
 
     scheduled = {"called": False}
 
@@ -204,13 +214,13 @@ async def test_app_startup_event_initializes_services_and_schedules_watcher(monk
         return MagicMock()
 
     monkeypatch.setattr(api_app.asyncio, "create_task", _fake_create_task)
-    await api_app.startup_event()
 
-    assert scheduled["called"] is True
+    async with api_app.lifespan(MagicMock()):
+        assert scheduled["called"] is True
 
 
 @pytest.mark.asyncio
-async def test_app_startup_event_profile_logging(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_app_lifespan_profile_logging(monkeypatch: pytest.MonkeyPatch) -> None:
     api_app = _api_app_module()
 
     monkeypatch.setenv("SEARCHAT_PROFILE_STARTUP", "1")
@@ -218,6 +228,7 @@ async def test_app_startup_event_profile_logging(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(api_app, "start_background_warmup", MagicMock())
     monkeypatch.setattr(api_app, "get_config", lambda: SimpleNamespace(logging=SimpleNamespace()))
     monkeypatch.setattr(api_app, "setup_logging", MagicMock())
+    monkeypatch.setattr(api_app, "get_watcher", lambda: None)
 
     logger = MagicMock()
     monkeypatch.setattr(api_app, "get_logger", lambda *_args, **_kwargs: logger)
@@ -228,9 +239,8 @@ async def test_app_startup_event_profile_logging(monkeypatch: pytest.MonkeyPatch
 
     monkeypatch.setattr(api_app.asyncio, "create_task", _fake_create_task)
 
-    await api_app.startup_event()
-
-    assert logger.info.call_count >= 2
+    async with api_app.lifespan(MagicMock()):
+        assert logger.info.call_count >= 2
 
 
 @pytest.mark.asyncio
