@@ -7,6 +7,11 @@ from datetime import datetime
 from pathlib import Path
 
 from searchat.config import Config, PathResolver
+from searchat.core.connectors.utils import (
+    MARKDOWN_CODE_BLOCK_RE,
+    parse_flexible_timestamp,
+    title_from_messages,
+)
 from searchat.models import ConversationRecord, MessageRecord
 
 
@@ -112,7 +117,7 @@ class ContinueConnector:
             if not content:
                 continue
 
-            timestamp = self._parse_timestamp(
+            timestamp = parse_flexible_timestamp(
                 entry.get("timestamp")
                 or entry.get("createdAt")
                 or entry.get("time")
@@ -123,7 +128,7 @@ class ContinueConnector:
             if timestamp is None:
                 timestamp = datetime.fromtimestamp(path.stat().st_mtime)
 
-            code_blocks = re.findall(r"```(?:\w+)?\n(.*?)```", content, re.DOTALL)
+            code_blocks = MARKDOWN_CODE_BLOCK_RE.findall(content)
             has_code = len(code_blocks) > 0
 
             messages.append(
@@ -153,7 +158,7 @@ class ContinueConnector:
             candidate = raw_title.strip()
             if candidate and re.search(r"[A-Za-z0-9]", candidate) and len(candidate) >= 4:
                 title = candidate
-        title = title or (self._title_from_messages(messages) or "Untitled Continue Session")
+        title = title or (title_from_messages(messages) or "Untitled Continue Session")
         full_text = "\n\n".join(full_text_parts)
 
         created_at = messages[0].timestamp if messages else datetime.fromtimestamp(path.stat().st_mtime)
@@ -196,36 +201,9 @@ class ContinueConnector:
                 return "\n\n".join(parts)
         return ""
 
-    def _title_from_messages(self, messages: list[MessageRecord]) -> str | None:
-        for msg in messages:
-            if msg.role == "user" and msg.content.strip():
-                return msg.content.strip().splitlines()[0][:100]
-        for msg in messages:
-            if msg.content.strip():
-                return msg.content.strip().splitlines()[0][:100]
-        return None
-
     def _workspace_hash(self, value: object) -> str | None:
         if not isinstance(value, str) or not value.strip():
             return None
         digest = hashlib.sha1(value.strip().encode("utf-8")).hexdigest()
         return digest[:10]
 
-    def _parse_timestamp(self, value: object) -> datetime | None:
-        if value is None:
-            return None
-        if isinstance(value, (int, float)):
-            try:
-                ts = value / 1000 if value > 1e12 else value
-                return datetime.fromtimestamp(ts)
-            except (OSError, ValueError):
-                return None
-        if isinstance(value, str) and value.strip():
-            raw = value.strip()
-            if raw.endswith("Z"):
-                raw = raw[:-1] + "+00:00"
-            try:
-                return datetime.fromisoformat(raw)
-            except ValueError:
-                return None
-        return None

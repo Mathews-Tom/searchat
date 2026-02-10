@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 import sqlite3
 from datetime import datetime
 from pathlib import Path
 
 from searchat.config import Config, PathResolver
+from searchat.core.connectors.utils import MARKDOWN_CODE_BLOCK_RE, title_from_messages
 from searchat.models import ConversationRecord, MessageRecord
 
 
@@ -106,7 +106,7 @@ class CursorConnector:
             if timestamp is None:
                 timestamp = datetime.fromtimestamp(db_path.stat().st_mtime)
 
-            code_blocks = re.findall(r"```(?:\w+)?\n(.*?)```", content, re.DOTALL)
+            code_blocks = MARKDOWN_CODE_BLOCK_RE.findall(content)
             has_code = len(code_blocks) > 0
 
             messages.append(
@@ -121,7 +121,7 @@ class CursorConnector:
             )
             full_text_parts.append(content)
 
-        title = self._title_from_messages(messages) or "Untitled Cursor Chat"
+        title = title_from_messages(messages) or "Untitled Cursor Chat"
 
         created_at = self._timestamp_ms_to_datetime(composer.get("createdAt"))
         updated_at = self._timestamp_ms_to_datetime(composer.get("lastUpdatedAt"))
@@ -292,15 +292,6 @@ class CursorConnector:
                 return datetime.fromtimestamp(value / 1000)
             except (OSError, ValueError):
                 return None
-        return None
-
-    def _title_from_messages(self, messages: list[MessageRecord]) -> str | None:
-        for msg in messages:
-            if msg.role == "user" and msg.content.strip():
-                return msg.content.strip().splitlines()[0][:100]
-        for msg in messages:
-            if msg.content.strip():
-                return msg.content.strip().splitlines()[0][:100]
         return None
 
     def _pseudo_path(self, db_path: Path, composer_id: str) -> Path:

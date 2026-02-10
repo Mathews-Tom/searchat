@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 from datetime import datetime
 from pathlib import Path
 
 from searchat.config import Config, PathResolver
+from searchat.core.connectors.utils import MARKDOWN_CODE_BLOCK_RE
 from searchat.models import ConversationRecord, MessageRecord
 
 
@@ -133,7 +133,7 @@ class OpenCodeConnector:
 
         messages: list[MessageRecord] = []
         for sequence, (created_at, _name, role, content) in enumerate(raw_messages):
-            code_blocks = re.findall(r"```(?:\w+)?\n(.*?)```", content, re.DOTALL)
+            code_blocks = MARKDOWN_CODE_BLOCK_RE.findall(content)
             has_code = len(code_blocks) > 0
             messages.append(
                 MessageRecord(
@@ -170,7 +170,7 @@ class OpenCodeConnector:
 
         messages: list[MessageRecord] = []
         for sequence, (created_at, _name, role, content) in enumerate(raw_messages):
-            code_blocks = re.findall(r"```(?:\w+)?\n(.*?)```", content, re.DOTALL)
+            code_blocks = MARKDOWN_CODE_BLOCK_RE.findall(content)
             has_code = len(code_blocks) > 0
             messages.append(
                 MessageRecord(
