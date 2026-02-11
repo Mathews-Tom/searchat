@@ -79,7 +79,10 @@ class TestListQueries:
         assert svc.list_queries() == []
 
     def test_sorted_by_created_at_descending(self, svc):
+        import time
+
         svc.create_query(_make_payload(name="First"))
+        time.sleep(0.05)  # ensure distinct timestamps on all platforms
         svc.create_query(_make_payload(name="Second"))
         queries = svc.list_queries()
         assert len(queries) == 2

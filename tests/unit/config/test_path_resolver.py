@@ -32,6 +32,7 @@ class TestExpandPathTemplate:
         assert result == f"{Path.home()}/data"
 
     def test_expands_username_placeholder(self, monkeypatch):
+        monkeypatch.setenv("USERNAME", "testuser")
         monkeypatch.setenv("USER", "testuser")
         result = PathResolver.expand_path_template("{username}/dir")
         assert result.startswith("testuser/")
@@ -346,6 +347,12 @@ class TestResolveClaudeDirs:
         extra.mkdir()
         monkeypatch.setenv("SEARCHAT_ADDITIONAL_DIRS", str(extra))
         monkeypatch.setattr(PathResolver, "detect_platform", staticmethod(lambda: "linux"))
+        monkeypatch.setattr(
+            PathResolver, "translate_claude_path", staticmethod(lambda p: Path(p)),
+        )
+        monkeypatch.setattr(
+            "searchat.config.path_resolver.CLAUDE_DIR_CANDIDATES", [],
+        )
         from searchat.config import Config
         config = Config.load()
         dirs = PathResolver.resolve_claude_dirs(config)
@@ -357,6 +364,9 @@ class TestResolveClaudeDirs:
         win_dir = tmp_path / "win_claude"
         win_dir.mkdir()
         monkeypatch.setattr(PathResolver, "detect_platform", staticmethod(lambda: "linux"))
+        monkeypatch.setattr(
+            PathResolver, "translate_claude_path", staticmethod(lambda p: Path(p)),
+        )
         from searchat.config import Config
         config = Config.load()
         monkeypatch.setattr(config.paths, "claude_directory_windows", str(win_dir))
