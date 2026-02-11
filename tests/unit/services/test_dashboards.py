@@ -94,7 +94,10 @@ class TestListDashboards:
         assert svc.list_dashboards() == []
 
     def test_sorted_by_created_at_descending(self, svc):
+        import time
+
         svc.create_dashboard(_make_payload(name="First"))
+        time.sleep(0.05)  # ensure distinct timestamps on all platforms
         svc.create_dashboard(_make_payload(name="Second"))
         dashboards = svc.list_dashboards()
         assert len(dashboards) == 2
