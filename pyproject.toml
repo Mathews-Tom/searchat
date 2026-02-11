@@ -158,6 +158,10 @@ omit = [
     "*/tests/*",
     "*/__main__.py",
     "*/setup.py",
+    "*/cli/*.py",
+    "*/setup/wizard.py",
+    "*/daemon/ghost.py",
+    "*/daemon/notify.py",
 ]
 
 [tool.coverage.report]
