@@ -7,6 +7,8 @@ import os
 import re
 import time
 import warnings
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from datetime import datetime
 
@@ -109,11 +111,43 @@ def _cache_bust_static_assets(html: str, version: str) -> str:
 _CACHED_HTML = _cache_bust_static_assets(_HTML_PATH.read_text(encoding="utf-8"), APP_VERSION)
 
 
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    """Manage startup and shutdown lifecycle."""
+    # --- startup ---
+    started = time.perf_counter()
+    initialize_services()
+    start_background_warmup()
+
+    config = get_config()
+    setup_logging(config.logging)
+    _logger = get_logger(__name__)
+
+    if os.getenv("SEARCHAT_PROFILE_STARTUP") == "1":
+        elapsed_ms = (time.perf_counter() - started) * 1000.0
+        _logger.info("Startup: initialize_services + schedule warmup %.1fms", elapsed_ms)
+
+    asyncio.create_task(_start_watcher_background(config))
+
+    if os.getenv("SEARCHAT_PROFILE_STARTUP") == "1":
+        elapsed_ms = (time.perf_counter() - started) * 1000.0
+        _logger.info("Startup: total startup_event %.1fms", elapsed_ms)
+
+    yield
+
+    # --- shutdown ---
+    watcher = get_watcher()
+    if watcher:
+        watcher.stop()
+        set_watcher(None)
+
+
 # Create FastAPI app
 app = FastAPI(
     title="Searchat API",
     description="Local search for your AI coding conversations",
     version=APP_VERSION,
+    lifespan=lifespan,
 )
 
 # CORS middleware
@@ -206,32 +240,6 @@ def on_new_conversations(file_paths: list[str]) -> None:
         indexing_state["operation"] = None
 
 
-@app.on_event("startup")
-async def startup_event():
-    """Initialize services and start the file watcher on server startup."""
-    started = time.perf_counter()
-    # IMPORTANT: Initialize services FIRST (loads config)
-    initialize_services()
-
-    # Start warmup in background (non-blocking)
-    start_background_warmup()
-
-    # THEN get config and setup logging
-    config = get_config()
-    setup_logging(config.logging)
-    logger = get_logger(__name__)
-
-    if os.getenv("SEARCHAT_PROFILE_STARTUP") == "1":
-        elapsed_ms = (time.perf_counter() - started) * 1000.0
-        logger.info("Startup: initialize_services + schedule warmup %.1fms", elapsed_ms)
-
-    # Start file watcher in background (do not block startup).
-    asyncio.create_task(_start_watcher_background(config))
-
-    if os.getenv("SEARCHAT_PROFILE_STARTUP") == "1":
-        elapsed_ms = (time.perf_counter() - started) * 1000.0
-        logger.info("Startup: total startup_event %.1fms", elapsed_ms)
-
 
 async def _start_watcher_background(config):
     readiness = get_readiness()
@@ -260,15 +268,6 @@ async def _start_watcher_background(config):
     except Exception as e:
         readiness.set_watcher("error", error=str(e))
         logger.error(f"Failed to start watcher: {e}")
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Stop the file watcher on server shutdown."""
-    watcher = get_watcher()
-    if watcher:
-        watcher.stop()
-        set_watcher(None)
 
 
 @app.get("/", response_class=HTMLResponse)

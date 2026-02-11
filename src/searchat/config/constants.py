@@ -3,6 +3,7 @@ Constants and default values for Searchat.
 
 Centralizes magic numbers and strings to improve maintainability.
 """
+from __future__ import annotations
 
 from pathlib import Path
 
@@ -40,6 +41,15 @@ ENV_FILE = ".env"
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8000
 PORT_SCAN_RANGE = (8000, 8010)  # Will try ports in this range
+
+# ============================================================================
+# Connector / Tool Names
+# ============================================================================
+
+VALID_TOOL_NAMES: frozenset[str] = frozenset({
+    "claude", "vibe", "opencode", "codex",
+    "gemini", "continue", "cursor", "aider",
+})
 
 # ============================================================================
 # Search & Indexing Defaults

@@ -1,4 +1,6 @@
 """Admin endpoints - server shutdown and watcher status."""
+from __future__ import annotations
+
 import os
 import signal
 import logging

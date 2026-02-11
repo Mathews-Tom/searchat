@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
+from searchat.config.constants import VALID_TOOL_NAMES
 import searchat.api.dependencies as deps
 from searchat.api.dependencies import (
     get_or_create_search_engine,
@@ -304,7 +305,7 @@ def _build_filters(filters_value: Any) -> SearchFilters:
     tool = filters_value.get("tool")
     if isinstance(tool, str) and tool:
         tool_value = tool.lower()
-        if tool_value not in ("claude", "vibe", "opencode", "codex", "gemini", "continue", "cursor", "aider"):
+        if tool_value not in VALID_TOOL_NAMES:
             raise ValueError("Invalid tool filter in saved query")
         filters.tool = tool_value
 

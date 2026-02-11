@@ -300,7 +300,7 @@ def backup_manager(temp_search_dir):
 def test_client():
     """FastAPI test client."""
     from fastapi.testclient import TestClient
-    from searchat.web_api import app
+    from searchat.api.app import app
 
     return TestClient(app)
 

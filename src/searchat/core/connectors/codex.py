@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from searchat.config import Config, PathResolver
+from searchat.core.connectors.utils import (
+    MARKDOWN_CODE_BLOCK_RE,
+    parse_flexible_timestamp,
+    title_from_messages,
+)
 from searchat.models import ConversationRecord, MessageRecord
 
 
@@ -92,7 +96,7 @@ class CodexConnector:
                     created_at = timestamp
                 updated_at = timestamp
 
-                code_blocks = re.findall(r"```(?:\w+)?\n(.*?)```", content, re.DOTALL)
+                code_blocks = MARKDOWN_CODE_BLOCK_RE.findall(content)
                 has_code = len(code_blocks) > 0
 
                 messages.append(
@@ -111,7 +115,7 @@ class CodexConnector:
 
         file_hash = hashlib.sha256(path.read_bytes()).hexdigest()
         conversation_id = session_id or path.stem
-        title = self._title_from_messages(messages) or "Untitled Codex Session"
+        title = title_from_messages(messages) or "Untitled Codex Session"
 
         full_text = "\n\n".join(full_text_parts)
 
@@ -129,35 +133,6 @@ class CodexConnector:
             file_hash=file_hash,
             indexed_at=datetime.now(),
         )
-
-    def _title_from_messages(self, messages: list[MessageRecord]) -> str | None:
-        for msg in messages:
-            if msg.role == "user" and msg.content.strip():
-                return msg.content.strip().splitlines()[0][:100]
-        for msg in messages:
-            if msg.content.strip():
-                return msg.content.strip().splitlines()[0][:100]
-        return None
-
-    def _parse_timestamp(self, value: object) -> datetime | None:
-        if value is None:
-            return None
-        if isinstance(value, (int, float)):
-            try:
-                # Heuristic: ms vs seconds.
-                ts = value / 1000 if value > 1e12 else value
-                return datetime.fromtimestamp(ts)
-            except (OSError, ValueError):
-                return None
-        if isinstance(value, str) and value.strip():
-            raw = value.strip()
-            if raw.endswith("Z"):
-                raw = raw[:-1] + "+00:00"
-            try:
-                return datetime.fromisoformat(raw)
-            except ValueError:
-                return None
-        return None
 
     def _extract_session_id(self, entry: dict[str, Any]) -> str | None:
         if entry.get("type") == "session_meta":
@@ -223,7 +198,7 @@ class CodexConnector:
         if role:
             content = self._extract_text(entry.get("content", entry.get("text")))
             if content:
-                timestamp = self._parse_timestamp(
+                timestamp = parse_flexible_timestamp(
                     entry.get("timestamp")
                     or entry.get("created_at")
                     or entry.get("time")
@@ -240,7 +215,7 @@ class CodexConnector:
                 if payload_role:
                     payload_content = self._extract_text(payload.get("content", payload.get("text")))
                     if payload_content:
-                        timestamp = self._parse_timestamp(
+                        timestamp = parse_flexible_timestamp(
                             entry.get("timestamp")
                             or payload.get("timestamp")
                             or payload.get("created_at")
@@ -254,7 +229,7 @@ class CodexConnector:
         if isinstance(entry.get("session_id"), str):
             history_text = entry.get("text")
             if isinstance(history_text, str) and history_text.strip():
-                history_timestamp = self._parse_timestamp(
+                history_timestamp = parse_flexible_timestamp(
                     entry.get("timestamp")
                     or entry.get("ts")
                     or entry.get("time")

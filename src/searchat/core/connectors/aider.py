@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 from searchat.config import Config, PathResolver
+from searchat.core.connectors.utils import MARKDOWN_CODE_BLOCK_RE, title_from_messages
 from searchat.models import ConversationRecord, MessageRecord
 
 
@@ -70,7 +71,7 @@ class AiderConnector:
         updated_at = created_at
 
         messages = self._parse_messages(text, base_timestamp=created_at)
-        title = self._title_from_messages(messages) or "Untitled Aider Chat"
+        title = title_from_messages(messages) or "Untitled Aider Chat"
 
         full_text_parts = [m.content for m in messages if m.content]
         full_text = "\n\n".join(full_text_parts)
@@ -117,7 +118,7 @@ class AiderConnector:
             if not content.strip():
                 current_lines = []
                 return
-            code_blocks = re.findall(r"```(?:\w+)?\n(.*?)```", content, re.DOTALL)
+            code_blocks = MARKDOWN_CODE_BLOCK_RE.findall(content)
             messages.append(
                 MessageRecord(
                     sequence=len(messages),
@@ -159,7 +160,7 @@ class AiderConnector:
         if not found_delimiter:
             content = text.strip()
             if content:
-                code_blocks = re.findall(r"```(?:\w+)?\n(.*?)```", content, re.DOTALL)
+                code_blocks = MARKDOWN_CODE_BLOCK_RE.findall(content)
                 return [
                     MessageRecord(
                         sequence=0,
@@ -176,11 +177,3 @@ class AiderConnector:
 
         return messages
 
-    def _title_from_messages(self, messages: list[MessageRecord]) -> str | None:
-        for msg in messages:
-            if msg.role == "user" and msg.content.strip():
-                return msg.content.strip().splitlines()[0][:100]
-        for msg in messages:
-            if msg.content.strip():
-                return msg.content.strip().splitlines()[0][:100]
-        return None
