@@ -88,12 +88,30 @@ class TestIsWsl:
         # _is_wsl reads /proc/version; on macOS it doesn't exist -> False
         assert PathResolver._is_wsl() is False
 
+    def test_not_wsl_when_file_not_found(self):
+        """Covers except FileNotFoundError branch explicitly."""
+        with patch("builtins.open", side_effect=FileNotFoundError):
+            assert PathResolver._is_wsl() is False
+
+    def test_not_wsl_when_permission_error(self):
+        """Covers except PermissionError branch explicitly."""
+        with patch("builtins.open", side_effect=PermissionError):
+            assert PathResolver._is_wsl() is False
+
     def test_wsl_detected_from_proc_version(self):
         with patch("builtins.open", create=True) as mock_open:
             mock_open.return_value.__enter__ = lambda s: s
             mock_open.return_value.__exit__ = lambda *a: None
             mock_open.return_value.read = lambda: "Linux version 5.15.0 (microsoft-standard-WSL)"
             assert PathResolver._is_wsl() is True
+
+    def test_not_wsl_on_regular_linux(self):
+        """On regular Linux, /proc/version exists but doesn't contain microsoft."""
+        with patch("builtins.open", create=True) as mock_open:
+            mock_open.return_value.__enter__ = lambda s: s
+            mock_open.return_value.__exit__ = lambda *a: None
+            mock_open.return_value.read = lambda: "Linux version 5.15.0-generic"
+            assert PathResolver._is_wsl() is False
 
 
 class TestTranslateClaudePath:
@@ -178,6 +196,15 @@ class TestResolveVibeDirs:
         dirs = PathResolver.resolve_vibe_dirs()
         assert session_dir in dirs
 
+    def test_standard_vibe_dir_found(self, monkeypatch, tmp_path):
+        """When ~/.vibe/logs/session exists, it's included."""
+        monkeypatch.delenv("VIBE_HOME", raising=False)
+        vibe_dir = tmp_path / ".vibe" / "logs" / "session"
+        vibe_dir.mkdir(parents=True)
+        monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
+        dirs = PathResolver.resolve_vibe_dirs()
+        assert vibe_dir in dirs
+
 
 class TestResolveOpencodeDirs:
     """Tests for PathResolver.resolve_opencode_dirs."""
@@ -193,6 +220,18 @@ class TestResolveOpencodeDirs:
         monkeypatch.delenv("SEARCHAT_OPENCODE_DATA_DIR", raising=False)
         dirs = PathResolver.resolve_opencode_dirs()
         assert isinstance(dirs, list)
+
+    def test_fallback_candidate_found(self, monkeypatch, tmp_path):
+        """When env var is unset but a candidate dir exists, include it."""
+        _restore(monkeypatch, "resolve_opencode_dirs", _orig_resolve_opencode)
+        monkeypatch.delenv("SEARCHAT_OPENCODE_DATA_DIR", raising=False)
+        candidate = tmp_path / "opencode_data"
+        candidate.mkdir()
+        monkeypatch.setattr(
+            "searchat.config.path_resolver.OPENCODE_DIR_CANDIDATES", [candidate],
+        )
+        dirs = PathResolver.resolve_opencode_dirs()
+        assert candidate in dirs
 
 
 class TestResolveCodexDirs:
@@ -311,3 +350,36 @@ class TestResolveClaudeDirs:
         config = Config.load()
         dirs = PathResolver.resolve_claude_dirs(config)
         assert extra in dirs
+
+    def test_windows_dir_included_when_exists(self, monkeypatch, tmp_path):
+        """When the Windows Claude directory exists, it should be included."""
+        monkeypatch.delenv("SEARCHAT_ADDITIONAL_DIRS", raising=False)
+        win_dir = tmp_path / "win_claude"
+        win_dir.mkdir()
+        monkeypatch.setattr(PathResolver, "detect_platform", staticmethod(lambda: "linux"))
+        from searchat.config import Config
+        config = Config.load()
+        monkeypatch.setattr(config.paths, "claude_directory_windows", str(win_dir))
+        monkeypatch.setattr(
+            "searchat.config.path_resolver.CLAUDE_DIR_CANDIDATES", [],
+        )
+        dirs = PathResolver.resolve_claude_dirs(config)
+        assert win_dir in dirs
+
+    def test_fallback_candidates_used(self, monkeypatch, tmp_path):
+        """When no env/windows dirs exist, fallback candidates are checked."""
+        monkeypatch.delenv("SEARCHAT_ADDITIONAL_DIRS", raising=False)
+        candidate = tmp_path / "fallback_claude"
+        candidate.mkdir()
+        monkeypatch.setattr(PathResolver, "detect_platform", staticmethod(lambda: "linux"))
+        from searchat.config import Config
+        config = Config.load()
+        monkeypatch.setattr(
+            config.paths, "claude_directory_windows",
+            str(tmp_path / "nonexistent_win"),
+        )
+        monkeypatch.setattr(
+            "searchat.config.path_resolver.CLAUDE_DIR_CANDIDATES", [candidate],
+        )
+        dirs = PathResolver.resolve_claude_dirs(config)
+        assert candidate in dirs
