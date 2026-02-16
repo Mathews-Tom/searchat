@@ -41,11 +41,12 @@ async def chat(
 
     config = get_config()
     try:
-        stream = generate_answer_stream(
+        session_id, stream = generate_answer_stream(
             query=request.query,
             provider=provider,
             model_name=request.model_name,
             config=config,
+            session_id=request.session_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -54,7 +55,11 @@ async def chat(
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
-    return StreamingResponse(stream, media_type="text/plain; charset=utf-8")
+    return StreamingResponse(
+        stream,
+        media_type="text/plain; charset=utf-8",
+        headers={"X-Session-Id": session_id},
+    )
 
 
 @router.post("/chat-rag", response_model=RAGResponse)
@@ -93,6 +98,7 @@ async def chat_rag(
             temperature=request.temperature,
             max_tokens=request.max_tokens,
             system_prompt=request.system_prompt,
+            session_id=request.session_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -121,4 +127,4 @@ async def chat_rag(
             )
             for r in generation.results
         ]
-    return RAGResponse(answer=generation.answer, sources=sources, context_used=generation.context_used)
+    return RAGResponse(answer=generation.answer, sources=sources, context_used=generation.context_used, session_id=generation.session_id)
