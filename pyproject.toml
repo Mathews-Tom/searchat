@@ -4,12 +4,12 @@ build-backend = "hatchling.build"
 
 [project]
 name = "searchat"
-version = "0.5.0"
+version = "0.6.0"
 description = "Semantic search and RAG for local AI coding agent conversations"
 authors = [{name = "Searchat Contributors"}]
 license = {text = "MIT"}
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 keywords = [
     "semantic-search",
     "rag",
@@ -28,7 +28,6 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -44,12 +43,10 @@ dependencies = [
     "uvicorn>=0.20.0",
     "rich>=13.0.0",
     "tomli>=2.0.1",
-    "eval_type_backport>=0.3.0; python_version < '3.10'",
     "numpy<2",
     "pandas>=2.0.0",
     "python-dotenv>=1.0.0",
     "watchdog>=3.0.0",
-    "rank-bm25>=0.2.2",
     "litellm>=1.81.3",
     "pygments>=2.17.0",
     "reportlab>=4.2.0",
@@ -71,7 +68,7 @@ secure = [
 
 # MCP support (Phase 2)
 mcp = [
-    "mcp>=0.1.0; python_version >= '3.10'",
+    "mcp>=0.1.0",
 ]
 
 # Embedded LLM support (Phase 3)
@@ -94,7 +91,7 @@ jupyter = [
 ]
 
 all = [
-    "mcp>=0.1.0; python_version >= '3.10'",
+    "mcp>=0.1.0",
     "llama-cpp-python>=0.2.0",
     "tree-sitter>=0.21.3",
     "tree-sitter-languages>=1.10.2",
