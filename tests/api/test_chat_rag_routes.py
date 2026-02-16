@@ -42,7 +42,7 @@ def test_chat_rag_returns_answer_and_sources(client):
         message_end_index=6,
     )
 
-    generation = SimpleNamespace(answer="Final answer", results=[result], context_used=1)
+    generation = SimpleNamespace(answer="Final answer", results=[result], context_used=1, session_id="")
 
     mock_generate = Mock(return_value=generation)
     config = Mock()
@@ -108,7 +108,7 @@ def test_chat_rag_disabled_returns_404(client):
 
 
 def test_chat_rag_citations_disabled_returns_no_sources(client):
-    generation = SimpleNamespace(answer="Final", results=[], context_used=0)
+    generation = SimpleNamespace(answer="Final", results=[], context_used=0, session_id="")
     config = Mock()
     config.chat = Mock(enable_rag=True, enable_citations=False)
 

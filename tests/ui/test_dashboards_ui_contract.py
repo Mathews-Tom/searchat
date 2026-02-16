@@ -27,4 +27,4 @@ def test_dashboards_ui_references_expected_endpoints() -> None:
 def test_index_html_exposes_dashboards_entry_point() -> None:
     index_html = Path(__file__).resolve().parents[2] / "src" / "searchat" / "web" / "index.html"
     content = index_html.read_text(encoding="utf-8")
-    assert "showDashboards()" in content
+    assert "showDashboards" in content

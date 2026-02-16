@@ -542,7 +542,7 @@ def test_chat_streams_response_when_ready(monkeypatch: pytest.MonkeyPatch) -> No
         yield " world"
 
     monkeypatch.setattr("searchat.api.routers.chat.get_config", lambda: object())
-    monkeypatch.setattr("searchat.api.routers.chat.generate_answer_stream", lambda **_kwargs: _fake_stream())
+    monkeypatch.setattr("searchat.api.routers.chat.generate_answer_stream", lambda **_kwargs: ("test-session-id", _fake_stream()))
 
     client = TestClient(app)
     response = client.post(
@@ -552,6 +552,7 @@ def test_chat_streams_response_when_ready(monkeypatch: pytest.MonkeyPatch) -> No
 
     assert response.status_code == 200
     assert response.text == "hello world"
+    assert response.headers.get("x-session-id") == "test-session-id"
 
 
 def test_chat_snapshot_mode_returns_403() -> None:

@@ -74,7 +74,7 @@ def mock_search_results():
 
 def test_get_search_suggestions(client, mock_duckdb_store_for_suggestions):
     """Test GET /api/search/suggestions with query."""
-    with patch("searchat.api.dependencies.get_duckdb_store", return_value=mock_duckdb_store_for_suggestions):
+    with patch("searchat.api.routers.search.deps.get_duckdb_store", return_value=mock_duckdb_store_for_suggestions):
         response = client.get("/api/search/suggestions?q=python")
 
         assert response.status_code == 200
@@ -88,7 +88,7 @@ def test_get_search_suggestions(client, mock_duckdb_store_for_suggestions):
 
 def test_get_search_suggestions_word_extraction(client, mock_duckdb_store_for_suggestions):
     """Test suggestions extract words and phrases from titles."""
-    with patch("searchat.api.dependencies.get_duckdb_store", return_value=mock_duckdb_store_for_suggestions):
+    with patch("searchat.api.routers.search.deps.get_duckdb_store", return_value=mock_duckdb_store_for_suggestions):
         response = client.get("/api/search/suggestions?q=test")
 
         assert response.status_code == 200
@@ -100,7 +100,7 @@ def test_get_search_suggestions_word_extraction(client, mock_duckdb_store_for_su
 
 def test_get_search_suggestions_limit(client, mock_duckdb_store_for_suggestions):
     """Test suggestions endpoint respects limit parameter."""
-    with patch("searchat.api.dependencies.get_duckdb_store", return_value=mock_duckdb_store_for_suggestions):
+    with patch("searchat.api.routers.search.deps.get_duckdb_store", return_value=mock_duckdb_store_for_suggestions):
         response = client.get("/api/search/suggestions?q=python&limit=5")
 
         assert response.status_code == 200
@@ -112,7 +112,7 @@ def test_get_search_suggestions_limit(client, mock_duckdb_store_for_suggestions)
 
 def test_get_search_suggestions_limit_validation(client, mock_duckdb_store_for_suggestions):
     """Test limit parameter validation for suggestions."""
-    with patch("searchat.api.dependencies.get_duckdb_store", return_value=mock_duckdb_store_for_suggestions):
+    with patch("searchat.api.routers.search.deps.get_duckdb_store", return_value=mock_duckdb_store_for_suggestions):
         # limit < 1 should fail
         response = client.get("/api/search/suggestions?q=test&limit=0")
         assert response.status_code == 422
@@ -135,7 +135,7 @@ def test_get_search_suggestions_min_length_validation(client):
 
 def test_get_search_suggestions_prefix_priority(client, mock_duckdb_store_for_suggestions):
     """Test suggestions prioritize prefix matches."""
-    with patch("searchat.api.dependencies.get_duckdb_store", return_value=mock_duckdb_store_for_suggestions):
+    with patch("searchat.api.routers.search.deps.get_duckdb_store", return_value=mock_duckdb_store_for_suggestions):
         response = client.get("/api/search/suggestions?q=py")
 
         assert response.status_code == 200
@@ -149,7 +149,7 @@ def test_get_search_suggestions_prefix_priority(client, mock_duckdb_store_for_su
 
 def test_get_search_suggestions_case_insensitive(client, mock_duckdb_store_for_suggestions):
     """Test suggestions are case-insensitive."""
-    with patch("searchat.api.dependencies.get_duckdb_store", return_value=mock_duckdb_store_for_suggestions):
+    with patch("searchat.api.routers.search.deps.get_duckdb_store", return_value=mock_duckdb_store_for_suggestions):
         response1 = client.get("/api/search/suggestions?q=python")
         response2 = client.get("/api/search/suggestions?q=PYTHON")
 
@@ -166,7 +166,7 @@ def test_get_search_suggestions_case_insensitive(client, mock_duckdb_store_for_s
 
 def test_get_search_suggestions_deduplication(client, mock_duckdb_store_for_suggestions):
     """Test suggestions deduplicate results."""
-    with patch("searchat.api.dependencies.get_duckdb_store", return_value=mock_duckdb_store_for_suggestions):
+    with patch("searchat.api.routers.search.deps.get_duckdb_store", return_value=mock_duckdb_store_for_suggestions):
         response = client.get("/api/search/suggestions?q=test")
 
         assert response.status_code == 200
@@ -187,7 +187,9 @@ def test_search_pagination_offset_parameter(client, mock_search_results):
     mock_engine.search.return_value = mock_search_results
 
     with patch("searchat.api.routers.search.deps.get_or_create_search_engine", return_value=mock_engine), \
-         patch("searchat.api.routers.search.get_analytics_service"):
+         patch("searchat.api.routers.search.get_analytics_service"), \
+         patch("searchat.api.routers.search.deps.resolve_dataset_search_dir", return_value=(Mock(), None)), \
+         patch("searchat.api.routers.search.deps.get_config", return_value=Mock(analytics=Mock(enabled=False))):
 
         response = client.get("/api/search?q=test&mode=keyword&offset=10")
 
@@ -204,7 +206,9 @@ def test_search_pagination_limit_parameter(client, mock_search_results):
     mock_engine.search.return_value = mock_search_results
 
     with patch("searchat.api.routers.search.deps.get_or_create_search_engine", return_value=mock_engine), \
-         patch("searchat.api.routers.search.get_analytics_service"):
+         patch("searchat.api.routers.search.get_analytics_service"), \
+         patch("searchat.api.routers.search.deps.resolve_dataset_search_dir", return_value=(Mock(), None)), \
+         patch("searchat.api.routers.search.deps.get_config", return_value=Mock(analytics=Mock(enabled=False))):
 
         response = client.get("/api/search?q=test&mode=keyword&limit=10")
 
@@ -223,7 +227,9 @@ def test_search_pagination_has_more_flag(client, mock_search_results):
     mock_engine.search.return_value = mock_search_results
 
     with patch("searchat.api.routers.search.deps.get_or_create_search_engine", return_value=mock_engine), \
-         patch("searchat.api.routers.search.get_analytics_service"):
+         patch("searchat.api.routers.search.get_analytics_service"), \
+         patch("searchat.api.routers.search.deps.resolve_dataset_search_dir", return_value=(Mock(), None)), \
+         patch("searchat.api.routers.search.deps.get_config", return_value=Mock(analytics=Mock(enabled=False))):
 
         # First page (offset=0, limit=20)
         response = client.get("/api/search?q=test&mode=keyword&offset=0&limit=20")
@@ -248,7 +254,9 @@ def test_search_pagination_default_limit(client, mock_search_results):
     mock_engine.search.return_value = mock_search_results
 
     with patch("searchat.api.routers.search.deps.get_or_create_search_engine", return_value=mock_engine), \
-         patch("searchat.api.routers.search.get_analytics_service"):
+         patch("searchat.api.routers.search.get_analytics_service"), \
+         patch("searchat.api.routers.search.deps.resolve_dataset_search_dir", return_value=(Mock(), None)), \
+         patch("searchat.api.routers.search.deps.get_config", return_value=Mock(analytics=Mock(enabled=False))):
 
         response = client.get("/api/search?q=test&mode=keyword")
 
@@ -265,7 +273,9 @@ def test_search_pagination_offset_validation(client, mock_search_results):
     mock_engine.search.return_value = mock_search_results
 
     with patch("searchat.api.routers.search.deps.get_or_create_search_engine", return_value=mock_engine), \
-         patch("searchat.api.routers.search.get_analytics_service"):
+         patch("searchat.api.routers.search.get_analytics_service"), \
+         patch("searchat.api.routers.search.deps.resolve_dataset_search_dir", return_value=(Mock(), None)), \
+         patch("searchat.api.routers.search.deps.get_config", return_value=Mock(analytics=Mock(enabled=False))):
 
         # Negative offset should fail
         response = client.get("/api/search?q=test&mode=keyword&offset=-1")
@@ -282,7 +292,9 @@ def test_search_pagination_limit_validation(client, mock_search_results):
     mock_engine.search.return_value = mock_search_results
 
     with patch("searchat.api.routers.search.deps.get_or_create_search_engine", return_value=mock_engine), \
-         patch("searchat.api.routers.search.get_analytics_service"):
+         patch("searchat.api.routers.search.get_analytics_service"), \
+         patch("searchat.api.routers.search.deps.resolve_dataset_search_dir", return_value=(Mock(), None)), \
+         patch("searchat.api.routers.search.deps.get_config", return_value=Mock(analytics=Mock(enabled=False))):
 
         # limit < 1 should fail
         response = client.get("/api/search?q=test&mode=keyword&limit=0")
@@ -303,7 +315,9 @@ def test_search_pagination_slicing(client, mock_search_results):
     mock_engine.search.return_value = mock_search_results
 
     with patch("searchat.api.routers.search.deps.get_or_create_search_engine", return_value=mock_engine), \
-         patch("searchat.api.routers.search.get_analytics_service"):
+         patch("searchat.api.routers.search.get_analytics_service"), \
+         patch("searchat.api.routers.search.deps.resolve_dataset_search_dir", return_value=(Mock(), None)), \
+         patch("searchat.api.routers.search.deps.get_config", return_value=Mock(analytics=Mock(enabled=False))):
 
         # Get first page (0-20)
         response1 = client.get("/api/search?q=test&mode=keyword&offset=0&limit=20")
@@ -326,7 +340,9 @@ def test_search_pagination_total_count(client, mock_search_results):
     mock_engine.search.return_value = mock_search_results
 
     with patch("searchat.api.routers.search.deps.get_or_create_search_engine", return_value=mock_engine), \
-         patch("searchat.api.routers.search.get_analytics_service"):
+         patch("searchat.api.routers.search.get_analytics_service"), \
+         patch("searchat.api.routers.search.deps.resolve_dataset_search_dir", return_value=(Mock(), None)), \
+         patch("searchat.api.routers.search.deps.get_config", return_value=Mock(analytics=Mock(enabled=False))):
 
         # Get different pages
         response1 = client.get("/api/search?q=test&mode=keyword&offset=0&limit=10")
@@ -345,7 +361,9 @@ def test_search_pagination_beyond_results(client, mock_search_results):
     mock_engine.search.return_value = mock_search_results
 
     with patch("searchat.api.routers.search.deps.get_or_create_search_engine", return_value=mock_engine), \
-         patch("searchat.api.routers.search.get_analytics_service"):
+         patch("searchat.api.routers.search.get_analytics_service"), \
+         patch("searchat.api.routers.search.deps.resolve_dataset_search_dir", return_value=(Mock(), None)), \
+         patch("searchat.api.routers.search.deps.get_config", return_value=Mock(analytics=Mock(enabled=False))):
 
         # Offset beyond total results
         response = client.get("/api/search?q=test&mode=keyword&offset=100&limit=20")
@@ -364,7 +382,9 @@ def test_search_pagination_metadata(client, mock_search_results):
     mock_engine.search.return_value = mock_search_results
 
     with patch("searchat.api.routers.search.deps.get_or_create_search_engine", return_value=mock_engine), \
-         patch("searchat.api.routers.search.get_analytics_service"):
+         patch("searchat.api.routers.search.get_analytics_service"), \
+         patch("searchat.api.routers.search.deps.resolve_dataset_search_dir", return_value=(Mock(), None)), \
+         patch("searchat.api.routers.search.deps.get_config", return_value=Mock(analytics=Mock(enabled=False))):
 
         response = client.get("/api/search?q=test&mode=keyword&offset=10&limit=15")
 
