@@ -8,7 +8,9 @@ from pydantic import BaseModel, Field
 
 import searchat.api.dependencies as deps
 from searchat.api.utils import parse_date_filter
+from searchat.config.constants import AGENT_CONFIG_TEMPLATES
 from searchat.models import SearchMode
+from searchat.services.pattern_mining import extract_patterns
 from searchat.services.tech_docs_service import build_search_filters, generate_doc
 
 
@@ -81,4 +83,62 @@ async def create_docs_summary(request: DocsSummaryRequest):
         "content": doc.content,
         "citation_count": len(doc.citations),
         "citations": [c.__dict__ for c in doc.citations],
+    }
+
+
+class AgentConfigRequest(BaseModel):
+    """Request body for agent config generation."""
+
+    format: Literal["claude.md", "copilot-instructions.md", "cursorrules"] = "claude.md"
+    project_filter: str | None = None
+    model_provider: str = "ollama"
+    model_name: str | None = None
+
+
+@router.post("/export/agent-config")
+async def generate_agent_config(request: AgentConfigRequest):
+    """Generate agent configuration from conversation patterns."""
+    provider = request.model_provider.lower()
+    if provider not in ("openai", "ollama", "embedded"):
+        raise HTTPException(
+            status_code=400,
+            detail="model_provider must be 'openai', 'ollama', or 'embedded'.",
+        )
+
+    config = deps.get_config()
+
+    try:
+        patterns = extract_patterns(
+            topic=request.project_filter,
+            max_patterns=15,
+            model_provider=provider,
+            model_name=request.model_name,
+            config=config,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    # Format patterns into text
+    pattern_lines: list[str] = []
+    for p in patterns:
+        pattern_lines.append(f"### {p.name}")
+        pattern_lines.append(f"{p.description}")
+        if p.evidence:
+            pattern_lines.append("")
+            pattern_lines.append("Evidence:")
+            for e in p.evidence[:3]:
+                pattern_lines.append(f"- [{e.date}] {e.snippet[:100]}...")
+        pattern_lines.append("")
+
+    patterns_text = "\n".join(pattern_lines)
+    project_name = request.project_filter or "Project"
+
+    template = AGENT_CONFIG_TEMPLATES.get(request.format, AGENT_CONFIG_TEMPLATES["claude.md"])
+    content = template.format(project_name=project_name, patterns=patterns_text)
+
+    return {
+        "format": request.format,
+        "content": content,
+        "pattern_count": len(patterns),
+        "project_filter": request.project_filter,
     }

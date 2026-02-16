@@ -7,7 +7,7 @@ from pathlib import Path
 from searchat.api.duckdb_store import DuckDBStore
 from searchat.api.utils import detect_tool_from_path
 from searchat.config import Config, PathResolver
-from searchat.config.constants import VALID_TOOL_NAMES
+from searchat.config.constants import VALID_TOOL_NAMES, RAG_SYSTEM_PROMPT
 from searchat.core.search_engine import SearchEngine
 from searchat.models import SearchFilters, SearchMode
 from searchat.services.llm_service import LLMService
@@ -285,19 +285,6 @@ def find_similar_conversations(
     )
 
 
-_RAG_SYSTEM_PROMPT = (
-    "You are an intelligent knowledge assistant for a developer's personal archives.\n"
-    "You will be provided with Context Chunks retrieved from the user's past chat history.\n\n"
-    "Instructions:\n"
-    "1. Answer the user's question only using the provided Context Chunks.\n"
-    "2. If the answer is not in the chunks, state that you cannot find the information in the archives.\n"
-    "3. When you state a fact, reference the date or conversation ID from the chunk (e.g., [Date: ...] or [Source: ...]).\n"
-    "4. Be concise and technical.\n\n"
-    "Context Chunks:\n"
-    "{context_data}"
-)
-
-
 def ask_about_history(
     *,
     question: str,
@@ -337,7 +324,7 @@ def ask_about_history(
     context_data = "\n".join(context_lines).strip()
 
     messages = [
-        {"role": "system", "content": _RAG_SYSTEM_PROMPT.format(context_data=context_data)},
+        {"role": "system", "content": RAG_SYSTEM_PROMPT.format(context_data=context_data)},
         {"role": "user", "content": question},
     ]
 
@@ -360,3 +347,111 @@ def ask_about_history(
             for r in top_results
         ]
     return _json_dumps(payload)
+
+
+def extract_patterns(
+    *,
+    topic: str | None = None,
+    max_patterns: int = 10,
+    model_provider: str | None = None,
+    model_name: str | None = None,
+    search_dir: str | None = None,
+) -> str:
+    """Extract recurring patterns from conversation history.
+
+    Mines the conversation archive for coding conventions, architecture decisions,
+    and recurring patterns using semantic search and LLM synthesis.
+    """
+    from searchat.services.pattern_mining import extract_patterns as _extract_patterns
+
+    dataset_dir = resolve_dataset(search_dir)
+    config, _engine, _store = build_services(dataset_dir)
+
+    provider = (model_provider or config.llm.default_provider or "ollama").lower().strip()
+    if provider not in ("openai", "ollama", "embedded"):
+        raise ValueError("model_provider must be one of: openai, ollama, embedded")
+
+    patterns = _extract_patterns(
+        topic=topic,
+        max_patterns=max_patterns,
+        model_provider=provider,
+        model_name=model_name,
+        config=config,
+    )
+
+    return _json_dumps({
+        "patterns": [
+            {
+                "name": p.name,
+                "description": p.description,
+                "confidence": p.confidence,
+                "evidence": [
+                    {
+                        "conversation_id": e.conversation_id,
+                        "date": e.date,
+                        "snippet": e.snippet,
+                    }
+                    for e in p.evidence
+                ],
+            }
+            for p in patterns
+        ],
+        "total": len(patterns),
+    })
+
+
+def generate_agent_config(
+    *,
+    format: str = "claude.md",
+    project_filter: str | None = None,
+    model_provider: str | None = None,
+    model_name: str | None = None,
+    search_dir: str | None = None,
+) -> str:
+    """Generate agent configuration file from conversation patterns.
+
+    Extracts patterns from conversation history and formats them into
+    an agent config file (CLAUDE.md, copilot-instructions.md, or cursorrules).
+    """
+    from searchat.services.pattern_mining import extract_patterns as _extract_patterns
+    from searchat.config.constants import AGENT_CONFIG_TEMPLATES
+
+    if format not in ("claude.md", "copilot-instructions.md", "cursorrules"):
+        raise ValueError("format must be one of: claude.md, copilot-instructions.md, cursorrules")
+
+    dataset_dir = resolve_dataset(search_dir)
+    config, _engine, _store = build_services(dataset_dir)
+
+    provider = (model_provider or config.llm.default_provider or "ollama").lower().strip()
+    if provider not in ("openai", "ollama", "embedded"):
+        raise ValueError("model_provider must be one of: openai, ollama, embedded")
+
+    patterns = _extract_patterns(
+        topic=project_filter,
+        max_patterns=15,
+        model_provider=provider,
+        model_name=model_name,
+        config=config,
+    )
+
+    pattern_lines: list[str] = []
+    for p in patterns:
+        pattern_lines.append(f"### {p.name}")
+        pattern_lines.append(f"{p.description}")
+        if p.evidence:
+            pattern_lines.append("")
+            pattern_lines.append("Evidence:")
+            for e in p.evidence[:3]:
+                pattern_lines.append(f"- [{e.date}] {e.snippet[:100]}...")
+        pattern_lines.append("")
+
+    patterns_text = "\n".join(pattern_lines)
+    project_name = project_filter or "Project"
+    template = AGENT_CONFIG_TEMPLATES.get(format, AGENT_CONFIG_TEMPLATES["claude.md"])
+    content = template.format(project_name=project_name, patterns=patterns_text)
+
+    return _json_dumps({
+        "format": format,
+        "content": content,
+        "pattern_count": len(patterns),
+    })
