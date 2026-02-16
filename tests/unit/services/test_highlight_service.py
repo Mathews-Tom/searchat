@@ -1,9 +1,12 @@
-"""Tests for searchat.services.highlight_service._parse_terms."""
+"""Tests for searchat.services.highlight_service."""
 from __future__ import annotations
+
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 
-from searchat.services.highlight_service import _parse_terms
+from searchat.services.highlight_service import _parse_terms, extract_highlight_terms
 
 
 class TestParseTerms:
@@ -50,3 +53,30 @@ class TestParseTerms:
     def test_rejects_all_empty(self):
         with pytest.raises(ValueError, match="no usable terms"):
             _parse_terms('["", "  "]')
+
+
+class TestExtractHighlightTerms:
+    """Tests for extract_highlight_terms end-to-end."""
+
+    def test_extracts_terms_via_llm(self):
+        llm_config = SimpleNamespace(
+            openai_model="gpt-4.1-mini",
+            ollama_model="llama3",
+        )
+        config = SimpleNamespace(llm=llm_config)
+
+        with patch(
+            "searchat.services.highlight_service.LLMService"
+        ) as MockLLMService:
+            mock_instance = MockLLMService.return_value
+            mock_instance.completion.return_value = '["python", "async", "coroutines"]'
+
+            result = extract_highlight_terms(
+                query="how does python async work",
+                provider="openai",
+                model_name="gpt-4.1-mini",
+                config=config,
+            )
+
+        assert result == ["python", "async", "coroutines"]
+        mock_instance.completion.assert_called_once()
