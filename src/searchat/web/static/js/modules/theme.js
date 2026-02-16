@@ -9,7 +9,9 @@ export function setTheme(theme) {
 
     // Update button states
     document.querySelectorAll('.theme-toggle button').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.theme === theme);
+        const isActive = btn.dataset.theme === theme;
+        btn.classList.toggle('active', isActive);
+        btn.setAttribute('aria-pressed', isActive.toString());
     });
 }
 
@@ -32,8 +34,11 @@ export function initTheme() {
     // Apply theme
     applyTheme(savedTheme);
 
-    // Update button states
+    // Update button states and attach click listeners
     document.querySelectorAll('.theme-toggle button').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.theme === savedTheme);
+        if (btn.dataset.theme) {
+            btn.addEventListener('click', () => setTheme(btn.dataset.theme));
+        }
     });
 }

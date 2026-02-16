@@ -1056,61 +1056,18 @@ export async function loadConversationView(conversationId, pushState = true) {
         // Add tabs for Messages and Code
         const tabsDiv = document.createElement('div');
         tabsDiv.className = 'conversation-tabs';
-        tabsDiv.style.cssText = `
-            display: flex;
-            gap: 8px;
-            margin: 20px 0 16px 0;
-            border-bottom: 1px solid var(--border-default);
-            padding-bottom: 0;
-        `;
 
         const messagesTab = document.createElement('button');
         messagesTab.className = 'tab-button active';
         messagesTab.textContent = 'Messages';
-        messagesTab.style.cssText = `
-            padding: 10px 20px;
-            background: transparent;
-            border: none;
-            border-bottom: 2px solid var(--accent-primary);
-            color: var(--accent-primary);
-            font-family: 'Space Grotesk', sans-serif;
-            font-size: 14px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s;
-        `;
 
         const codeTab = document.createElement('button');
         codeTab.className = 'tab-button';
         codeTab.textContent = 'Code';
-        codeTab.style.cssText = `
-            padding: 10px 20px;
-            background: transparent;
-            border: none;
-            border-bottom: 2px solid transparent;
-            color: var(--text-muted);
-            font-family: 'Space Grotesk', sans-serif;
-            font-size: 14px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s;
-        `;
 
         const similarTab = document.createElement('button');
         similarTab.className = 'tab-button';
         similarTab.textContent = 'Similar';
-        similarTab.style.cssText = `
-            padding: 10px 20px;
-            background: transparent;
-            border: none;
-            border-bottom: 2px solid transparent;
-            color: var(--text-muted);
-            font-family: 'Space Grotesk', sans-serif;
-            font-size: 14px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s;
-        `;
 
         // Tab content containers
         const messagesContainer = document.createElement('div');
@@ -1128,15 +1085,13 @@ export async function loadConversationView(conversationId, pushState = true) {
         // Helper function to switch tabs
         const switchTab = (activeTab, activeContainer) => {
             [messagesTab, codeTab, similarTab].forEach(tab => {
-                tab.style.borderBottomColor = 'transparent';
-                tab.style.color = 'var(--text-muted)';
+                tab.classList.remove('active');
             });
             [messagesContainer, codeContainer, similarContainer].forEach(container => {
                 container.style.display = 'none';
             });
 
-            activeTab.style.borderBottomColor = 'var(--accent-primary)';
-            activeTab.style.color = 'var(--accent-primary)';
+            activeTab.classList.add('active');
             activeContainer.style.display = 'block';
         };
 

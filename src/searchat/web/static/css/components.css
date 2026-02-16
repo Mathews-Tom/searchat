@@ -83,6 +83,44 @@
     color: var(--accent-primary);
     transform: translateY(-1px);
 }
+
+/* Sidebar section */
+.sidebar-section {
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border-muted);
+}
+
+.sidebar-section h3 {
+    color: var(--accent-primary);
+    margin-bottom: 12px;
+}
+
+/* Button block styles */
+.btn-block {
+    width: 100%;
+    padding: 10px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.btn-block + .btn-block {
+    margin-top: 10px;
+}
+
+.btn-block.btn-success {
+    background: var(--success);
+    color: white;
+}
+
+.btn-block.btn-accent {
+    background: var(--accent-primary);
+    color: white;
+}
 /* Search Box */
 .search-box {
     width: 100%;
@@ -192,6 +230,117 @@
 
 .filters button:nth-of-type(4):hover {
     background: #da3633;
+}
+
+/* Toolbar */
+.toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    align-items: center;
+    margin-top: 12px;
+}
+
+.toolbar-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    padding-right: 16px;
+    border-right: 1px solid var(--border-muted);
+}
+
+.toolbar-group:last-child {
+    border-right: none;
+    padding-right: 0;
+}
+
+.toolbar-btn {
+    background: var(--accent-primary);
+    color: white;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.toolbar-btn:hover {
+    opacity: 0.9;
+}
+
+.toolbar-btn-muted {
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    border: 1px solid var(--border-default);
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.toolbar-btn-muted:hover {
+    border-color: var(--accent-primary);
+    color: var(--accent-primary);
+}
+
+.toolbar-btn-danger {
+    background: var(--danger);
+    color: white;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.toolbar-btn-danger:hover {
+    opacity: 0.9;
+}
+
+/* Conversation tabs */
+.conversation-tabs {
+    display: flex;
+    gap: 8px;
+    margin: 20px 0 16px 0;
+    border-bottom: 1px solid var(--border-default);
+    padding-bottom: 0;
+}
+
+.tab-button {
+    padding: 10px 20px;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-muted);
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.tab-button.active {
+    border-bottom-color: var(--accent-primary);
+    color: var(--accent-primary);
+}
+
+.tab-button:hover:not(.active) {
+    color: var(--text-primary);
+}
+
+/* Result highlight */
+.result-highlight {
+    border: 2px solid var(--success) !important;
 }
 
 /* Results Header */
@@ -475,27 +624,27 @@
 }
 
 .notification-success {
-    background: #d4edda;
-    border-left-color: #28a745;
-    color: #155724;
+    background: color-mix(in srgb, var(--success) 15%, var(--bg-surface));
+    border-left-color: var(--success);
+    color: color-mix(in srgb, var(--success) 80%, var(--text-primary));
 }
 
 .notification-info {
-    background: #d1ecf1;
-    border-left-color: #17a2b8;
-    color: #0c5460;
+    background: color-mix(in srgb, var(--accent-primary) 15%, var(--bg-surface));
+    border-left-color: var(--accent-primary);
+    color: color-mix(in srgb, var(--accent-primary) 80%, var(--text-primary));
 }
 
 .notification-warning {
-    background: #fff3cd;
-    border-left-color: #ffc107;
-    color: #856404;
+    background: color-mix(in srgb, var(--warning) 15%, var(--bg-surface));
+    border-left-color: var(--warning);
+    color: color-mix(in srgb, var(--warning) 80%, var(--text-primary));
 }
 
 .notification-error {
-    background: #f8d7da;
-    border-left-color: #dc3545;
-    color: #721c24;
+    background: color-mix(in srgb, var(--danger) 15%, var(--bg-surface));
+    border-left-color: var(--danger);
+    color: color-mix(in srgb, var(--danger) 80%, var(--text-primary));
 }
 
 .notification strong {
@@ -1796,6 +1945,40 @@ button.link {
     transform: translateY(-2px);
 }
 
+/* Skip to content link */
+.skip-link {
+    position: absolute;
+    top: -100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--accent-primary);
+    color: white;
+    padding: 8px 16px;
+    border-radius: 4px;
+    z-index: 10000;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.skip-link:focus {
+    top: 8px;
+}
+
+/* Enhanced focus styles */
+:focus-visible {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 2px;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 2px;
+}
+
 /* Responsive design */
 @media (max-width: 768px) {
     .splash-content {
@@ -1822,5 +2005,152 @@ button.link {
 
     .splash-actions {
         flex-direction: column;
+    }
+}
+
+/* ============================================================
+   Phase 3A: Chat Panel Collapse
+   ============================================================ */
+.chat-panel.collapsed .chat-body {
+    display: none;
+}
+
+.chat-panel.collapsed .chat-header {
+    margin-bottom: 0;
+}
+
+.chat-toggle {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+    margin-right: 8px;
+    flex-shrink: 0;
+}
+
+.chat-toggle:hover {
+    color: var(--text-primary);
+    background: var(--bg-elevated);
+}
+
+/* ============================================================
+   Phase 3B: Sidebar Section Collapse
+   ============================================================ */
+.sidebar-section-toggle {
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.sidebar-section-toggle::after {
+    content: '▼';
+    font-size: 10px;
+    color: var(--text-muted);
+    transition: transform 0.2s ease;
+}
+
+.section-collapsed .sidebar-section-toggle::after {
+    transform: rotate(-90deg);
+}
+
+.section-collapsed .sidebar-section-content {
+    display: none;
+}
+
+/* ============================================================
+   Phase 4A: Sidebar Drawer Toggles
+   ============================================================ */
+.sidebar-drawer-toggle {
+    display: none;
+    position: fixed;
+    z-index: 999;
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.sidebar-drawer-toggle:hover {
+    border-color: var(--accent-primary);
+    color: var(--accent-primary);
+}
+
+.sidebar-drawer-toggle-left {
+    bottom: 20px;
+    left: 20px;
+}
+
+.sidebar-drawer-toggle-right {
+    bottom: 20px;
+    right: 20px;
+}
+
+@media (max-width: 1400px) {
+    .sidebar-drawer-toggle {
+        display: block;
+    }
+}
+
+/* Sidebar Backdrop */
+.sidebar-backdrop {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.3);
+    z-index: 999;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.sidebar-backdrop.visible {
+    display: block;
+    opacity: 1;
+}
+
+/* ============================================================
+   Phase 4B: Mobile Optimizations
+   ============================================================ */
+@media (max-width: 768px) {
+    .search-box {
+        font-size: 18px;
+    }
+
+    .filters {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .filters label {
+        width: 100%;
+    }
+
+    .filters select {
+        width: 100%;
+    }
+
+    .toolbar {
+        gap: 8px;
+    }
+
+    .toolbar-group {
+        flex-wrap: wrap;
+        padding-right: 0;
+        border-right: none;
     }
 }
