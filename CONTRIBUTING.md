@@ -4,7 +4,7 @@
 
 ### Prerequisites
 
-- Python 3.9 or higher
+- Python 3.10 or higher
 - Git
 - Virtual environment tool (venv, conda, etc.)
 
@@ -93,7 +93,7 @@ def search_conversations(
     query: str,
     mode: SearchMode = SearchMode.HYBRID,
     max_results: int = 100
-) -> List[SearchResult]:
+) -> list[SearchResult]:
     """
     Search conversations with the given query.
 
@@ -146,7 +146,7 @@ except:
 pytest
 
 # Run specific test suite
-pytest tests/api/                      # API endpoint tests (62 tests)
+pytest tests/api/                      # API endpoint tests (120+ tests)
 pytest tests/test_indexer.py           # Core indexer tests
 
 # Run specific test
@@ -165,11 +165,20 @@ pytest -m "not slow"
 tests/
 ├── conftest.py                   # Shared fixtures
 ├── test_*.py                     # Core unit tests
-└── api/                          # API endpoint tests
-    ├── test_search_routes.py
-    ├── test_conversations_routes.py
-    ├── test_stats_backup_routes.py
-    └── test_indexing_admin_routes.py
+├── api/                          # API endpoint tests (120+)
+│   ├── test_search_routes.py
+│   ├── test_conversations_routes.py
+│   ├── test_chat_rag_routes.py
+│   ├── test_patterns_routes.py
+│   ├── test_agent_config.py
+│   ├── test_stats_backup_routes.py
+│   ├── test_indexing_admin_routes.py
+│   └── ...                       # 27 test files total
+└── unit/                         # Unit tests
+    ├── services/                 # Service tests
+    ├── config/                   # Config tests
+    ├── core/                     # Core logic tests
+    └── ...
 ```
 
 ### Writing Tests

@@ -40,6 +40,8 @@ Restart Claude Desktop.
 - `ask_about_history`: ask a question using RAG over your indexed history
 - `list_projects`: list indexed project ids
 - `get_statistics`: basic index stats
+- `extract_patterns`: extract recurring patterns from conversation history using LLM analysis
+- `generate_agent_config`: generate agent configuration files (CLAUDE.md, copilot-instructions.md, cursorrules) from conversation patterns
 
 ## Notes
 

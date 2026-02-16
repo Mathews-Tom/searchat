@@ -551,10 +551,12 @@ Streaming chat endpoint.
 
 Request (shape):
 ```json
-{"query": "...", "model_provider": "ollama", "model_name": "ollama/gemma3"}
+{"query": "...", "model_provider": "ollama", "model_name": "ollama/gemma3", "session_id": "optional-session-id"}
 ```
 
 Notes:
+- Response includes `X-Session-Id` header for session tracking. Pass this value as `session_id` in subsequent requests to maintain conversation context.
+- Sessions have a 30-minute TTL and maintain a 10-turn sliding window.
 - In snapshot mode, chat endpoints are blocked (`403`).
 
 ---
@@ -565,8 +567,62 @@ Non-streaming RAG endpoint (structured response).
 
 Request (shape):
 ```json
-{"query": "...", "model_provider": "openai", "model_name": "gpt-4.1-mini"}
+{"query": "...", "model_provider": "openai", "model_name": "gpt-4.1-mini", "session_id": "optional-session-id"}
 ```
+
+Notes:
+- Response includes `session_id` field.
+
+---
+
+## Patterns
+
+### POST /api/patterns/extract
+
+Extract recurring patterns from conversation archives using LLM analysis.
+
+Request:
+```json
+{
+  "topic": "authentication",
+  "max_patterns": 10,
+  "model_provider": "ollama",
+  "model_name": "ollama/gemma3"
+}
+```
+
+Parameters:
+```
+topic           string   Optional topic filter for pattern extraction
+max_patterns    int      1-50 (default: 10)
+model_provider  string   openai|ollama|embedded (default: ollama)
+model_name      string   Optional model override
+```
+
+Response:
+```json
+{
+  "patterns": [
+    {
+      "name": "Error-first validation",
+      "description": "Functions validate inputs and return early on failure",
+      "evidence": [
+        {
+          "conversation_id": "abc123",
+          "date": "2026-02-10",
+          "snippet": "Added validation checks at function entry..."
+        }
+      ],
+      "confidence": 0.85
+    }
+  ],
+  "total": 5
+}
+```
+
+Notes:
+- Requires semantic components to be ready (returns `503` if warming up).
+- Uses hybrid search to find relevant conversations, then LLM to synthesize patterns.
 
 ---
 
@@ -607,6 +663,44 @@ Response (shape):
   "citations": [{"conversation_id": "...", "title": "..."}]
 }
 ```
+
+---
+
+### POST /api/export/agent-config
+
+Generate agent configuration files from conversation patterns.
+
+Request:
+```json
+{
+  "format": "claude.md",
+  "project_filter": "myapp",
+  "model_provider": "ollama",
+  "model_name": "ollama/gemma3"
+}
+```
+
+Parameters:
+```
+format           string   claude.md|copilot-instructions.md|cursorrules (default: claude.md)
+project_filter   string   Optional project to filter patterns
+model_provider   string   openai|ollama|embedded (default: ollama)
+model_name       string   Optional model override
+```
+
+Response:
+```json
+{
+  "format": "claude.md",
+  "content": "# myapp — CLAUDE.md\n\n## Conventions\n\n...",
+  "pattern_count": 8,
+  "project_filter": "myapp"
+}
+```
+
+Notes:
+- Extracts up to 15 patterns from conversation history.
+- Formats patterns into the chosen agent config format.
 
 ---
 

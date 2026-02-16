@@ -19,11 +19,11 @@ Complete feature documentation for Searchat - semantic search and RAG-powered Q&
 
 ### Hybrid Search
 
-**Description:** Combines BM25 keyword matching with FAISS semantic vector search using Reciprocal Rank Fusion (RRF).
+**Description:** Combines DuckDB FTS keyword matching with FAISS semantic vector search using Reciprocal Rank Fusion (RRF).
 
 **How it works:**
 
-1. Query processed by both BM25 (keyword) and FAISS (semantic) engines
+1. Query processed by both DuckDB FTS (keyword) and FAISS (semantic) engines
 2. Results from both approaches ranked independently
 3. RRF algorithm merges rankings with configurable weight
 4. Final results sorted by fused score
@@ -83,12 +83,12 @@ curl "http://localhost:8000/api/search?q=async+programming&mode=semantic"
 
 ### Keyword Search
 
-**Description:** Traditional BM25 text matching for exact term searches.
+**Description:** DuckDB full-text search with English stemmer for keyword matching.
 
 **How it works:**
 
 1. Query tokenized into terms
-2. BM25 algorithm scores documents by term frequency and rarity
+2. DuckDB FTS scores documents using full-text search with English stemming
 3. Optimized for exact matches and code identifiers
 4. Fast execution using DuckDB
 
@@ -106,9 +106,75 @@ curl "http://localhost:8000/api/search?q=IndexError&mode=keyword"
 
 **Technical:**
 
-- Algorithm: BM25 (Okapi BM25)
+- Algorithm: DuckDB FTS (full-text search with English stemmer)
 - Backend: DuckDB full-text search
 - Latency: <30ms
+
+---
+
+### Cross-Encoder Re-ranking
+
+**Description:** Optional re-ranking of search results using a cross-encoder model for improved relevance.
+
+**How it works:**
+
+1. Initial search returns candidate results (hybrid, semantic, or keyword)
+2. Cross-encoder model scores each query-document pair
+3. Results re-ordered by cross-encoder score
+4. Top-K results returned (configurable)
+
+**Use cases:**
+
+- Improving precision for ambiguous queries
+- Enhancing result quality when semantic similarity alone is insufficient
+- Fine-tuning search results for domain-specific terminology
+
+**Configuration:**
+
+```toml
+[reranking]
+enabled = false
+model = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+top_k = 50
+```
+
+**Technical:**
+
+- Model: cross-encoder/ms-marco-MiniLM-L-6-v2 (default)
+- Lazy-loaded on first use
+- Applied after RRF fusion in hybrid mode
+
+---
+
+### Query Synonym Expansion
+
+**Description:** Automatic expansion of search queries with common synonyms to improve recall.
+
+**How it works:**
+
+1. Query terms parsed and tokenized
+2. Each term checked against built-in synonym dictionary
+3. Synonyms appended to FTS query
+4. Expanded query used for keyword matching
+
+**Examples:**
+
+- `auth` → also matches `authentication`, `authorization`
+- `db` → also matches `database`
+- `config` → also matches `configuration`
+- `env` → also matches `environment`
+
+**Use cases:**
+
+- Finding results when using abbreviations
+- Improving recall without requiring exact terminology
+- Matching conversations that use alternative terms
+
+**Technical:**
+
+- Dictionary-based expansion (no ML model required)
+- Applied only to keyword/FTS component
+- Zero latency overhead
 
 ---
 
@@ -361,6 +427,30 @@ export OLLAMA_BASE_URL=http://localhost:11434
 - Context selection: Top 6-16 chunks depending on query complexity
 - Streaming: Chunked HTTP response (`/api/chat`)
 - Readiness: Semantic search may return `503` until FAISS/embeddings are warmed up
+
+**Session-based Chat:**
+
+RAG chat supports multi-turn conversations with session persistence:
+
+- **Session ID**: Pass `session_id` in request or receive one via `X-Session-Id` response header
+- **TTL**: Sessions expire after 30 minutes of inactivity
+- **Sliding Window**: Last 10 turn pairs maintained for context
+- **Stateless Recovery**: If session expires, a new one is created automatically
+
+**API:**
+
+```bash
+# First request — session created automatically
+curl -X POST "http://localhost:8000/api/chat" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "How did we implement auth?", "model_provider": "ollama"}'
+# Response header: X-Session-Id: abc123def456
+
+# Follow-up request — pass session_id for context
+curl -X POST "http://localhost:8000/api/chat" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "What about the JWT part?", "model_provider": "ollama", "session_id": "abc123def456"}'
+```
 
 **UI:** Chat panel in web interface with streaming responses
 
@@ -641,6 +731,87 @@ enabled = true
 ```
 
 **UI:** Dashboards view + dashboard builder editor.
+
+---
+
+### Pattern Mining
+
+**Description:** Extract recurring coding patterns, conventions, and architectural decisions from your conversation archives.
+
+**How it works:**
+
+1. Hybrid search finds relevant conversations (optionally filtered by topic)
+2. LLM analyzes conversation content for recurring patterns
+3. Patterns returned with confidence scores and evidence snippets
+4. Evidence links back to source conversations
+
+**Use cases:**
+
+- Discover team coding conventions from past discussions
+- Identify recurring architectural decisions
+- Generate documentation from patterns
+- Feed into agent config generation
+
+**API:**
+
+```bash
+curl -X POST "http://localhost:8000/api/patterns/extract" \
+  -H "Content-Type: application/json" \
+  -d '{"topic": "error handling", "max_patterns": 10, "model_provider": "ollama"}'
+```
+
+**Response:**
+
+```json
+{
+  "patterns": [
+    {
+      "name": "Early return validation",
+      "description": "Functions validate inputs and return early on failure before proceeding",
+      "evidence": [{"conversation_id": "...", "date": "2026-02-10", "snippet": "..."}],
+      "confidence": 0.85
+    }
+  ],
+  "total": 5
+}
+```
+
+---
+
+### Agent Config Generator
+
+**Description:** Generate agent configuration files (CLAUDE.md, copilot-instructions.md, cursorrules) from extracted conversation patterns.
+
+**How it works:**
+
+1. Extracts up to 15 patterns from conversation history
+2. Formats patterns into chosen agent config template
+3. Returns generated config content
+
+**Supported formats:**
+
+- `claude.md` — Claude Code project instructions
+- `copilot-instructions.md` — GitHub Copilot instructions
+- `cursorrules` — Cursor editor rules
+
+**API:**
+
+```bash
+curl -X POST "http://localhost:8000/api/export/agent-config" \
+  -H "Content-Type: application/json" \
+  -d '{"format": "claude.md", "project_filter": "myapp", "model_provider": "ollama"}'
+```
+
+**Response:**
+
+```json
+{
+  "format": "claude.md",
+  "content": "# myapp — CLAUDE.md\n\n## Conventions\n\n...",
+  "pattern_count": 8,
+  "project_filter": "myapp"
+}
+```
 
 ---
 
@@ -1346,9 +1517,9 @@ See `docs/architecture.md` for extension guide.
 
 | Operation         | Latency   | Notes                     |
 | ----------------- | --------- | ------------------------- |
-| Hybrid search     | <100ms    | BM25 + FAISS + RRF        |
+| Hybrid search     | <100ms    | DuckDB FTS + FAISS + RRF  |
 | Semantic search   | <50ms     | FAISS only                |
-| Keyword search    | <30ms     | BM25 only                 |
+| Keyword search    | <30ms     | DuckDB FTS only           |
 | Filtered queries  | <20ms     | DuckDB predicate pushdown |
 | Autocomplete      | <10ms     | Cached prefix matching    |
 | Conversation load | <50ms     | Single Parquet row        |
@@ -1449,13 +1620,13 @@ pip install "searchat[mcp]"
 searchat-mcp
 ```
 
-**Tools:** `search_conversations`, `get_conversation`, `find_similar_conversations`, `ask_about_history`, `list_projects`, `get_statistics`
+**Tools:** `search_conversations`, `get_conversation`, `find_similar_conversations`, `ask_about_history`, `list_projects`, `get_statistics`, `extract_patterns`, `generate_agent_config`
 
 See `docs/mcp-setup.md` for configuration.
 
 ### REST API
 
-**13 routers, 50+ endpoints:**
+**14 routers, 55+ endpoints:**
 
 - Search & filtering
 - Conversation CRUD
@@ -1470,6 +1641,7 @@ See `docs/mcp-setup.md` for configuration.
 - Dashboards
 - Code highlighting
 - Tech docs summaries
+- Pattern mining
 
 See `docs/api-reference.md` for complete documentation.
 
@@ -1562,9 +1734,14 @@ Searchat provides comprehensive search, AI-powered Q&A, and organization feature
 
 - **3 search modes** - Hybrid, semantic, keyword
 - **3 AI agents** - Claude Code, Mistral Vibe, OpenCode
-- **50+ API endpoints** - Full REST API
-- **500+ tests** - Extensive API/UI/unit/perf coverage
+- **55+ API endpoints** - Full REST API
+- **840+ tests** - Extensive API/UI/unit/perf coverage
 - **RAG chat** - Ask questions about conversation history
+- **Session chat** - Multi-turn RAG with session persistence
+- **Pattern mining** - Extract recurring patterns via LLM
+- **Agent config export** - Generate agent configs from patterns
+- **Synonym expansion** - Automatic query term expansion
+- **Cross-encoder re-ranking** - Optional result re-ranking
 - **Bookmarks** - Organize favorites
 - **Export** - Multiple formats
 - **Analytics** - Track usage patterns

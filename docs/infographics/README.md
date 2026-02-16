@@ -16,24 +16,24 @@ Interactive HTML visualizations of Searchat's architecture, data flows, and feat
 #### [RAG Chat Pipeline](rag-chat-pipeline.html)
 **Covers:** Query processing, hybrid search, context extraction, LLM integration, streaming responses
 **Useful for:** Understanding how AI-powered Q&A works, configuring RAG parameters
-**Updated:** v0.4.0 (2026-02-03)
+**Updated:** v0.6.0 (2026-02-17)
 
 #### [Backup & Restore Flow](backup-restore-flow.html)
 **Covers:** Manual backups, automatic pre-restore backups, validation, atomic restore, snapshot mode
 **Useful for:** Data safety procedures, troubleshooting restore issues, understanding validation gates
-**Updated:** v0.4.0 (2026-02-03)
+**Updated:** v0.6.0 (2026-02-17)
 
 #### [File Watching & Live Indexing](file-watching-indexing.html)
 **Covers:** FS event detection, debouncing, queue processing, append-only indexing, status tracking
 **Useful for:** Understanding live indexing, configuring watcher settings, debugging event handling
-**Updated:** v0.4.0 (2026-02-03)
+**Updated:** v0.6.0 (2026-02-17)
 
 ### Architecture
 
 #### [Multi-Agent Connector Architecture](multi-agent-connectors.html)
 **Covers:** Connector protocol, registry pattern, 8 agent implementations, path resolution, format differences
 **Useful for:** Adding new agent support, understanding extensibility, debugging connector issues
-**Updated:** v0.4.0 (2026-02-03)
+**Updated:** v0.6.0 (2026-02-17)
 
 ---
 

@@ -42,7 +42,29 @@ tests/
 ├── test_chunking.py         # Text chunking tests
 ├── test_incremental.py      # Incremental indexing tests
 ├── test_indexer.py          # Conversation indexing tests
-└── test_query_parser.py     # Query parsing tests
+├── test_query_parser.py     # Query parsing tests
+├── test_platform_utils.py   # Platform detection tests
+├── api/                     # API endpoint tests (120+ tests)
+│   ├── test_search_routes.py
+│   ├── test_conversations_routes.py
+│   ├── test_chat_rag_routes.py
+│   ├── test_patterns_routes.py
+│   ├── test_agent_config.py
+│   ├── test_stats_backup_routes.py
+│   ├── test_indexing_admin_routes.py
+│   ├── test_bookmarks_routes.py
+│   ├── test_dashboards_routes.py
+│   ├── test_analytics_routes.py
+│   └── ...                  # 27 test files total
+└── unit/                    # Unit tests
+    ├── services/            # Service unit tests
+    ├── config/              # Config unit tests
+    ├── core/                # Core logic tests
+    ├── models/              # Model unit tests
+    ├── llm/                 # LLM service tests
+    ├── mcp/                 # MCP tool tests
+    ├── perf/                # Performance tests
+    └── daemon/              # Daemon tests
 ```
 
 ## Test Categories
@@ -155,7 +177,7 @@ def test_example(mock_embedder):
 
 ## Coverage
 
-Current coverage: **26%**
+Current coverage: ~**23%** (840+ tests, expanding coverage)
 
 ### Coverage Reports
 
@@ -172,6 +194,8 @@ pytest --cov=searchat --cov-report=xml
 ```
 
 ### Coverage by Module
+
+> Note: Module coverage numbers below are from v0.5.0. Coverage is being expanded with each release.
 
 | Module | Coverage | Status |
 |--------|----------|--------|
@@ -324,8 +348,8 @@ addopts = --cov-fail-under=25
 
 ### Test Execution Time
 
-- **Total**: ~0.8s for 16 tests
-- **Per test**: ~50ms average
+- **Total**: ~5s for 840+ tests
+- **Per test**: ~6ms average
 - **No external dependencies**: All heavy deps mocked
 
 ### Optimization Tips
@@ -344,10 +368,10 @@ pytest --no-cov
 ## Future Improvements
 
 ### Coverage Goals
-- Increase overall coverage from 26% to 40%
+- Increase overall coverage from 23% to 40%
 - Add tests for `cli.py` (currently 0%)
-- Add tests for `web_api.py` (currently 0%)
 - Add tests for `search_engine.py` (currently 10%)
+- Expand pattern mining and agent config test coverage
 
 ### New Test Categories
 - End-to-end tests for full indexing + search workflow

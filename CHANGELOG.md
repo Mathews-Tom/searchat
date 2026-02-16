@@ -2,7 +2,42 @@
 
 All notable changes to this project will be documented in this file.
 
-## Unreleased
+## 0.6.0
+### Search
+- Replace BM25 (rank-bm25) keyword search with DuckDB FTS (full-text search with English stemmer)
+- Add query synonym expansion (e.g., auth→authentication, db→database)
+- Add optional cross-encoder re-ranking (`[reranking]` config section)
+- Improve snippet generation for search results
+
+### Chat
+- Add session-based RAG chat with 30-minute TTL and 10-turn sliding window
+- Return `X-Session-Id` header on streaming `/api/chat` responses
+- Accept `session_id` field in chat request bodies
+
+### New Features
+- Add pattern mining endpoint (`POST /api/patterns/extract`)
+- Add agent config generator (`POST /api/export/agent-config`) supporting claude.md, copilot-instructions.md, and cursorrules formats
+
+### MCP
+- Add `extract_patterns` tool for mining conversation patterns
+- Add `generate_agent_config` tool for creating agent configuration files
+
+### Data
+- Add git context enrichment fields to Parquet schema (`files_mentioned`, `git_branch`)
+
+### Security
+- Restrict CORS to configurable origins (default: localhost only)
+- Add `[server]` config section for CORS origin management
+
+### Configuration
+- Add `[reranking]` TOML section (enabled, model, top_k)
+- Add `[server]` TOML section (cors_origins)
+
+### Infrastructure
+- Drop Python 3.9 support (minimum now Python 3.10)
+- Remove `rank-bm25` dependency (replaced by DuckDB FTS)
+- Add `patterns.py` router (14 routers total)
+- Expand test suite to 840+ tests
 
 ## 0.5.0
 - Backups: add incremental backups, backup-chain validation, and encrypted backups (AES-GCM) with secure extras.

@@ -13,12 +13,49 @@
 }
 
 /* ===============================================
+   Breadcrumb
+   =============================================== */
+
+.breadcrumb {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: 8px 20px;
+  background: var(--c-surface);
+  border-bottom: 1px solid var(--c-border);
+  font-size: 13px;
+  z-index: 998;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.breadcrumb a {
+  color: var(--c-accent, var(--c-text));
+  text-decoration: none;
+}
+
+.breadcrumb a:hover {
+  text-decoration: underline;
+}
+
+.breadcrumb-sep {
+  color: var(--c-muted);
+}
+
+.breadcrumb-current {
+  color: var(--c-text);
+  font-weight: 500;
+}
+
+/* ===============================================
    Toggle Button
    =============================================== */
 
 .nav-toggle {
   position: fixed;
-  top: 20px;
+  top: 48px;
   left: 20px;
   width: 44px;
   height: 44px;

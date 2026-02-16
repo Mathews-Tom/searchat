@@ -32,6 +32,14 @@
         </button>
       </div>
 
+      <a href="/" class="nav-item nav-searchat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+          <polyline points="9 22 9 12 15 12 15 22"/>
+        </svg>
+        <span>Back to Searchat</span>
+      </a>
+
       <a href="../infographics.html" class="nav-item nav-home">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <line x1="19" y1="12" x2="5" y2="12"/>
@@ -128,6 +136,25 @@
 
     // Inject navigation HTML
     document.body.insertAdjacentHTML('afterbegin', NAV_HTML);
+
+    // Inject breadcrumb
+    const pageNames = {
+      'rag': 'RAG Pipeline',
+      'backup': 'Backup & Restore',
+      'filewatching': 'File Watching',
+      'multiagent': 'Multi-Agent Connectors'
+    };
+    const pageName = pageNames[currentPage] || document.title.replace('Searchat — ', '');
+    const breadcrumbHTML = `
+      <nav class="breadcrumb" aria-label="Breadcrumb">
+        <a href="/">Searchat</a>
+        <span class="breadcrumb-sep">›</span>
+        <a href="../infographics.html">Infographics</a>
+        <span class="breadcrumb-sep">›</span>
+        <span class="breadcrumb-current">${pageName}</span>
+      </nav>
+    `;
+    document.body.insertAdjacentHTML('afterbegin', breadcrumbHTML);
 
     // Highlight current page
     highlightCurrentPage(currentPage);
