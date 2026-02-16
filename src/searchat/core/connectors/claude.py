@@ -42,6 +42,33 @@ class ClaudeConnector:
     def can_parse(self, path: Path) -> bool:
         return path.suffix == ".jsonl"
 
+    @staticmethod
+    def _extract_file_paths(entries: list[dict]) -> list[str]:
+        """Extract file paths from Claude tool_use messages (Read, Write, Edit, MultiEdit)."""
+        tool_names = {"Read", "Write", "Edit", "MultiEdit"}
+        paths: set[str] = set()
+        for entry in entries:
+            msg = entry.get("message", {})
+            content = msg.get("content", [])
+            if not isinstance(content, list):
+                continue
+            for block in content:
+                if block.get("type") != "tool_use":
+                    continue
+                if block.get("name") not in tool_names:
+                    continue
+                inp = block.get("input", {})
+                # Read/Write/Edit use "file_path", MultiEdit uses "file_path" in each edit
+                file_path = inp.get("file_path")
+                if isinstance(file_path, str) and file_path:
+                    paths.add(file_path)
+                # MultiEdit may have edits array with file_path per edit
+                for edit in inp.get("edits", []):
+                    fp = edit.get("file_path")
+                    if isinstance(fp, str) and fp:
+                        paths.add(fp)
+        return sorted(paths)
+
     def parse(self, path: Path, embedding_id: int) -> ConversationRecord:
         with open(path, "r", encoding="utf-8") as f:
             lines = [json.loads(line) for line in f]
@@ -103,6 +130,8 @@ class ClaudeConnector:
         created_at = messages[0].timestamp if messages else datetime.now()
         updated_at = messages[-1].timestamp if messages else datetime.now()
 
+        files_mentioned = self._extract_file_paths(lines)
+
         return ConversationRecord(
             conversation_id=conversation_id,
             project_id=project_id,
@@ -116,4 +145,6 @@ class ClaudeConnector:
             embedding_id=embedding_id,
             file_hash=file_hash,
             indexed_at=datetime.now(),
+            files_mentioned=files_mentioned if files_mentioned else None,
+            git_branch=None,  # Not extractable from current JSONL format
         )

@@ -12,7 +12,7 @@ from pathlib import Path
 # ============================================================================
 
 APP_NAME = "searchat"
-APP_VERSION = "0.5.0"
+APP_VERSION = "0.6.0"
 CONFIG_DIR_NAME = ".searchat"
 
 # ============================================================================
@@ -221,6 +221,93 @@ ENV_DAEMON_NOTIFICATIONS_ENABLED = "SEARCHAT_DAEMON_NOTIFICATIONS_ENABLED"
 ENV_DAEMON_NOTIFICATIONS_BACKEND = "SEARCHAT_DAEMON_NOTIFICATIONS_BACKEND"
 ENV_DAEMON_MAX_SUGGESTIONS = "SEARCHAT_DAEMON_MAX_SUGGESTIONS"
 ENV_DAEMON_MIN_QUERY_LENGTH = "SEARCHAT_DAEMON_MIN_QUERY_LENGTH"
+
+# ============================================================================
+# RAG System Prompt
+# ============================================================================
+
+RAG_SYSTEM_PROMPT = """You are an intelligent knowledge assistant for a developer's personal archives.
+You will be provided with "Context Chunks" retrieved from the user's past chat history.
+
+**Instructions:**
+1. Answer the user's question *only* using the provided Context Chunks.
+2. If the answer is not in the chunks, state that you cannot find the information in the archives. Do not hallucinate.
+3. **Citations:** When you state a fact, reference the date or conversation ID from the chunk (e.g., "[Date: 2023-10-12]" or "[Source: ID_123]").
+4. Be concise and technical. The user is a developer.
+
+**Context Chunks:**
+{context_data}""".strip()
+
+# ============================================================================
+# DuckDB Full-Text Search
+# ============================================================================
+
+FTS_STEMMER = "english"
+FTS_STOPWORDS = "english"
+
+# ============================================================================
+# CORS / Server Defaults
+# ============================================================================
+
+DEFAULT_CORS_ORIGINS: list[str] = [
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+]
+
+# ============================================================================
+# Re-ranking Defaults
+# ============================================================================
+
+DEFAULT_RERANKING_ENABLED = False
+DEFAULT_RERANKING_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+DEFAULT_RERANKING_TOP_K = 50
+
+# Environment variable names for re-ranking
+ENV_RERANKING_ENABLED = "SEARCHAT_RERANKING_ENABLED"
+ENV_RERANKING_MODEL = "SEARCHAT_RERANKING_MODEL"
+ENV_RERANKING_TOP_K = "SEARCHAT_RERANKING_TOP_K"
+
+# Environment variable for CORS
+ENV_CORS_ORIGINS = "SEARCHAT_CORS_ORIGINS"
+
+# ============================================================================
+# Query Expansion / Synonyms
+# ============================================================================
+
+QUERY_SYNONYMS: dict[str, list[str]] = {
+    "auth": ["authentication", "authorization"],
+    "db": ["database"],
+    "config": ["configuration"],
+    "env": ["environment"],
+    "deps": ["dependencies"],
+    "repo": ["repository"],
+    "impl": ["implementation"],
+    "func": ["function"],
+    "arg": ["argument"],
+    "param": ["parameter"],
+}
+
+# ============================================================================
+# Pattern Mining
+# ============================================================================
+
+PATTERN_MINING_SEEDS: list[str] = [
+    "coding conventions",
+    "architecture decisions",
+    "best practices",
+    "recurring patterns",
+    "project rules",
+]
+
+# ============================================================================
+# Agent Config Templates
+# ============================================================================
+
+AGENT_CONFIG_TEMPLATES: dict[str, str] = {
+    "claude.md": "# {project_name} — CLAUDE.md\n\n## Conventions\n\n{patterns}\n",
+    "copilot-instructions.md": "# {project_name} — Copilot Instructions\n\n{patterns}\n",
+    "cursorrules": "# {project_name}\n\n{patterns}\n",
+}
 
 # ============================================================================
 # Error Messages

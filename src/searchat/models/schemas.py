@@ -25,7 +25,9 @@ CONVERSATION_SCHEMA = pa.schema([
     ('full_text', pa.string()),
     ('embedding_id', pa.int64()),
     ('file_hash', pa.string()),
-    ('indexed_at', pa.timestamp('us'))
+    ('indexed_at', pa.timestamp('us')),
+    ('files_mentioned', pa.list_(pa.string())),
+    ('git_branch', pa.string())
 ])
 
 METADATA_SCHEMA = pa.schema([

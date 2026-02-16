@@ -31,6 +31,8 @@ class ConversationRecord:
     embedding_id: int
     file_hash: str
     indexed_at: datetime
+    files_mentioned: list[str] | None = None
+    git_branch: str | None = None
 
 
 @dataclass
