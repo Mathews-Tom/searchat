@@ -183,4 +183,5 @@ dev = [
     "pytest-mock>=3.11.0",
     "httpx>=0.24.0",
     "build>=1.2.2",
+    "twine>=6.2.0",
 ]
