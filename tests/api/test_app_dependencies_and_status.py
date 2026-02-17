@@ -269,7 +269,7 @@ def test_on_new_conversations_indexes_and_invalidates(monkeypatch: pytest.Monkey
     indexer = SimpleNamespace(index_append_only=MagicMock(return_value=fake_stats))
 
     monkeypatch.setattr(api_app, "get_indexer", lambda: indexer)
-    monkeypatch.setattr(api_app, "get_search_engine", lambda: object())
+    monkeypatch.setattr(deps, "get_or_create_search_engine", lambda: object())
     invalidate = MagicMock()
     monkeypatch.setattr(deps, "invalidate_search_index", invalidate)
 
@@ -298,7 +298,7 @@ def test_on_new_conversations_uses_adaptive_when_enabled(monkeypatch: pytest.Mon
     )
 
     monkeypatch.setattr(api_app, "get_indexer", lambda: indexer)
-    monkeypatch.setattr(api_app, "get_search_engine", lambda: object())
+    monkeypatch.setattr(deps, "get_or_create_search_engine", lambda: object())
     invalidate = MagicMock()
     monkeypatch.setattr(deps, "invalidate_search_index", invalidate)
 
@@ -326,7 +326,7 @@ def test_on_new_conversations_handles_config_error(monkeypatch: pytest.MonkeyPat
     indexer = BadIndexer()
 
     monkeypatch.setattr(api_app, "get_indexer", lambda: indexer)
-    monkeypatch.setattr(api_app, "get_search_engine", lambda: object())
+    monkeypatch.setattr(deps, "get_or_create_search_engine", lambda: object())
     invalidate = MagicMock()
     monkeypatch.setattr(deps, "invalidate_search_index", invalidate)
 
@@ -338,9 +338,10 @@ def test_on_new_conversations_handles_config_error(monkeypatch: pytest.MonkeyPat
 
 def test_on_new_conversations_handles_indexer_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     api_app = _api_app_module()
+    import searchat.api.dependencies as deps
 
     monkeypatch.setattr(api_app, "get_indexer", lambda: (_ for _ in ()).throw(RuntimeError("boom")))
-    monkeypatch.setattr(api_app, "get_search_engine", lambda: object())
+    monkeypatch.setattr(deps, "get_or_create_search_engine", lambda: object())
 
     api_app.on_new_conversations(["a.jsonl"])
     assert api_app.indexing_state["in_progress"] is False
