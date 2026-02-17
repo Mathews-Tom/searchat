@@ -554,7 +554,9 @@ class ConversationIndexer:
             'full_text': [r.full_text for r in records],
             'embedding_id': [r.embedding_id for r in records],
             'file_hash': [r.file_hash for r in records],
-            'indexed_at': [r.indexed_at for r in records]
+            'indexed_at': [r.indexed_at for r in records],
+            'files_mentioned': [r.files_mentioned for r in records],
+            'git_branch': [r.git_branch for r in records],
         }
         
         table = pa.Table.from_pydict(data, schema=CONVERSATION_SCHEMA)
@@ -592,6 +594,8 @@ class ConversationIndexer:
             "embedding_id": record.embedding_id,
             "file_hash": record.file_hash,
             "indexed_at": record.indexed_at,
+            "files_mentioned": record.files_mentioned,
+            "git_branch": record.git_branch,
         }
 
     def _write_project_parquet_dicts(self, project_id: str, record_dicts: list[dict]) -> None:

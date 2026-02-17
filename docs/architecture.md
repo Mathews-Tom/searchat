@@ -37,7 +37,15 @@ searchat/                          # Project root
 │       │       ├── indexing.py   # Reindex, index_missing
 │       │       ├── backup.py     # Backup CRUD operations
 │       │       ├── admin.py      # Shutdown, watcher status
-│       │       └── stats.py      # Index statistics
+│       │       ├── stats.py      # Index statistics
+│       │       ├── status.py     # Server status and features
+│       │       ├── chat.py       # RAG chat endpoints
+│       │       ├── queries.py    # Saved queries CRUD
+│       │       ├── code.py       # Code extraction and highlighting
+│       │       ├── docs.py       # Tech docs + agent config
+│       │       ├── patterns.py   # Pattern mining
+│       │       ├── bookmarks.py  # Bookmark management
+│       │       └── dashboards.py # Dashboard CRUD and rendering
 │       │
 │       ├── cli/                  # CLI interface
 │       │   └── main.py           # SearchCLI class
@@ -51,6 +59,12 @@ searchat/                          # Project root
 │       │   ├── indexer.py        # Index building
 │       │   ├── search_engine.py  # Search implementation
 │       │   └── watcher.py        # File system watching
+│       │
+│       ├── services/             # Business services
+│       │   ├── chat_service.py   # Session-based RAG pipeline
+│       │   ├── pattern_mining.py # Pattern extraction from archives
+│       │   ├── llm_service.py    # Multi-provider LLM interface
+│       │   └── tech_docs_service.py # Tech docs generation
 │       │
 │       ├── models/               # Data models
 │       │   ├── domain.py         # ConversationRecord, MessageRecord
@@ -102,11 +116,23 @@ searchat/                          # Project root
 │   ├── test_indexer.py           # Conversation processing tests
 │   ├── test_query_parser.py      # Query parsing tests
 │   ├── test_platform_utils.py    # Platform detection tests
-│   └── api/                      # API endpoint tests (62 tests)
-│       ├── test_search_routes.py         # Search endpoint tests
-│       ├── test_conversations_routes.py  # Conversation endpoint tests
-│       ├── test_stats_backup_routes.py   # Stats/backup tests
-│       └── test_indexing_admin_routes.py # Indexing/admin tests
+│   ├── api/                      # API endpoint tests (120+ tests)
+│   │   ├── test_search_routes.py
+│   │   ├── test_conversations_routes.py
+│   │   ├── test_chat_rag_routes.py
+│   │   ├── test_patterns_routes.py
+│   │   ├── test_agent_config.py
+│   │   ├── test_stats_backup_routes.py
+│   │   ├── test_indexing_admin_routes.py
+│   │   ├── test_bookmarks_routes.py
+│   │   ├── test_dashboards_routes.py
+│   │   ├── test_analytics_routes.py
+│   │   └── ...                   # 27 test files
+│   └── unit/                     # Unit tests
+│       ├── services/             # Service unit tests
+│       ├── config/               # Config unit tests
+│       ├── core/                 # Core logic tests
+│       └── ...
 │
 ├── config/                       # Config templates
 │   ├── settings.default.toml
@@ -164,9 +190,9 @@ Parquet (conversations) + FAISS (vectors)
 - `SearchResults`: Result collection
 
 **Search Modes:**
-- **Hybrid**: BM25 + FAISS with Reciprocal Rank Fusion
+- **Hybrid**: DuckDB FTS + FAISS with Reciprocal Rank Fusion
 - **Semantic**: FAISS vector similarity only
-- **Keyword**: BM25 text search only
+- **Keyword**: DuckDB FTS text search only
 
 **Methods:**
 - `search(query, mode="hybrid", filters=None)`: Execute search
@@ -179,12 +205,16 @@ User Query
     ↓
 query_parser.parse() → structured query
     ↓
+Synonym Expansion
+    ↓
 ┌─────────────┬─────────────┐
-│  BM25       │  FAISS      │
+│  DuckDB FTS │  FAISS      │
 │  (keyword)  │  (semantic) │
 └─────────────┴─────────────┘
     ↓           ↓
 Reciprocal Rank Fusion (RRF)
+    ↓
+Optional: Cross-Encoder Re-ranking
     ↓
 Ranked Results
 ```
@@ -196,7 +226,7 @@ Ranked Results
 **Structure:**
 - `app.py` - FastAPI app factory, middleware, static file serving
 - `dependencies.py` - Singleton instances (SearchEngine, BackupManager)
-- `routers/` - 6 modular routers with 15 endpoints
+- `routers/` - 14 modular routers with 55+ endpoints
 - `models/` - Pydantic request/response schemas
 
 **Routers:**
@@ -206,6 +236,14 @@ Ranked Results
 - `backup.py` - Backup create/list/restore/delete
 - `indexing.py` - Reindex (blocked), index_missing
 - `admin.py` - Shutdown, watcher status
+- `status.py` - Server status and feature flags
+- `chat.py` - RAG chat (streaming and non-streaming)
+- `queries.py` - Saved queries CRUD
+- `code.py` - Code extraction and highlighting
+- `docs.py` - Tech docs summaries and agent config export
+- `patterns.py` - Pattern mining from archives
+- `bookmarks.py` - Bookmark management
+- `dashboards.py` - Dashboard CRUD and rendering
 
 **See:** `docs/api-reference.md` for complete endpoint documentation
 
@@ -213,7 +251,7 @@ Ranked Results
 - Live file watching (watchdog)
 - Debounced re-indexing (5min default)
 - Safe shutdown (checks ongoing indexing)
-- CORS enabled for Claude integration
+- CORS restricted to configurable origins (default: localhost only)
 - Modular ES6 frontend (CSS/JS separated)
 
 ### 4. Configuration (`config.py`)
@@ -231,6 +269,8 @@ Ranked Results
 - `search`: Default mode, result limits
 - `embedding`: Model selection
 - `performance`: Memory limits, caching
+- `reranking`: Cross-encoder re-ranking settings
+- `server`: CORS and server configuration
 
 ### 5. Path Resolver (`path_resolver.py`)
 
@@ -292,6 +332,9 @@ full_text: string
 embedding_id: int64
 file_hash: string
 indexed_at: timestamp
+files_mentioned: list[string]
+git_branch: string
+tool: string
 ```
 
 **embeddings.metadata.parquet**
@@ -313,23 +356,32 @@ vector_index: int64
 
 ```python
 def hybrid_search(query):
-    # 1. BM25 keyword search
-    bm25_results = bm25_search(query)
-    bm25_ranks = {doc_id: 1/(k+rank) for rank, doc_id in enumerate(bm25_results)}
+    # 1. Synonym expansion
+    expanded_query = expand_synonyms(query)
 
-    # 2. FAISS semantic search
+    # 2. DuckDB FTS keyword search
+    fts_results = duckdb_fts_search(expanded_query)
+    fts_ranks = {doc_id: 1/(k+rank) for rank, doc_id in enumerate(fts_results)}
+
+    # 3. FAISS semantic search
     query_embedding = embed(query)
     faiss_results = faiss.search(query_embedding)
     faiss_ranks = {doc_id: 1/(k+rank) for rank, doc_id in enumerate(faiss_results)}
 
-    # 3. Reciprocal Rank Fusion
-    all_docs = set(bm25_ranks.keys()) | set(faiss_ranks.keys())
+    # 4. Reciprocal Rank Fusion
+    all_docs = set(fts_ranks.keys()) | set(faiss_ranks.keys())
     rrf_scores = {
-        doc_id: bm25_ranks.get(doc_id, 0) + faiss_ranks.get(doc_id, 0)
+        doc_id: fts_ranks.get(doc_id, 0) + faiss_ranks.get(doc_id, 0)
         for doc_id in all_docs
     }
 
-    # 4. Sort by fused score
+    # 5. Optional cross-encoder re-ranking
+    if config.reranking.enabled:
+        top_k = sorted(rrf_scores.items(), key=lambda x: -x[1])[:config.reranking.top_k]
+        reranked = cross_encoder.rerank(query, top_k)
+        return reranked
+
+    # 6. Sort by fused score
     return sorted(rrf_scores.items(), key=lambda x: -x[1])
 ```
 
@@ -361,9 +413,9 @@ parsed = {
 
 | Operation | Latency | Implementation |
 |-----------|---------|----------------|
-| Hybrid search | <100ms | BM25 + FAISS + RRF |
+| Hybrid search | <100ms | DuckDB FTS + FAISS + RRF |
 | Semantic search | <50ms | FAISS vector search |
-| Keyword search | <30ms | BM25 algorithm |
+| Keyword search | <30ms | DuckDB FTS |
 | Filtered queries | <20ms | DuckDB predicate pushdown |
 
 ### Memory Usage
@@ -428,11 +480,18 @@ async def custom_endpoint():
 - `test_query_parser.py` - Query parsing
 - `test_platform_utils.py` - Platform detection
 
-**API Tests (tests/api/) - 62 tests:**
+**API Tests (tests/api/) - 120+ tests across 27 files:**
 - `test_search_routes.py` (21 tests) - Search modes, filters, sorting
 - `test_conversations_routes.py` (21 tests) - List, retrieve, resume
+- `test_chat_rag_routes.py` - Chat and RAG endpoint tests
+- `test_patterns_routes.py` - Pattern mining endpoint tests
+- `test_agent_config.py` - Agent config generation tests
 - `test_stats_backup_routes.py` (13 tests) - Statistics, backup operations
 - `test_indexing_admin_routes.py` (8 tests) - Indexing, watcher, shutdown
+- `test_bookmarks_routes.py` - Bookmark management tests
+- `test_dashboards_routes.py` - Dashboard CRUD tests
+- `test_analytics_routes.py` - Analytics endpoint tests
+- And 17 more test files...
 
 ### Running Tests
 

@@ -17,6 +17,7 @@ import { showDashboards } from './modules/dashboards.js';
 import { initDatasetSelector } from './modules/dataset.js';
 import { checkAndShowSplash } from './splash.js';
 import { createBackup, showBackups } from './modules/backup.js';
+import { initSidebarSections, initSidebarDrawers } from './modules/sidebar.js';
 
 // Make functions globally available for inline event handlers
 window.setTheme = setTheme;
@@ -64,12 +65,20 @@ safeInit('bookmarks', initBookmarks);
 safeInit('saved-queries', initSavedQueries);
 safeInit('project-suggestion', initProjectSuggestion);
 safeInit('dataset-selector', initDatasetSelector);
+safeInit('sidebar-sections', initSidebarSections);
+safeInit('sidebar-drawers', initSidebarDrawers);
 
 safeInit('bulk-export', async () => {
     const module = await import('./modules/bulk-export.js');
     window.toggleBulkMode = module.toggleBulkMode;
     module.initBulkExport();
 });
+
+// Add change listener for date filter
+const dateSelect = document.getElementById('date');
+if (dateSelect) {
+    dateSelect.addEventListener('change', toggleCustomDate);
+}
 
 // Add event listener for search on Enter key
 const searchBox = document.getElementById('search');
@@ -78,6 +87,20 @@ if (searchBox) {
         if (e.key === 'Enter') search();
     });
 }
+
+// Delegated event handler for data-action buttons
+document.addEventListener('click', (e) => {
+    const target = e.target.closest('[data-action]');
+    if (!target) return;
+    const action = target.dataset.action;
+    if (action === 'saveQueryInline') {
+        // Special case: trigger the save query panel
+        const saveBtn = document.getElementById('saveQueryButton');
+        if (saveBtn) saveBtn.click();
+        return;
+    }
+    if (action && typeof window[action] === 'function') window[action]();
+});
 
 // On page load, check splash and restore state if available
 window.addEventListener('load', async () => {
@@ -112,7 +135,7 @@ window.addEventListener('load', async () => {
             if (lastIndex) {
                 const element = document.getElementById(`result-${lastIndex}`);
                 if (element) {
-                    element.style.border = '2px solid #4CAF50';
+                    element.classList.add('result-highlight');
                 }
             }
         }, 500);

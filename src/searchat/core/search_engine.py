@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 import hashlib
 from collections import defaultdict, OrderedDict
@@ -10,7 +11,6 @@ from typing import TYPE_CHECKING, Any, cast
 import duckdb
 import faiss
 import numpy as np
-from rank_bm25 import BM25Okapi
 
 from searchat.core.filters import tool_sql_conditions
 from searchat.models import (
@@ -26,6 +26,9 @@ from searchat.config.constants import (
     INDEX_FORMAT_VERSION,
     INDEX_FORMAT,
     INDEX_METADATA_FILENAME,
+    FTS_STEMMER,
+    FTS_STOPWORDS,
+    QUERY_SYNONYMS,
 )
 
 
@@ -70,9 +73,29 @@ class SearchEngine:
             "file_hash",
             "indexed_at",
         ]
-        
+
         # Keyword search only depends on conversation parquets.
         self._validate_keyword_files()
+
+        # Persistent DuckDB connection (thread-safe for reads)
+        self._con = duckdb.connect(database=":memory:")
+        self._logger = logging.getLogger(__name__)
+        try:
+            mem_mb = int(config.performance.memory_limit_mb)
+            self._con.execute(f"PRAGMA memory_limit='{mem_mb}MB'")
+        except Exception as exc:
+            self._logger.warning("Failed to set DuckDB memory limit: %s", exc)
+
+        # Reranker (lazy loaded)
+        self._reranker = None
+
+        # Build persistent table + FTS index (best-effort at init)
+        self._fts_ready = False
+        try:
+            self._build_fts_table()
+            self._fts_ready = True
+        except Exception as exc:
+            self._logger.warning("FTS table init deferred: %s", exc)
     
     def ensure_metadata_ready(self) -> None:
         """Ensure index metadata parquet exists and matches config."""
@@ -140,30 +163,46 @@ class SearchEngine:
 
 
     def refresh_index(self) -> None:
-        """Clear caches and mark index-backed components stale.
-
-        This is used after append-only indexing or restore operations.
-        """
+        """Clear caches and rebuild DuckDB table + FTS index."""
         with self._init_lock:
             self.result_cache.clear()
-            # Reload FAISS on next semantic search.
             self.faiss_index = None
-            # Keep embedder loaded (heavy), model mismatch is already blocked by the indexer.
+            try:
+                self._build_fts_table()
+                self._fts_ready = True
+            except Exception as exc:
+                self._fts_ready = False
+                self._logger.warning("FTS table rebuild failed: %s", exc)
 
 
     def _validate_keyword_files(self) -> None:
         if not self.conversations_dir.exists() or not any(self.conversations_dir.glob("*.parquet")):
             raise FileNotFoundError(f"No conversation parquet files found in {self.conversations_dir}")
 
-    def _connect(self):
-        con = duckdb.connect(database=":memory:")
-        # Keep this conservative; avoid forcing a value if config is missing.
-        try:
-            mem_mb = int(self.config.performance.memory_limit_mb)
-            con.execute(f"PRAGMA memory_limit='{mem_mb}MB'")
-        except Exception:
-            pass
-        return con
+    def _build_fts_table(self) -> None:
+        """Create persistent DuckDB table from parquet and build FTS index."""
+        cols = ", ".join(self.search_columns)
+        self._con.execute(f"""
+            CREATE OR REPLACE TABLE conversations AS
+            SELECT {cols}
+            FROM parquet_scan('{self.conversations_glob}')
+        """)
+        self._con.execute("INSTALL fts; LOAD fts;")
+        self._con.execute(f"""
+            PRAGMA create_fts_index(
+                'conversations',
+                'conversation_id',
+                'full_text', 'title',
+                stemmer='{FTS_STEMMER}',
+                stopwords='{FTS_STOPWORDS}',
+                overwrite=1
+            )
+        """)
+
+    def close(self) -> None:
+        """Close the persistent DuckDB connection."""
+        if self._con:
+            self._con.close()
 
     def _where_from_filters(
         self,
@@ -297,11 +336,12 @@ class SearchEngine:
                 keyword_results = self._keyword_search(query, filters)
                 semantic_results = self._semantic_search(query, filters)
                 results = self._merge_results(keyword_results, semantic_results)
+                results = self._rerank(query, results)
             elif mode == SearchMode.KEYWORD:
                 results = self._keyword_search(query, filters)
             else:
                 results = self._semantic_search(query, filters)
-            
+
             elapsed_ms = (time.time() - start_time) * 1000
             
             search_result = SearchResults(
@@ -319,147 +359,95 @@ class SearchEngine:
             raise RuntimeError(f"Search failed: {e}") from e
     
     def _keyword_search(self, query: str, filters: SearchFilters | None) -> list[SearchResult]:
-        parsed = self.query_parser.parse(query)
+        if not self._fts_ready:
+            try:
+                self._build_fts_table()
+                self._fts_ready = True
+            except Exception as exc:
+                self._logger.warning("FTS unavailable, keyword search returning empty: %s", exc)
+                return []
 
-        # Treat '*' as "no text query" for filter-only browsing.
+        parsed = self.query_parser.parse(query)
         is_wildcard = parsed.original.strip() == "*"
 
-        params: list[object] = [self.conversations_glob]
-        where_clause = self._where_from_filters(filters, params)
-
-        text_conditions = []
-
-        if not is_wildcard:
-            for phrase in parsed.exact_phrases:
-                text_conditions.append("full_text ILIKE '%' || ? || '%'")
-                params.append(phrase)
-
-            for term in parsed.must_include:
-                text_conditions.append("full_text ILIKE '%' || ? || '%'")
-                params.append(term)
-
-            for term in parsed.should_include:
-                clean_term = term.strip("'\"")
-                if clean_term:
-                    text_conditions.append("full_text ILIKE '%' || ? || '%'")
-                    params.append(clean_term)
-
-            for term in parsed.must_exclude:
-                text_conditions.append("NOT (full_text ILIKE '%' || ? || '%')")
-                params.append(term)
-
-        if text_conditions:
-            where_clause = f"{where_clause} AND " + " AND ".join(text_conditions)
-
-        # Cap candidates to keep worst-case queries bounded.
-        candidate_limit = 5000
-        params.append(candidate_limit)
-
-        con = self._connect()
-        try:
+        if is_wildcard:
+            params: list[object] = []
+            where_clause = self._where_from_filters(filters, params)
             sql = f"""
-            SELECT
-              conversation_id,
-              project_id,
-              title,
-              created_at,
-              updated_at,
-              message_count,
-              file_path,
-              full_text
-            FROM parquet_scan(?)
-            WHERE {where_clause}
-            ORDER BY updated_at DESC
-            LIMIT ?
+                SELECT conversation_id, project_id, title, created_at,
+                       updated_at, message_count, file_path, full_text
+                FROM conversations
+                WHERE {where_clause}
+                ORDER BY updated_at DESC
+                LIMIT 100
             """
+            rows = self._con.execute(sql, params).fetchall()
+            return [
+                SearchResult(
+                    conversation_id=r[0], project_id=r[1], title=r[2],
+                    created_at=r[3], updated_at=r[4], message_count=r[5],
+                    file_path=r[6], score=0.0, snippet=(r[7] or "")[:200],
+                )
+                for r in rows
+            ]
 
-            rows = con.execute(sql, params).fetchall()
-        finally:
-            con.close()
+        # Expand query with synonyms
+        all_terms = parsed.exact_phrases + parsed.must_include + parsed.should_include
+        expanded_terms = list(all_terms)
+        for term in all_terms:
+            term_lower = term.lower()
+            if term_lower in QUERY_SYNONYMS:
+                expanded_terms.extend(QUERY_SYNONYMS[term_lower])
+
+        # Build FTS query string
+        fts_query = " ".join(expanded_terms)
+        if not fts_query.strip():
+            return []
+
+        params = [fts_query]
+        filter_params: list[object] = []
+        where_clause = self._where_from_filters(filters, filter_params)
+        params.extend(filter_params)
+
+        # Must-exclude terms
+        exclude_conditions = ""
+        for term in parsed.must_exclude:
+            exclude_conditions += " AND NOT (full_text ILIKE '%' || ? || '%')"
+            params.append(term)
+
+        sql = f"""
+            SELECT conversation_id, project_id, title, created_at,
+                   updated_at, message_count, file_path, full_text,
+                   fts_main_conversations.match_bm25(conversation_id, ?) AS score
+            FROM conversations
+            WHERE score IS NOT NULL AND {where_clause}{exclude_conditions}
+            ORDER BY score DESC
+            LIMIT 100
+        """
+        rows = self._con.execute(sql, params).fetchall()
 
         if not rows:
             return []
 
-        # Wildcard query: return most-recent conversations with a neutral score.
-        if is_wildcard:
-            search_results = []
-            for (
-                conversation_id,
-                project_id,
-                title,
-                created_at,
-                updated_at,
-                message_count,
-                file_path,
-                full_text,
-            ) in rows[:100]:
-                search_results.append(
-                    SearchResult(
-                        conversation_id=conversation_id,
-                        project_id=project_id,
-                        title=title,
-                        created_at=created_at,
-                        updated_at=updated_at,
-                        message_count=message_count,
-                        file_path=file_path,
-                        score=0.0,
-                        snippet=(full_text or "")[:200],
-                    )
-                )
-            return search_results
-
-        # Use BM25 for scoring (industry standard)
-        docs = [r[7] or "" for r in rows]
-        corpus = [doc.lower().split() for doc in docs]
-        bm25 = BM25Okapi(corpus)
-
-        # Tokenize query (combine all search terms)
-        all_terms = parsed.exact_phrases + parsed.must_include + parsed.should_include
-        query_tokens = ' '.join(all_terms).lower().split()
-
-        # Calculate BM25 scores
-        bm25_scores = bm25.get_scores(query_tokens)
-
         all_terms_lower = [t.lower() for t in all_terms]
+        results: list[SearchResult] = []
+        for r in rows:
+            title = r[2] or ""
+            title_boost = 2.0 if any(t in title.lower() for t in all_terms_lower) else 1.0
+            message_boost = float(np.log1p(r[5]))
+            score = float(r[8]) * title_boost * message_boost
 
-        scored = []
-        for idx, row in enumerate(rows):
-            title = row[2] or ""
-            title_l = title.lower()
-            title_boost = 2.0 if any(term in title_l for term in all_terms_lower) else 1.0
-            message_boost = float(np.log1p(row[5]))
-            score = float(bm25_scores[idx]) * title_boost * message_boost
-            scored.append((score, row))
-
-        scored.sort(key=lambda x: x[0], reverse=True)
-
-        search_results = []
-        for score, row in scored[:100]:
-            (
-                conversation_id,
-                project_id,
-                title,
-                created_at,
-                updated_at,
-                message_count,
-                file_path,
-                full_text,
-            ) = row
-            search_results.append(
+            results.append(
                 SearchResult(
-                    conversation_id=conversation_id,
-                    project_id=project_id,
-                    title=title,
-                    created_at=created_at,
-                    updated_at=updated_at,
-                    message_count=message_count,
-                    file_path=file_path,
-                    score=score,
-                    snippet=self._create_snippet(full_text or "", parsed.original),
+                    conversation_id=r[0], project_id=r[1], title=r[2],
+                    created_at=r[3], updated_at=r[4], message_count=r[5],
+                    file_path=r[6], score=score,
+                    snippet=self._create_snippet(r[7] or "", parsed.original),
                 )
             )
 
-        return search_results
+        results.sort(key=lambda x: x.score, reverse=True)
+        return results
     
     def _semantic_search(self, query: str, filters: SearchFilters | None) -> list[SearchResult]:
         self.ensure_faiss_loaded()
@@ -497,37 +485,33 @@ class SearchEngine:
         where_clause = self._where_from_filters(filters, filter_params, table_alias="c")
         params.extend(filter_params)
 
-        con = self._connect()
-        try:
-            sql = f"""
-            WITH hits(vector_id, distance, faiss_order) AS (
-              VALUES {values_clause}
-            )
-            SELECT
-              m.conversation_id,
-              c.project_id,
-              c.title,
-              c.created_at,
-              c.updated_at,
-              c.message_count,
-              c.file_path,
-              m.chunk_text,
-              m.message_start_index,
-              m.message_end_index,
-              hits.distance,
-              hits.faiss_order
-            FROM hits
-            JOIN parquet_scan(?) AS m
-              ON m.vector_id = hits.vector_id
-            JOIN parquet_scan(?) AS c
-              ON c.conversation_id = m.conversation_id
-            WHERE {where_clause}
-            QUALIFY row_number() OVER (PARTITION BY m.conversation_id ORDER BY hits.faiss_order) = 1
-            ORDER BY hits.faiss_order
-            """
-            rows = con.execute(sql, params).fetchall()
-        finally:
-            con.close()
+        sql = f"""
+        WITH hits(vector_id, distance, faiss_order) AS (
+          VALUES {values_clause}
+        )
+        SELECT
+          m.conversation_id,
+          c.project_id,
+          c.title,
+          c.created_at,
+          c.updated_at,
+          c.message_count,
+          c.file_path,
+          m.chunk_text,
+          m.message_start_index,
+          m.message_end_index,
+          hits.distance,
+          hits.faiss_order
+        FROM hits
+        JOIN parquet_scan(?) AS m
+          ON m.vector_id = hits.vector_id
+        JOIN parquet_scan(?) AS c
+          ON c.conversation_id = m.conversation_id
+        WHERE {where_clause}
+        QUALIFY row_number() OVER (PARTITION BY m.conversation_id ORDER BY hits.faiss_order) = 1
+        ORDER BY hits.faiss_order
+        """
+        rows = self._con.execute(sql, params).fetchall()
 
         if not rows:
             return []
@@ -648,45 +632,59 @@ class SearchEngine:
             merged.append(result)
         
         return merged
-    
+
+    def _rerank(self, query: str, results: list[SearchResult]) -> list[SearchResult]:
+        """Re-rank results using cross-encoder if enabled."""
+        if not self.config.reranking.enabled or not results:
+            return results
+
+        if self._reranker is None:
+            from sentence_transformers import CrossEncoder
+            self._reranker = CrossEncoder(self.config.reranking.model)
+
+        top_k = min(self.config.reranking.top_k, len(results))
+        candidates = results[:top_k]
+        remainder = results[top_k:]
+
+        pairs = [(query, r.snippet) for r in candidates]
+        scores = self._reranker.predict(pairs)
+
+        for result, score in zip(candidates, scores):
+            result.score = float(score)
+
+        candidates.sort(key=lambda r: r.score, reverse=True)
+        return candidates + remainder
+
     def _create_snippet(self, full_text: str, query: str, length: int = 200) -> str:
-        text_lower = full_text.lower()
-        
-        # Parse the query to get search terms
+        """Create snippet using sliding-window term-density scoring."""
         parsed = self.query_parser.parse(query)
-        
-        # Try to find exact phrases first
-        best_pos = -1
-        if parsed.exact_phrases:
-            for phrase in parsed.exact_phrases:
-                pos = text_lower.find(phrase.lower())
-                if pos != -1:
-                    best_pos = pos
-                    break
-        
-        # If no exact phrase found, look for any term
-        if best_pos == -1:
-            all_terms = parsed.must_include + parsed.should_include
-            if all_terms:
-                # Find the position where most terms appear close together
-                for term in all_terms:
-                    pos = text_lower.find(term.lower())
-                    if pos != -1:
-                        best_pos = pos
-                        break
-        
-        # If still nothing found, just use the beginning
-        if best_pos == -1:
-            return full_text[:length] + "..."
-        
-        # Create snippet centered around the match
-        start = max(0, best_pos - length // 2)
-        end = min(len(full_text), best_pos + length)
-        
-        snippet = full_text[start:end]
-        if start > 0:
+        terms = [t.lower() for t in parsed.exact_phrases + parsed.must_include + parsed.should_include]
+
+        if not terms:
+            return full_text[:length] + ("..." if len(full_text) > length else "")
+
+        # Cap text to avoid O(n) scans on very long conversations
+        capped_text = full_text[:50000]
+        text_lower = capped_text.lower()
+
+        best_score = -1
+        best_start = 0
+
+        step = max(1, length // 4)
+        for start in range(0, max(1, len(capped_text) - length), step):
+            window = text_lower[start:start + length]
+            score = sum(window.count(term) for term in terms)
+            if score > best_score:
+                best_score = score
+                best_start = start
+
+        if best_score <= 0:
+            return full_text[:length] + ("..." if len(full_text) > length else "")
+
+        end = min(len(full_text), best_start + length)
+        snippet = full_text[best_start:end]
+        if best_start > 0:
             snippet = "..." + snippet
         if end < len(full_text):
             snippet = snippet + "..."
-        
         return snippet

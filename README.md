@@ -21,7 +21,9 @@ Semantic search and RAG-powered Q&A for AI coding agent conversations. Find past
 
 ### Core Search
 
-- **Hybrid Search** — BM25 keyword + FAISS semantic vectors with RRF fusion
+- **Hybrid Search** — DuckDB FTS keyword + FAISS semantic vectors with RRF fusion
+- **Query Synonyms** — Automatic expansion of common search terms
+- **Cross-Encoder Re-ranking** — Optional re-ranking with cross-encoder models
 - **Multi-Agent** — Search across Claude Code, Mistral Vibe, and OpenCode sessions
 - **Tool Filters** — Filter results by specific agent (Claude, Vibe, or OpenCode)
 - **Autocomplete** — Smart search suggestions as you type
@@ -30,6 +32,8 @@ Semantic search and RAG-powered Q&A for AI coding agent conversations. Find past
 ### AI-Powered Features
 
 - **RAG Chat** — Ask questions about your conversation history with AI-powered answers
+- **Session Chat** — Multi-turn RAG conversations with session persistence (30-min TTL)
+- **Pattern Mining** — Extract recurring coding patterns from conversation archives
 - **Embedded LLM** — Run RAG chat locally with a GGUF model (llama-cpp-python)
 - **Semantic Highlights** — Optional LLM-generated highlight terms for search results
 - **Conversation Similarity** — Discover related conversations using semantic similarity
@@ -43,6 +47,7 @@ Semantic search and RAG-powered Q&A for AI coding agent conversations. Find past
 - **Search Analytics** — Track search patterns and usage statistics
 - **Export** — Export conversations in JSON/Markdown/Text (optional PDF + Jupyter notebook)
 - **Bulk Export** — Export multiple conversations at once
+- **Agent Config Export** — Generate CLAUDE.md, copilot-instructions, or cursorrules from patterns
 - **Pagination** — Navigate large result sets efficiently
 
 ### Data Safety & Performance
@@ -131,6 +136,8 @@ Available MCP tools:
 - `ask_about_history`
 - `list_projects`
 - `get_statistics`
+- `extract_patterns`
+- `generate_agent_config`
 
 ## Embedded LLM (Local GGUF)
 
@@ -311,8 +318,10 @@ curl -X POST "http://localhost:8000/api/chat" \
   -d '{
     "query": "How did we implement authentication?",
     "model_provider": "openai",
-    "model_name": "gpt-4.1-mini"
+    "model_name": "gpt-4.1-mini",
+    "session_id": "optional-session-id"
   }'
+# Response includes X-Session-Id header for session tracking
 
 # Non-streaming RAG response with citations
 curl -X POST "http://localhost:8000/api/chat-rag" \
@@ -464,11 +473,11 @@ for r in results.results[:5]:
 
 **Code Organization:**
 
-- `src/searchat/api/` - FastAPI app with 13 modular routers (50+ endpoints)
+- `src/searchat/api/` - FastAPI app with 14 modular routers (50+ endpoints)
 - `src/searchat/core/` - Core indexing and search logic
 - `src/searchat/services/` - Business services (chat, bookmarks, analytics, backup)
 - `src/searchat/web/` - Modular frontend (HTML + CSS modules + ES6 JS)
-- `tests/` - Comprehensive test suite (500+ tests)
+- `tests/` - Comprehensive test suite (840+ tests)
 
 **Data Flow:**
 
@@ -489,10 +498,12 @@ for r in results.results[:5]:
 
 **Search Flow:**
 
-1. Query → BM25 keyword search + FAISS semantic search
+1. Query → DuckDB FTS keyword search + FAISS semantic search
 2. Results merged via Reciprocal Rank Fusion
 3. Hybrid ranking returns best of both approaches
-4. Optional: Find similar conversations via vector similarity
+4. Optional: Cross-encoder re-ranking of top results
+5. Query synonym expansion for keyword matching
+6. Optional: Find similar conversations via vector similarity
 
 **RAG Flow:**
 
@@ -578,6 +589,14 @@ enabled = true
 [performance]
 memory_limit_mb = 3000
 query_cache_size = 100
+
+[reranking]
+enabled = false
+model = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+top_k = 50
+
+[server]
+cors_origins = ["http://localhost:8000", "http://127.0.0.1:8000"]
 ```
 
 Or use environment variables:
@@ -595,7 +614,7 @@ export OLLAMA_BASE_URL=http://localhost:11434
 
 ## Requirements
 
-- Python 3.9+
+- Python 3.10+
 - ~2-3GB RAM (embeddings model + FAISS index)
 - ~10MB disk per 1K conversations
 - Optional: OpenAI API key or Ollama for RAG chat
@@ -673,7 +692,7 @@ pytest --cov-report=html       # HTML coverage report
 
 **Test Coverage:**
 
-- 500+ tests (API, UI contract tests, unit tests, perf gates)
+- 840+ tests (API, UI contract tests, unit tests, perf gates)
 - ~5,900 lines of test code
 - Comprehensive coverage of all features
 - API endpoint tests, unit tests, integration tests
@@ -749,6 +768,13 @@ This fork adds significant new features beyond the original:
 - **OpenCode Support** - Added third agent support
 - **Tool Filtering** - Filter by specific agent
 - **Modern Typing** - Python 3.12 type hints throughout
+- **Session Chat** — Multi-turn RAG with session persistence
+- **Pattern Mining** — Extract recurring patterns via LLM
+- **Agent Config Export** — Generate agent config from patterns
+- **DuckDB FTS** — Replaced BM25 with DuckDB full-text search
+- **Cross-Encoder Re-ranking** — Optional result re-ranking
+- **Query Synonyms** — Automatic synonym expansion
+- **CORS Hardening** — Configurable CORS origins (default localhost)
 
 See `docs/features.md` for complete feature documentation.
 

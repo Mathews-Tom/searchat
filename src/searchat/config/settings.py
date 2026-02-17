@@ -58,6 +58,10 @@ from .constants import (
     DEFAULT_FONT_FAMILY,
     DEFAULT_FONT_SIZE,
     DEFAULT_HIGHLIGHT_COLOR,
+    DEFAULT_CORS_ORIGINS,
+    DEFAULT_RERANKING_ENABLED,
+    DEFAULT_RERANKING_MODEL,
+    DEFAULT_RERANKING_TOP_K,
     # Environment variable names
     ENV_DATA_DIR,
     ENV_WINDOWS_PROJECTS,
@@ -90,6 +94,10 @@ from .constants import (
     ENV_DAEMON_NOTIFICATIONS_BACKEND,
     ENV_DAEMON_MAX_SUGGESTIONS,
     ENV_DAEMON_MIN_QUERY_LENGTH,
+    ENV_CORS_ORIGINS,
+    ENV_RERANKING_ENABLED,
+    ENV_RERANKING_MODEL,
+    ENV_RERANKING_TOP_K,
     ERROR_NO_CONFIG,
 )
 
@@ -570,6 +578,44 @@ class DaemonConfig:
 
 
 @dataclass
+class RerankingConfig:
+    enabled: bool
+    model: str
+    top_k: int
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "RerankingConfig":
+        return cls(
+            enabled=_get_env_bool(
+                ENV_RERANKING_ENABLED,
+                data.get("enabled", DEFAULT_RERANKING_ENABLED),
+            ),
+            model=_get_env_str(
+                ENV_RERANKING_MODEL,
+                data.get("model", DEFAULT_RERANKING_MODEL),
+            ) or DEFAULT_RERANKING_MODEL,
+            top_k=_get_env_int(
+                ENV_RERANKING_TOP_K,
+                data.get("top_k", DEFAULT_RERANKING_TOP_K),
+            ),
+        )
+
+
+@dataclass
+class ServerConfig:
+    cors_origins: list[str]
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "ServerConfig":
+        env_origins = _get_env_str(ENV_CORS_ORIGINS, None)
+        if env_origins:
+            origins = [o.strip() for o in env_origins.split(",") if o.strip()]
+        else:
+            origins = data.get("cors_origins", list(DEFAULT_CORS_ORIGINS))
+        return cls(cors_origins=origins)
+
+
+@dataclass
 class Config:
     paths: PathsConfig
     indexing: IndexingConfig
@@ -584,6 +630,8 @@ class Config:
     dashboards: DashboardsConfig
     snapshots: SnapshotsConfig
     daemon: DaemonConfig
+    reranking: RerankingConfig
+    server: ServerConfig
     logging: LogConfig
 
     @classmethod
@@ -658,5 +706,7 @@ class Config:
             dashboards=DashboardsConfig.from_dict(data.get("dashboards", {})),
             snapshots=SnapshotsConfig.from_dict(data.get("snapshots", {})),
             daemon=DaemonConfig.from_dict(data.get("daemon", {})),
+            reranking=RerankingConfig.from_dict(data.get("reranking", {})),
+            server=ServerConfig.from_dict(data.get("server", {})),
             logging=LogConfig(**data.get("logging", {})),
         )

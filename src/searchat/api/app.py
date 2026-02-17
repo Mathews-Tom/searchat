@@ -17,6 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
+from searchat.config import Config
 from searchat.core.watcher import ConversationWatcher
 from searchat.core.logging_config import setup_logging, get_logger
 from searchat.core.progress import LoggingProgressAdapter
@@ -46,6 +47,7 @@ from searchat.api.routers import (
     queries_router,
     code_router,
     docs_router,
+    patterns_router,
     dashboards_router,
 )
 from searchat.config.constants import (
@@ -150,10 +152,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS middleware
+# CORS middleware — origins from config, defaults to localhost-only
+_cors_origins = Config.load().server.cors_origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -181,6 +184,7 @@ app.include_router(chat_router, prefix="/api", tags=["chat"])
 app.include_router(queries_router, prefix="/api", tags=["queries"])
 app.include_router(code_router, prefix="/api", tags=["code"])
 app.include_router(docs_router, prefix="/api", tags=["docs"])
+app.include_router(patterns_router, prefix="/api", tags=["patterns"])
 app.include_router(dashboards_router, prefix="/api", tags=["dashboards"])
 
 

@@ -21,6 +21,7 @@
 
 </head>
 <body>
+    <a href="#search" class="skip-link">Skip to search</a>
     <div class="container">
         <!-- Left Sidebar: Search Tips -->
         <div class="sidebar">
@@ -65,8 +66,8 @@
             </div>
 
             <!-- System Overview Link -->
-            <div style="margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border-muted);">
-                <h3 style="color: var(--accent-primary); margin-bottom: 12px;">📊 System Overview</h3>
+            <div class="sidebar-section">
+                <h3>📊 System Overview</h3>
                 <a href="/docs/infographics.html" target="_blank" class="system-overview-link">
                     View Interactive Infographics →
                 </a>
@@ -95,14 +96,14 @@
             </div>
 
             <!-- Backup & Restore Section -->
-            <div style="margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border-muted);">
+            <div class="sidebar-section">
                 <h3 style="color: var(--warning); margin-bottom: 16px;">🔒 Backup & Restore</h3>
 
-                <button id="createBackupButton" onclick="createBackup()" style="width: 100%; background: var(--success); color: white; padding: 10px; border: none; border-radius: 6px; cursor: pointer; margin-bottom: 10px; font-family: 'Space Grotesk', sans-serif; font-size: 14px; font-weight: 500;">
+                <button id="createBackupButton" data-action="createBackup" class="btn-block btn-success">
                     Create Backup
                 </button>
 
-                <button id="manageBackupsButton" onclick="showBackups()" style="width: 100%; background: var(--accent-primary); color: white; padding: 10px; border: none; border-radius: 6px; cursor: pointer; font-family: 'Space Grotesk', sans-serif; font-size: 14px; font-weight: 500;">
+                <button id="manageBackupsButton" data-action="showBackups" class="btn-block btn-accent">
                     Manage Backups
                 </button>
 
@@ -114,7 +115,7 @@
             </div>
 
             <!-- Dataset (Active vs Snapshot) -->
-            <div id="datasetPanel" style="margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--border-muted);">
+            <div id="datasetPanel" class="sidebar-section">
                 <h3 style="margin-bottom: 10px;">Dataset</h3>
                 <label style="display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">Active vs snapshot (read-only)</label>
                 <select id="datasetSelect" style="width: 100%; background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border-default); border-radius: 8px; padding: 8px 10px; font-family: 'Space Grotesk', sans-serif; font-size: 13px;">
@@ -131,10 +132,10 @@
         <!-- Main Content -->
         <div class="main-content">
             <!-- Theme Toggle -->
-            <div class="theme-toggle">
-                <button onclick="setTheme('light')" data-theme="light">Light</button>
-                <button onclick="setTheme('system')" data-theme="system" class="active">System</button>
-                <button onclick="setTheme('dark')" data-theme="dark">Dark</button>
+            <div class="theme-toggle" role="group" aria-label="Theme selection">
+                <button data-theme="light" aria-pressed="false">Light</button>
+                <button data-theme="system" aria-pressed="true" class="active">System</button>
+                <button data-theme="dark" aria-pressed="false">Dark</button>
             </div>
 
             <div id="datasetBanner" class="dataset-banner" style="display: none;"></div>
@@ -143,11 +144,11 @@
                 <a href="/" class="back-button">← Back to Search</a>
             </div>
             <h1 id="heroTitle" style="margin-bottom: 4px;"><span style="color: #4a9eff">sear</span><span style="background: linear-gradient(to right, #4a9eff, #ff9500); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">ch</span><span style="color: #ff9500">at</span></h1>
-            <p id="heroSubtitle" style="margin: 0 0 20px 0; font-size: 13px; color: #888;">Local search for your AI coding conversations</p>
+            <p id="heroSubtitle" style="margin: 0 0 20px 0; font-size: 13px; color: var(--text-muted);">Local search for your AI coding conversations</p>
             <input type="text" id="search" class="search-box" placeholder="Search conversations..." />
             <div id="projectSuggestion" class="project-suggestion" style="display: none;"></div>
 
-            <div class="filters" id="filters">
+            <div class="filters" id="filters" role="group" aria-label="Search filters">
         <label>Mode: 
             <select id="mode">
                 <option value="hybrid">Hybrid</option>
@@ -177,7 +178,7 @@
         </label>
         
         <label>Date: 
-            <select id="date" onchange="toggleCustomDate()">
+            <select id="date">
                 <option value="">Any time</option>
                 <option value="today">Today</option>
                 <option value="week">Last 7 days</option>
@@ -204,16 +205,26 @@
             <input type="checkbox" id="semanticHighlights" />
             Semantic highlights (LLM)
         </label>
-        
-        <button onclick="search()">Search</button>
-        <button id="saveQueryButtonInline" type="button" style="background: #7c3aed; margin-left: 10px;">Save Query</button>
-        <button onclick="showAllConversations()" style="background: #2196F3; margin-left: 10px;">Show All</button>
-        <button onclick="showBookmarks()" style="background: #FFA500; margin-left: 10px;" title="View your bookmarked conversations">⭐ Bookmarks</button>
-        <button id="analyticsButton" onclick="showAnalytics()" style="background: #00BCD4; margin-left: 10px;" title="View search analytics and patterns">📊 Analytics</button>
-        <button id="dashboardsButton" onclick="showDashboards()" style="background: #546E7A; margin-left: 10px;" title="View saved dashboards">🧩 Dashboards</button>
-        <button id="bulkModeToggle" onclick="toggleBulkMode()" style="background: #9C27B0; margin-left: 10px;" title="Select multiple conversations for bulk export">☑ Bulk Export</button>
-        <button id="indexMissingButton" onclick="indexMissing()" style="background: #4CAF50; margin-left: 10px;" title="Safely add conversations that aren't in the index yet">Add Missing Conversations</button>
-        <button onclick="shutdownServer()" style="background: #f44336; margin-left: 10px;" title="Stop the search server">Stop Server</button>
+    </div>
+
+    <div class="toolbar" role="toolbar" aria-label="Search actions">
+        <div class="toolbar-group" role="group" aria-label="Search">
+            <button class="toolbar-btn" data-action="search">Search</button>
+            <button class="toolbar-btn" id="saveQueryButtonInline" type="button" data-action="saveQueryInline">Save Query</button>
+            <button class="toolbar-btn-info" data-action="showAllConversations">Show All</button>
+        </div>
+        <div class="toolbar-group" role="group" aria-label="Views">
+            <button class="toolbar-btn-warning" data-action="showBookmarks" title="View your bookmarked conversations">⭐ Bookmarks</button>
+            <button class="toolbar-btn-info" id="analyticsButton" data-action="showAnalytics" title="View search analytics and patterns">📊 Analytics</button>
+            <button class="toolbar-btn-muted" id="dashboardsButton" data-action="showDashboards" title="View saved dashboards">🧩 Dashboards</button>
+        </div>
+        <div class="toolbar-group" role="group" aria-label="Operations">
+            <button class="toolbar-btn-accent" id="bulkModeToggle" data-action="toggleBulkMode" title="Select multiple conversations for bulk export">☑ Bulk Export</button>
+            <button class="toolbar-btn-success" id="indexMissingButton" data-action="indexMissing" title="Safely add conversations that aren't in the index yet">Add Missing Conversations</button>
+        </div>
+        <div class="toolbar-group" role="group" aria-label="System">
+            <button class="toolbar-btn-danger" data-action="shutdownServer" title="Stop the search server">Stop Server</button>
+        </div>
     </div>
 
     <div id="projectSummary" class="project-summary" style="display: none;"></div>
@@ -261,7 +272,7 @@
                 <div id="chatSpinner" class="chat-spinner" aria-hidden="true"></div>
                 <div id="chatStatus" class="chat-status"></div>
             </div>
-            <div id="chatAnswer" class="chat-answer"></div>
+            <div id="chatAnswer" class="chat-answer" aria-live="polite"></div>
             <div id="chatSources" class="chat-sources" style="display:none;"></div>
         </div>
     </div>

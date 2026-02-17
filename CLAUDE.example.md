@@ -29,4 +29,4 @@ curl -s "http://localhost:8000/api/conversation/CONVERSATION_ID" | jq '.messages
 - `limit` — max results (1-100, default 100)
 - `project` — filter by project name
 
-**Start server:** `searchat-web` from the searchat directory
+**Start server:** `searchat-web` from the searchat directory `/Users/druk/WorkSpace/AetherForge/searchat/`

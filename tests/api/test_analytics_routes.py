@@ -84,7 +84,7 @@ def mock_analytics_service():
 
 def test_get_analytics_summary(client, mock_analytics_service):
     """Test GET /api/stats/analytics/summary."""
-    with patch("searchat.api.dependencies.get_analytics_service", return_value=mock_analytics_service):
+    with patch("searchat.api.routers.stats.deps.get_analytics_service", return_value=mock_analytics_service):
         response = client.get("/api/stats/analytics/summary")
 
         assert response.status_code == 200
@@ -102,7 +102,7 @@ def test_get_analytics_summary(client, mock_analytics_service):
 
 def test_get_analytics_summary_with_days_param(client, mock_analytics_service):
     """Test GET /api/stats/analytics/summary with custom days parameter."""
-    with patch("searchat.api.dependencies.get_analytics_service", return_value=mock_analytics_service):
+    with patch("searchat.api.routers.stats.deps.get_analytics_service", return_value=mock_analytics_service):
         response = client.get("/api/stats/analytics/summary?days=30")
 
         assert response.status_code == 200
@@ -113,7 +113,7 @@ def test_get_analytics_summary_with_days_param(client, mock_analytics_service):
 
 def test_get_analytics_summary_days_validation(client, mock_analytics_service):
     """Test days parameter validation for summary endpoint."""
-    with patch("searchat.api.dependencies.get_analytics_service", return_value=mock_analytics_service):
+    with patch("searchat.api.routers.stats.deps.get_analytics_service", return_value=mock_analytics_service):
         # days < 1 should fail
         response = client.get("/api/stats/analytics/summary?days=0")
         assert response.status_code == 422
@@ -129,7 +129,7 @@ def test_get_analytics_summary_days_validation(client, mock_analytics_service):
 
 def test_get_top_queries(client, mock_analytics_service):
     """Test GET /api/stats/analytics/top-queries."""
-    with patch("searchat.api.dependencies.get_analytics_service", return_value=mock_analytics_service):
+    with patch("searchat.api.routers.stats.deps.get_analytics_service", return_value=mock_analytics_service):
         response = client.get("/api/stats/analytics/top-queries")
 
         assert response.status_code == 200
@@ -150,7 +150,7 @@ def test_get_top_queries(client, mock_analytics_service):
 
 def test_get_top_queries_with_params(client, mock_analytics_service):
     """Test GET /api/stats/analytics/top-queries with custom parameters."""
-    with patch("searchat.api.dependencies.get_analytics_service", return_value=mock_analytics_service):
+    with patch("searchat.api.routers.stats.deps.get_analytics_service", return_value=mock_analytics_service):
         response = client.get("/api/stats/analytics/top-queries?limit=20&days=30")
 
         assert response.status_code == 200
@@ -161,7 +161,7 @@ def test_get_top_queries_with_params(client, mock_analytics_service):
 
 def test_get_top_queries_limit_validation(client, mock_analytics_service):
     """Test limit parameter validation for top-queries endpoint."""
-    with patch("searchat.api.dependencies.get_analytics_service", return_value=mock_analytics_service):
+    with patch("searchat.api.routers.stats.deps.get_analytics_service", return_value=mock_analytics_service):
         # limit < 1 should fail
         response = client.get("/api/stats/analytics/top-queries?limit=0")
         assert response.status_code == 422
@@ -177,7 +177,7 @@ def test_get_top_queries_limit_validation(client, mock_analytics_service):
 
 def test_get_dead_end_queries(client, mock_analytics_service):
     """Test GET /api/stats/analytics/dead-ends."""
-    with patch("searchat.api.dependencies.get_analytics_service", return_value=mock_analytics_service):
+    with patch("searchat.api.routers.stats.deps.get_analytics_service", return_value=mock_analytics_service):
         response = client.get("/api/stats/analytics/dead-ends")
 
         assert response.status_code == 200
@@ -198,7 +198,7 @@ def test_get_dead_end_queries(client, mock_analytics_service):
 
 def test_get_dead_end_queries_with_params(client, mock_analytics_service):
     """Test GET /api/stats/analytics/dead-ends with custom parameters."""
-    with patch("searchat.api.dependencies.get_analytics_service", return_value=mock_analytics_service):
+    with patch("searchat.api.routers.stats.deps.get_analytics_service", return_value=mock_analytics_service):
         response = client.get("/api/stats/analytics/dead-ends?limit=20&days=14")
 
         assert response.status_code == 200
@@ -220,7 +220,7 @@ def test_analytics_empty_data(client, mock_analytics_service):
     mock_analytics_service.get_top_queries.return_value = []
     mock_analytics_service.get_dead_end_queries.return_value = []
 
-    with patch("searchat.api.dependencies.get_analytics_service", return_value=mock_analytics_service):
+    with patch("searchat.api.routers.stats.deps.get_analytics_service", return_value=mock_analytics_service):
         # Summary with no data
         response = client.get("/api/stats/analytics/summary")
         assert response.status_code == 200
@@ -245,7 +245,7 @@ def test_analytics_service_error_handling(client, mock_analytics_service):
     # Mock service to raise exception
     mock_analytics_service.get_stats_summary.side_effect = Exception("Database error")
 
-    with patch("searchat.api.dependencies.get_analytics_service", return_value=mock_analytics_service):
+    with patch("searchat.api.routers.stats.deps.get_analytics_service", return_value=mock_analytics_service):
         response = client.get("/api/stats/analytics/summary")
 
         # Should return 500 error
@@ -258,7 +258,7 @@ def test_analytics_new_endpoints_error_handling(client, mock_analytics_service):
     mock_analytics_service.get_agent_comparison.side_effect = Exception("boom")
     mock_analytics_service.get_topic_clusters.side_effect = Exception("boom")
 
-    with patch("searchat.api.dependencies.get_analytics_service", return_value=mock_analytics_service):
+    with patch("searchat.api.routers.stats.deps.get_analytics_service", return_value=mock_analytics_service):
         assert client.get("/api/stats/analytics/trends").status_code == 500
         assert client.get("/api/stats/analytics/heatmap").status_code == 500
         assert client.get("/api/stats/analytics/agent-comparison").status_code == 500
@@ -267,13 +267,13 @@ def test_analytics_new_endpoints_error_handling(client, mock_analytics_service):
 
 def test_analytics_topics_value_error_returns_400(client, mock_analytics_service):
     mock_analytics_service.get_topic_clusters.side_effect = ValueError("k must be between 2 and 20")
-    with patch("searchat.api.dependencies.get_analytics_service", return_value=mock_analytics_service):
+    with patch("searchat.api.routers.stats.deps.get_analytics_service", return_value=mock_analytics_service):
         resp = client.get("/api/stats/analytics/topics?days=30&k=8")
         assert resp.status_code == 400
 
 
 def test_analytics_config_error_handling(client, mock_analytics_service):
-    with patch("searchat.api.dependencies.get_analytics_service", return_value=mock_analytics_service), \
+    with patch("searchat.api.routers.stats.deps.get_analytics_service", return_value=mock_analytics_service), \
          patch("searchat.api.routers.stats.deps.get_config", side_effect=Exception("boom")):
         resp = client.get("/api/stats/analytics/config")
         assert resp.status_code == 500
@@ -281,7 +281,7 @@ def test_analytics_config_error_handling(client, mock_analytics_service):
 
 def test_all_analytics_endpoints_exist(client, mock_analytics_service):
     """Test all analytics endpoints are registered."""
-    with patch("searchat.api.dependencies.get_analytics_service", return_value=mock_analytics_service), \
+    with patch("searchat.api.routers.stats.deps.get_analytics_service", return_value=mock_analytics_service), \
          patch("searchat.api.routers.stats.deps.get_config") as mock_get_config:
         mock_get_config.return_value = Mock(analytics=Mock(enabled=False, retention_days=30))
         endpoints = [
@@ -302,7 +302,7 @@ def test_all_analytics_endpoints_exist(client, mock_analytics_service):
 
 
 def test_get_analytics_trends(client, mock_analytics_service):
-    with patch("searchat.api.dependencies.get_analytics_service", return_value=mock_analytics_service):
+    with patch("searchat.api.routers.stats.deps.get_analytics_service", return_value=mock_analytics_service):
         response = client.get("/api/stats/analytics/trends?days=30")
         assert response.status_code == 200
         data = response.json()
@@ -312,7 +312,7 @@ def test_get_analytics_trends(client, mock_analytics_service):
 
 
 def test_get_analytics_heatmap(client, mock_analytics_service):
-    with patch("searchat.api.dependencies.get_analytics_service", return_value=mock_analytics_service):
+    with patch("searchat.api.routers.stats.deps.get_analytics_service", return_value=mock_analytics_service):
         response = client.get("/api/stats/analytics/heatmap?days=30")
         assert response.status_code == 200
         data = response.json()
@@ -322,7 +322,7 @@ def test_get_analytics_heatmap(client, mock_analytics_service):
 
 
 def test_get_analytics_agent_comparison(client, mock_analytics_service):
-    with patch("searchat.api.dependencies.get_analytics_service", return_value=mock_analytics_service):
+    with patch("searchat.api.routers.stats.deps.get_analytics_service", return_value=mock_analytics_service):
         response = client.get("/api/stats/analytics/agent-comparison?days=30")
         assert response.status_code == 200
         data = response.json()
@@ -332,7 +332,7 @@ def test_get_analytics_agent_comparison(client, mock_analytics_service):
 
 
 def test_get_analytics_topics(client, mock_analytics_service):
-    with patch("searchat.api.dependencies.get_analytics_service", return_value=mock_analytics_service):
+    with patch("searchat.api.routers.stats.deps.get_analytics_service", return_value=mock_analytics_service):
         response = client.get("/api/stats/analytics/topics?days=30&k=8")
         assert response.status_code == 200
         data = response.json()
@@ -342,7 +342,7 @@ def test_get_analytics_topics(client, mock_analytics_service):
 
 
 def test_get_analytics_config(client, mock_analytics_service):
-    with patch("searchat.api.dependencies.get_analytics_service", return_value=mock_analytics_service), \
+    with patch("searchat.api.routers.stats.deps.get_analytics_service", return_value=mock_analytics_service), \
          patch("searchat.api.routers.stats.deps.get_config") as mock_get_config:
         mock_get_config.return_value = Mock(analytics=Mock(enabled=True, retention_days=14))
         response = client.get("/api/stats/analytics/config")
@@ -350,6 +350,22 @@ def test_get_analytics_config(client, mock_analytics_service):
         data = response.json()
         assert data["enabled"] is True
         assert data["retention_days"] == 14
+
+
+def test_get_top_queries_service_error(client, mock_analytics_service):
+    """Test top-queries returns 500 when service raises."""
+    mock_analytics_service.get_top_queries.side_effect = Exception("DB error")
+    with patch("searchat.api.routers.stats.deps.get_analytics_service", return_value=mock_analytics_service):
+        resp = client.get("/api/stats/analytics/top-queries")
+        assert resp.status_code == 500
+
+
+def test_get_dead_end_queries_service_error(client, mock_analytics_service):
+    """Test dead-ends returns 500 when service raises."""
+    mock_analytics_service.get_dead_end_queries.side_effect = Exception("DB error")
+    with patch("searchat.api.routers.stats.deps.get_analytics_service", return_value=mock_analytics_service):
+        resp = client.get("/api/stats/analytics/dead-ends")
+        assert resp.status_code == 500
 
 
 def test_analytics_endpoints_reject_snapshot_mode(client):

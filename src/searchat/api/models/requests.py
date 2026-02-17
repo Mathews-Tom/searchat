@@ -32,6 +32,7 @@ class ChatRequest(BaseModel):
     query: str
     model_provider: str = "ollama"
     model_name: str | None = None
+    session_id: str | None = None
 
 
 class ChatRagRequest(BaseModel):
@@ -40,6 +41,7 @@ class ChatRagRequest(BaseModel):
     query: str
     model_provider: str = "ollama"
     model_name: str | None = None
+    session_id: str | None = None
 
     temperature: float | None = Field(default=None, ge=0.0, le=2.0)
     max_tokens: int | None = Field(default=None, ge=1, le=32768)

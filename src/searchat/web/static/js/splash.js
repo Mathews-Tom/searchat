@@ -12,19 +12,19 @@ const CRITICAL_COMPONENTS = ['embedder', 'faiss', 'metadata'];
 
 // 8-12 key highlights with icons (medium summary)
 const HIGHLIGHTS = [
-    { icon: '🔍', title: '3 Search Modes', desc: 'Hybrid, Semantic, Keyword' },
+    { icon: '🔍', title: '3 Search Modes', desc: 'Hybrid (DuckDB FTS + FAISS), Semantic, Keyword' },
     { icon: '⚡', title: '<100ms Search', desc: 'Ultra-fast hybrid search with RRF fusion' },
-    { icon: '🎯', title: 'Autocomplete', desc: 'Smart suggestions as you type' },
+    { icon: '🎯', title: 'Smart Matching', desc: 'Autocomplete, synonym expansion, cross-encoder re-ranking' },
     { icon: '🤖', title: '8 AI Agents', desc: 'Claude, Vibe, OpenCode, Codex, Gemini, Continue, Cursor, Aider' },
-    { icon: '🔌', title: 'MCP Server', desc: 'Native integration for MCP clients' },
-    { icon: '💬', title: 'RAG Chat', desc: 'AI-powered Q&A over conversation history' },
+    { icon: '🔌', title: 'MCP Server', desc: '8 tools for MCP clients (search, patterns, agent config)' },
+    { icon: '💬', title: 'Session Chat', desc: 'Multi-turn RAG with 30-min session persistence' },
+    { icon: '🧩', title: 'Pattern Mining', desc: 'Extract recurring coding patterns via LLM' },
+    { icon: '📋', title: 'Agent Config', desc: 'Generate CLAUDE.md, copilot-instructions, cursorrules' },
     { icon: '🔗', title: 'Similarity Search', desc: 'Discover related conversations' },
     { icon: '🔖', title: 'Bookmarks', desc: 'Save and annotate favorites' },
     { icon: '📊', title: 'Analytics', desc: 'Track search patterns and trends' },
-    { icon: '📥', title: 'Export', desc: 'JSON, Markdown, Text, PDF formats' },
     { icon: '🛡️', title: 'Append-Only', desc: 'Never deletes existing data' },
-    { icon: '💾', title: 'Auto-Backup', desc: 'Safe system backups' },
-    { icon: '📈', title: '50+ API Endpoints', desc: 'Comprehensive REST API' },
+    { icon: '📈', title: '55+ API Endpoints', desc: 'Comprehensive REST API with 14 routers' },
 ];
 
 let pollInterval = null;

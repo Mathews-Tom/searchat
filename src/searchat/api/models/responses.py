@@ -92,6 +92,7 @@ class RAGResponse(BaseModel):
     answer: str
     sources: list[ConversationSource]
     context_used: int
+    session_id: str = ""
 
 
 class CodeSearchResultResponse(BaseModel):

@@ -269,6 +269,35 @@ export function initChat() {
     const maxTokensEl = document.getElementById('chatMaxTokens');
     const systemPromptEl = document.getElementById('chatSystemPrompt');
 
+    // Add collapse/expand functionality to chat panel
+    const chatPanel = document.getElementById('chatPanel');
+    const chatHeader = chatPanel?.querySelector('.chat-header');
+    if (chatHeader && chatPanel) {
+        const toggle = document.createElement('button');
+        toggle.className = 'chat-toggle';
+        toggle.setAttribute('aria-label', 'Toggle chat panel');
+        toggle.setAttribute('aria-expanded', 'true');
+        toggle.textContent = '▼';
+        chatHeader.style.cursor = 'pointer';
+        chatHeader.insertBefore(toggle, chatHeader.firstChild);
+
+        const savedState = localStorage.getItem('chat-panel-collapsed');
+        if (savedState === 'true') {
+            chatPanel.classList.add('collapsed');
+            toggle.textContent = '▶';
+            toggle.setAttribute('aria-expanded', 'false');
+        }
+
+        chatHeader.addEventListener('click', (e) => {
+            // Don't toggle when clicking controls inside the header
+            if (e.target.closest('.chat-controls') || e.target.closest('select') || e.target.closest('input') || e.target.closest('details')) return;
+            const isCollapsed = chatPanel.classList.toggle('collapsed');
+            toggle.textContent = isCollapsed ? '▶' : '▼';
+            toggle.setAttribute('aria-expanded', (!isCollapsed).toString());
+            localStorage.setItem('chat-panel-collapsed', isCollapsed.toString());
+        });
+    }
+
     if (sendBtn) sendBtn.addEventListener('click', runChatRag);
     if (stopBtn) {
         stopBtn.addEventListener('click', stopChat);
