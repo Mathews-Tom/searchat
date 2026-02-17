@@ -137,8 +137,8 @@ def test_extracted_pattern_equality():
 # ============================================================================
 
 
-@patch("searchat.services.llm_service.LLMService")
-@patch("searchat.api.dependencies.get_search_engine")
+@patch("searchat.services.pattern_mining.LLMService")
+@patch("searchat.services.pattern_mining.get_search_engine")
 def test_extract_patterns_with_topic(mock_get_engine, mock_llm_class, mock_config):
     """Test pattern extraction with a specific topic."""
     # Setup mock search engine
@@ -184,8 +184,8 @@ def test_extract_patterns_with_topic(mock_get_engine, mock_llm_class, mock_confi
     assert len(patterns[0].evidence) == 2
 
 
-@patch("searchat.services.llm_service.LLMService")
-@patch("searchat.api.dependencies.get_search_engine")
+@patch("searchat.services.pattern_mining.LLMService")
+@patch("searchat.services.pattern_mining.get_search_engine")
 def test_extract_patterns_without_topic_uses_defaults(
     mock_get_engine, mock_llm_class, mock_config
 ):
@@ -223,8 +223,8 @@ def test_extract_patterns_without_topic_uses_defaults(
     assert len(patterns) >= 1
 
 
-@patch("searchat.services.llm_service.LLMService")
-@patch("searchat.api.dependencies.get_search_engine")
+@patch("searchat.services.pattern_mining.LLMService")
+@patch("searchat.services.pattern_mining.get_search_engine")
 def test_extract_patterns_deduplicates_by_conversation_id(
     mock_get_engine, mock_llm_class, mock_config
 ):
@@ -276,8 +276,8 @@ def test_extract_patterns_deduplicates_by_conversation_id(
     assert "conv-2" in all_conv_ids
 
 
-@patch("searchat.services.llm_service.LLMService")
-@patch("searchat.api.dependencies.get_search_engine")
+@patch("searchat.services.pattern_mining.LLMService")
+@patch("searchat.services.pattern_mining.get_search_engine")
 def test_extract_patterns_respects_max_patterns(
     mock_get_engine, mock_llm_class, mock_config
 ):
@@ -315,8 +315,8 @@ def test_extract_patterns_respects_max_patterns(
     assert len(patterns) <= 2
 
 
-@patch("searchat.services.llm_service.LLMService")
-@patch("searchat.api.dependencies.get_search_engine")
+@patch("searchat.services.pattern_mining.LLMService")
+@patch("searchat.services.pattern_mining.get_search_engine")
 def test_extract_patterns_caps_evidence_at_5_per_cluster(
     mock_get_engine, mock_llm_class, mock_config
 ):
@@ -355,7 +355,7 @@ def test_extract_patterns_caps_evidence_at_5_per_cluster(
 # ============================================================================
 
 
-@patch("searchat.api.dependencies.get_search_engine")
+@patch("searchat.services.pattern_mining.get_search_engine")
 def test_extract_patterns_returns_empty_when_no_search_results(
     mock_get_engine, mock_config
 ):
@@ -373,8 +373,8 @@ def test_extract_patterns_returns_empty_when_no_search_results(
     assert patterns == []
 
 
-@patch("searchat.services.llm_service.LLMService")
-@patch("searchat.api.dependencies.get_search_engine")
+@patch("searchat.services.pattern_mining.LLMService")
+@patch("searchat.services.pattern_mining.get_search_engine")
 def test_extract_patterns_handles_all_seeds_returning_empty(
     mock_get_engine, mock_llm_class, mock_config
 ):
@@ -402,8 +402,8 @@ def test_extract_patterns_handles_all_seeds_returning_empty(
 # ============================================================================
 
 
-@patch("searchat.services.llm_service.LLMService")
-@patch("searchat.api.dependencies.get_search_engine")
+@patch("searchat.services.pattern_mining.LLMService")
+@patch("searchat.services.pattern_mining.get_search_engine")
 def test_extract_patterns_handles_json_decode_error(
     mock_get_engine, mock_llm_class, mock_config
 ):
@@ -433,8 +433,8 @@ def test_extract_patterns_handles_json_decode_error(
     assert len(patterns[0].evidence) == 1
 
 
-@patch("searchat.services.llm_service.LLMService")
-@patch("searchat.api.dependencies.get_search_engine")
+@patch("searchat.services.pattern_mining.LLMService")
+@patch("searchat.services.pattern_mining.get_search_engine")
 def test_extract_patterns_handles_missing_json_keys(
     mock_get_engine, mock_llm_class, mock_config
 ):
@@ -463,8 +463,8 @@ def test_extract_patterns_handles_missing_json_keys(
     assert patterns[0].confidence == 0.5  # Default
 
 
-@patch("searchat.services.llm_service.LLMService")
-@patch("searchat.api.dependencies.get_search_engine")
+@patch("searchat.services.pattern_mining.LLMService")
+@patch("searchat.services.pattern_mining.get_search_engine")
 def test_extract_patterns_handles_invalid_confidence_type(
     mock_get_engine, mock_llm_class, mock_config
 ):
@@ -495,8 +495,8 @@ def test_extract_patterns_handles_invalid_confidence_type(
     assert patterns[0].confidence == 0.3
 
 
-@patch("searchat.services.llm_service.LLMService")
-@patch("searchat.api.dependencies.get_search_engine")
+@patch("searchat.services.pattern_mining.LLMService")
+@patch("searchat.services.pattern_mining.get_search_engine")
 def test_extract_patterns_logs_warning_on_parse_failure(
     mock_get_engine, mock_llm_class, mock_config, caplog
 ):
@@ -531,8 +531,8 @@ def test_extract_patterns_logs_warning_on_parse_failure(
 # ============================================================================
 
 
-@patch("searchat.services.llm_service.LLMService")
-@patch("searchat.api.dependencies.get_search_engine")
+@patch("searchat.services.pattern_mining.LLMService")
+@patch("searchat.services.pattern_mining.get_search_engine")
 def test_extract_patterns_passes_correct_params_to_llm(
     mock_get_engine, mock_llm_class, mock_config
 ):
@@ -574,8 +574,8 @@ def test_extract_patterns_passes_correct_params_to_llm(
     assert "Analyze these conversation excerpts" in messages[1]["content"]
 
 
-@patch("searchat.services.llm_service.LLMService")
-@patch("searchat.api.dependencies.get_search_engine")
+@patch("searchat.services.pattern_mining.LLMService")
+@patch("searchat.services.pattern_mining.get_search_engine")
 def test_extract_patterns_builds_context_from_results(
     mock_get_engine, mock_llm_class, mock_config
 ):
@@ -614,8 +614,8 @@ def test_extract_patterns_builds_context_from_results(
 # ============================================================================
 
 
-@patch("searchat.services.llm_service.LLMService")
-@patch("searchat.api.dependencies.get_search_engine")
+@patch("searchat.services.pattern_mining.LLMService")
+@patch("searchat.services.pattern_mining.get_search_engine")
 def test_pattern_evidence_contains_correct_fields(
     mock_get_engine, mock_llm_class, mock_config
 ):
@@ -669,8 +669,8 @@ def test_pattern_evidence_contains_correct_fields(
 # ============================================================================
 
 
-@patch("searchat.services.llm_service.LLMService")
-@patch("searchat.api.dependencies.get_search_engine")
+@patch("searchat.services.pattern_mining.LLMService")
+@patch("searchat.services.pattern_mining.get_search_engine")
 def test_extract_patterns_uses_hybrid_search_mode(
     mock_get_engine, mock_llm_class, mock_config
 ):
@@ -694,8 +694,8 @@ def test_extract_patterns_uses_hybrid_search_mode(
         assert isinstance(call[1]["filters"], SearchFilters)
 
 
-@patch("searchat.services.llm_service.LLMService")
-@patch("searchat.api.dependencies.get_search_engine")
+@patch("searchat.services.pattern_mining.LLMService")
+@patch("searchat.services.pattern_mining.get_search_engine")
 def test_extract_patterns_takes_top_20_results_per_seed(
     mock_get_engine, mock_llm_class, mock_config
 ):
@@ -740,8 +740,8 @@ def test_extract_patterns_takes_top_20_results_per_seed(
 # ============================================================================
 
 
-@patch("searchat.services.llm_service.LLMService")
-@patch("searchat.api.dependencies.get_search_engine")
+@patch("searchat.services.pattern_mining.LLMService")
+@patch("searchat.services.pattern_mining.get_search_engine")
 def test_extract_patterns_with_max_patterns_zero(
     mock_get_engine, mock_llm_class, mock_config
 ):
@@ -765,8 +765,8 @@ def test_extract_patterns_with_max_patterns_zero(
     mock_llm.completion.assert_not_called()
 
 
-@patch("searchat.services.llm_service.LLMService")
-@patch("searchat.api.dependencies.get_search_engine")
+@patch("searchat.services.pattern_mining.LLMService")
+@patch("searchat.services.pattern_mining.get_search_engine")
 def test_extract_patterns_with_model_name_none(
     mock_get_engine, mock_llm_class, mock_config
 ):
@@ -797,8 +797,8 @@ def test_extract_patterns_with_model_name_none(
     assert call_args[1]["model_name"] is None
 
 
-@patch("searchat.services.llm_service.LLMService")
-@patch("searchat.api.dependencies.get_search_engine")
+@patch("searchat.services.pattern_mining.LLMService")
+@patch("searchat.services.pattern_mining.get_search_engine")
 def test_extract_patterns_with_multiple_projects(
     mock_get_engine, mock_llm_class, mock_config
 ):

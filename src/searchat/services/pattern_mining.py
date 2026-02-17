@@ -3,11 +3,13 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
+from searchat.api.dependencies import get_search_engine
 from searchat.config import Config
 from searchat.config.constants import PATTERN_MINING_SEEDS
 from searchat.models import SearchMode, SearchFilters
+from searchat.services.llm_service import LLMService
 
 logger = logging.getLogger(__name__)
 
@@ -58,9 +60,6 @@ def extract_patterns(
     Returns:
         List of extracted patterns with evidence.
     """
-    from searchat.api.dependencies import get_search_engine
-    from searchat.services.llm_service import LLMService
-
     search_engine = get_search_engine()
 
     # Step 1: Generate seed queries
