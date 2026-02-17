@@ -842,7 +842,7 @@ class BackupManager:
             )
             return False
 
-        logger.info(f"Backup validation passed: {backup_path.name}")
+        logger.debug(f"Backup validation passed: {backup_path.name}")
         return True
 
     def restore_from_backup(
