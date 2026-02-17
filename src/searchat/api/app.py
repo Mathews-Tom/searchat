@@ -26,7 +26,6 @@ from searchat.api.dependencies import (
     start_background_warmup,
     get_config,
     get_indexer,
-    get_search_engine,
     get_watcher,
     set_watcher,
     watcher_stats,
@@ -197,7 +196,7 @@ def on_new_conversations(file_paths: list[str]) -> None:
 
     try:
         indexer = get_indexer()
-        search_engine = get_search_engine()
+        deps.get_or_create_search_engine()  # ensure engine exists before indexing
 
         # Mark indexing in progress
         indexing_state["in_progress"] = True
