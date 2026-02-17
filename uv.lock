@@ -3418,7 +3418,15 @@ wheels = [
 
 [[package]]
 name = "searchat"
+<<<<<<< HEAD
 version = "0.6.0"
+=======
+<<<<<<< Updated upstream
+version = "0.5.0"
+=======
+version = "0.6.1"
+>>>>>>> Stashed changes
+>>>>>>> c7b0f5f (chore: updating uv.lock)
 source = { editable = "." }
 dependencies = [
     { name = "duckdb" },
