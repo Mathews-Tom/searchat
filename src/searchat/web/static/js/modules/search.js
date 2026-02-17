@@ -6,7 +6,7 @@ import { loadCodeBlocks } from './code-extraction.js';
 import { createStarIcon } from './bookmarks.js';
 import { loadSimilarConversations } from './similar.js';
 import { addCheckboxToResult } from './bulk-export.js';
-import { renderPagination, setTotalResults, getOffset, resetPagination } from './pagination.js';
+import { renderPagination, setTotalResults, getOffset, resetPagination, goToPage } from './pagination.js';
 import { getProjectSummaries } from './api.js';
 import { applySnapshotParam, isSnapshotActive, getSnapshotName } from './dataset.js';
 
@@ -501,7 +501,7 @@ export async function search(resetPage = true, attempt = 0) {
                 return;
             }
 
-            resultsDiv.innerHTML = `<div class="loading">Warming up search engine (first run)... retrying in ${Math.round(delay / 100) / 10}s</div>`;
+            resultsDiv.innerHTML = `<div class="loading"><span class="warmup-spinner"></span> Warming up search engine\u2026</div>`;
             await _sleep(delay);
             if (nonce === _searchNonce) {
                 return search(false, attempt + 1);
@@ -759,6 +759,13 @@ export async function showAllConversations() {
 
     applySnapshotParam(params);
 
+    // Server-side pagination: fetch one page at a time instead of the
+    // entire dataset to avoid freezing the browser on large collections.
+    const PAGE_SIZE = 50;
+    const offset = getOffset();
+    params.set('limit', PAGE_SIZE);
+    params.set('offset', offset);
+
     try {
         const response = await fetch(`/api/conversations/all?${params}`);
         const data = await response.json();
@@ -777,13 +784,18 @@ export async function showAllConversations() {
             'custom': 'from custom date range'
         };
         const dateInfo = date ? ` ${dateLabels[date] || ''}` : '';
-        resultsDiv.innerHTML = `<div class="results-header">Showing all ${data.total} conversations${projectInfo}${dateInfo} (sorted by ${apiSortBy})</div>`;
+        const pageStart = offset + 1;
+        const pageEnd = offset + data.results.length;
+        resultsDiv.innerHTML = `<div class="results-header">Showing ${pageStart}–${pageEnd} of ${data.total} conversations${projectInfo}${dateInfo} (sorted by ${apiSortBy})</div>`;
 
+        // Build DOM in a fragment to avoid repeated reflows.
+        const fragment = document.createDocumentFragment();
         data.results.forEach((r, index) => {
+            const globalIndex = offset + index;
             const div = document.createElement('div');
             const isWSL = r.source === 'WSL';
             div.className = `result ${isWSL ? 'wsl' : 'windows'}`;
-            div.id = `result-${index}`;
+            div.id = `result-${globalIndex}`;
             div.dataset.conversationId = r.conversation_id;
             const shortId = r.conversation_id.split('-').pop();
 
@@ -837,12 +849,19 @@ export async function showAllConversations() {
             div.onclick = () => {
                 saveAllConversationsState();
                 sessionStorage.setItem('lastScrollPosition', window.scrollY);
-                sessionStorage.setItem('lastResultIndex', index);
+                sessionStorage.setItem('lastResultIndex', globalIndex);
                 sessionStorage.setItem('activeConversationId', r.conversation_id);
                 loadConversationView(r.conversation_id);
             };
-            resultsDiv.appendChild(div);
+            fragment.appendChild(div);
         });
+        resultsDiv.appendChild(fragment);
+
+        // Wire up pagination controls
+        setTotalResults(data.total);
+        window.goToPage = (page) => goToPage(page, showAllConversations);
+        renderPagination(resultsDiv, showAllConversations);
+
         saveAllConversationsState();
         ensureResultsHandlers(resultsDiv);
     } catch (error) {

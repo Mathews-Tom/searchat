@@ -210,9 +210,18 @@ async function runChatRag() {
 
         if (response.status === 503) {
             const payload = await response.json().catch(() => null);
-            const msg = payload && payload.status === 'warming'
-                ? 'Search engine warming, please retry.'
-                : (payload && payload.detail ? payload.detail : 'Search engine warming, please retry.');
+            if (payload && payload.status === 'warming') {
+                // Engine still warming — show spinner and auto-retry.
+                setSpinner(true);
+                setStatus('Search engine warming up\u2026');
+                const delay = (payload.retry_after_ms || 500);
+                await new Promise(r => setTimeout(r, delay));
+                if (!_chatController?.signal.aborted) {
+                    return runChatRag();
+                }
+                return;
+            }
+            const msg = payload && payload.detail ? payload.detail : 'Service unavailable.';
             setStatus(msg, true);
             return;
         }
@@ -281,8 +290,9 @@ export function initChat() {
         chatHeader.style.cursor = 'pointer';
         chatHeader.insertBefore(toggle, chatHeader.firstChild);
 
+        // Collapsed by default; only expand if user previously opened it.
         const savedState = localStorage.getItem('chat-panel-collapsed');
-        if (savedState === 'true') {
+        if (savedState !== 'false') {
             chatPanel.classList.add('collapsed');
             toggle.textContent = '▶';
             toggle.setAttribute('aria-expanded', 'false');
