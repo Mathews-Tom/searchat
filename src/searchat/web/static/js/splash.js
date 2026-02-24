@@ -105,7 +105,7 @@ function renderSplash(status) {
     const header = document.createElement('div');
     header.className = 'splash-header';
     header.innerHTML = `
-        <h1><span style="color: #4a9eff">sear</span><span style="background: linear-gradient(to right, #4a9eff, #ff9500); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">ch</span><span style="color: #ff9500">at</span></h1>
+        <h1><span class="text-shimmer">searchat</span></h1>
         <p>Warming up search engine...</p>
     `;
     content.appendChild(header);
@@ -115,7 +115,7 @@ function renderSplash(status) {
     highlightsContainer.className = 'splash-highlights';
     HIGHLIGHTS.forEach(highlight => {
         const item = document.createElement('div');
-        item.className = 'splash-highlight-item';
+        item.className = 'splash-highlight-item stat-card';
         item.innerHTML = `
             <span class="splash-highlight-icon">${highlight.icon}</span>
             <div class="splash-highlight-text">

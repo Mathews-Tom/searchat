@@ -117,7 +117,7 @@ export async function indexMissing() {
 
         if (data.success) {
             const failedInfo = data.failed_conversations > 0
-                ? ` | <strong style="color: #721c24;">${data.failed_conversations} failed</strong>`
+                ? ` | <strong style="color: hsl(var(--danger));">${data.failed_conversations} failed</strong>`
                 : '';
 
             if (data.new_conversations === 0) {
@@ -161,7 +161,7 @@ export async function indexMissing() {
             resultsDiv.innerHTML = '<div class="notification notification-error"><strong>Indexing failed</strong></div>';
         }
     } catch (error) {
-        resultsDiv.innerHTML = `<div style="color: #f44336;">Error: ${error.message}</div>`;
+        resultsDiv.innerHTML = `<div style="color: hsl(var(--danger));">Error: ${error.message}</div>`;
     }
 }
 
@@ -179,10 +179,10 @@ export async function shutdownServer(force = false) {
         const data = await response.json();
 
         if (data.success) {
-            let warningStyle = 'background: #f44336;';
+            let warningStyle = 'background: hsl(var(--danger));';
             let warningMsg = '';
             if (data.forced) {
-                warningStyle = 'background: #ff9800; border-left-color: #ff5722;';
+                warningStyle = 'background: hsl(var(--warning)); border-left-color: hsl(var(--danger));';
                 warningMsg = '<div style="margin-top: 8px; color: #fff; font-weight: 600;">⚠ FORCED SHUTDOWN - Indexing was interrupted. Index may be inconsistent.</div>';
             }
 
@@ -198,7 +198,7 @@ export async function shutdownServer(force = false) {
         } else if (data.indexing_in_progress) {
             // Indexing is in progress - offer options
             resultsDiv.innerHTML = `
-                <div class="results-header" style="background: #ff9800; padding: 15px; border-left: 3px solid #ff5722;">
+                <div class="results-header" style="background: hsl(var(--warning)); padding: 15px; border-left: 3px solid hsl(var(--danger));">
                     <strong>⚠ Indexing in Progress</strong>
                     <div style="margin-top: 8px;">
                         <strong>Operation:</strong> ${data.operation}<br>
@@ -209,22 +209,22 @@ export async function shutdownServer(force = false) {
                         Shutting down during indexing may corrupt data.
                     </div>
                     <div style="margin-top: 12px;">
-                        <button onclick="import('./modules/api.js').then(m => m.shutdownServer(true))" style="background: #f44336; color: white; border: none; padding: 8px 16px; cursor: pointer; margin-right: 10px;">
+                        <button onclick="import('./modules/api.js').then(m => m.shutdownServer(true))" style="background: hsl(var(--danger)); color: white; border: none; padding: 8px 16px; cursor: pointer; margin-right: 10px;">
                             Force Stop (Unsafe)
                         </button>
-                        <button onclick="document.getElementById('results').innerHTML = ''" style="background: #4CAF50; color: white; border: none; padding: 8px 16px; cursor: pointer;">
+                        <button onclick="document.getElementById('results').innerHTML = ''" style="background: hsl(var(--success)); color: white; border: none; padding: 8px 16px; cursor: pointer;">
                             Wait for Completion
                         </button>
                     </div>
                 </div>
             `;
         } else {
-            resultsDiv.innerHTML = '<div style="color: #f44336;">Shutdown failed</div>';
+            resultsDiv.innerHTML = '<div style="color: hsl(var(--danger));">Shutdown failed</div>';
         }
     } catch (error) {
         // Server likely already shut down, which is expected
         resultsDiv.innerHTML = `
-            <div class="results-header" style="background: #f44336; padding: 15px;">
+            <div class="results-header" style="background: hsl(var(--danger)); padding: 15px;">
                 <strong>✓ Server stopped</strong>
                 <div style="margin-top: 8px; opacity: 0.9;">
                     You can close this window. To restart, run: <code style="background: #333; padding: 2px 6px;">searchat-web</code>

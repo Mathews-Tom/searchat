@@ -6,7 +6,7 @@ function setStatus(message, isError = false) {
     const status = document.getElementById('chatStatus');
     if (!status) return;
     status.textContent = message;
-    status.style.color = isError ? '#f44336' : '';
+    status.style.color = isError ? 'hsl(var(--danger))' : '';
 }
 
 function setSpinner(active) {

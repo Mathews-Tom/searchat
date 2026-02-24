@@ -92,8 +92,8 @@ export function initSearchHistory() {
         position: relative;
         display: none;
         margin-top: 8px;
-        background: var(--bg-elevated);
-        border: 1px solid var(--border-default);
+        background: hsl(var(--bg-elevated));
+        border: 1px solid hsl(var(--border-glass));
         border-radius: 8px;
         padding: 8px;
         max-height: 400px;
@@ -115,20 +115,20 @@ export function initSearchHistory() {
     toggleBtn.style.cssText = `
         margin-top: 8px;
         padding: 6px 12px;
-        background: var(--bg-surface);
-        border: 1px solid var(--border-default);
+        background: hsl(var(--bg-surface));
+        border: 1px solid hsl(var(--border-glass));
         border-radius: 6px;
-        color: var(--text-primary);
-        font-family: 'Space Grotesk', sans-serif;
+        color: hsl(var(--text-primary));
+        font-family: var(--font-sans);
         font-size: 13px;
         cursor: pointer;
         transition: all 0.2s;
     `;
     toggleBtn.onmouseover = () => {
-        toggleBtn.style.background = 'var(--bg-elevated)';
+        toggleBtn.style.background = 'hsl(var(--bg-elevated))';
     };
     toggleBtn.onmouseout = () => {
-        toggleBtn.style.background = 'var(--bg-surface)';
+        toggleBtn.style.background = 'hsl(var(--bg-surface))';
     };
     toggleBtn.onclick = toggleHistoryUI;
 
@@ -170,7 +170,7 @@ function updateHistoryUI() {
 
     if (history.length === 0) {
         container.innerHTML = `
-            <div style="color: var(--text-muted); font-size: 13px; text-align: center; padding: 16px;">
+            <div style="color: hsl(var(--text-tertiary)); font-size: 13px; text-align: center; padding: 16px;">
                 No recent searches yet
             </div>
         `;
@@ -178,20 +178,20 @@ function updateHistoryUI() {
     }
 
     let html = `
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--border-muted);">
-            <div style="color: var(--text-primary); font-weight: 500; font-size: 13px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid hsl(var(--border-subtle));">
+            <div style="color: hsl(var(--text-primary)); font-weight: 500; font-size: 13px;">
                 Recent Searches
             </div>
             <button onclick="window.clearSearchHistory()" style="
                 background: transparent;
                 border: none;
-                color: var(--text-muted);
+                color: hsl(var(--text-tertiary));
                 font-size: 12px;
                 cursor: pointer;
                 padding: 4px 8px;
                 border-radius: 4px;
                 transition: all 0.2s;
-            " onmouseover="this.style.background='var(--bg-surface)'" onmouseout="this.style.background='transparent'">
+            " onmouseover="this.style.background='hsl(var(--bg-surface))'" onmouseout="this.style.background='transparent'">
                 Clear All
             </button>
         </div>
@@ -218,11 +218,11 @@ function updateHistoryUI() {
                 cursor: pointer;
                 transition: all 0.2s;
                 border: 1px solid transparent;
-            " onmouseover="this.style.background='var(--bg-surface)'; this.style.borderColor='var(--border-default)'" onmouseout="this.style.background='transparent'; this.style.borderColor='transparent'">
-                <div style="color: var(--text-primary); font-size: 14px; margin-bottom: 4px; font-weight: 500;">
-                    ${entry.query || '<em style="color: var(--text-muted);">(empty query)</em>'}
+            " onmouseover="this.style.background='hsl(var(--bg-surface))'; this.style.borderColor='hsl(var(--border-glass))'" onmouseout="this.style.background='transparent'; this.style.borderColor='transparent'">
+                <div style="color: hsl(var(--text-primary)); font-size: 14px; margin-bottom: 4px; font-weight: 500;">
+                    ${entry.query || '<em style="color: hsl(var(--text-tertiary));">(empty query)</em>'}
                 </div>
-                <div style="color: var(--text-muted); font-size: 12px;">
+                <div style="color: hsl(var(--text-tertiary)); font-size: 12px;">
                     ${filterText} • ${timeAgo}
                 </div>
             </div>

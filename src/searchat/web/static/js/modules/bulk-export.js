@@ -64,6 +64,7 @@ function createCheckbox(conversationId) {
         width: 18px;
         height: 18px;
         cursor: pointer;
+        accent-color: hsl(var(--accent));
     `;
 
     checkbox.addEventListener('change', (e) => {
@@ -88,16 +89,12 @@ function showBulkToolbar() {
     if (!toolbar) {
         toolbar = document.createElement('div');
         toolbar.id = 'bulkToolbar';
+        toolbar.className = 'glass-elevated';
         toolbar.style.cssText = `
             position: fixed;
             bottom: 20px;
             left: 50%;
             transform: translateX(-50%);
-            background: var(--bg-elevated);
-            border: 1px solid var(--border-default);
-            border-radius: 8px;
-            padding: 16px 24px;
-            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
             z-index: 1000;
             display: flex;
             align-items: center;
@@ -105,73 +102,15 @@ function showBulkToolbar() {
         `;
 
         toolbar.innerHTML = `
-            <span id="bulkCount" style="font-size: 14px; color: var(--text-primary); font-weight: 500;">
+            <span id="bulkCount" style="font-size: 14px; color: hsl(var(--text-primary)); font-weight: 500;">
                 0 selected
             </span>
-            <button id="bulkSelectAll" style="
-                background: var(--bg-surface);
-                border: 1px solid var(--border-default);
-                color: var(--text-primary);
-                padding: 6px 12px;
-                border-radius: 4px;
-                cursor: pointer;
-                font-size: 13px;
-                font-family: 'Space Grotesk', sans-serif;
-            ">
-                Select All
-            </button>
-            <button id="bulkDeselectAll" style="
-                background: var(--bg-surface);
-                border: 1px solid var(--border-default);
-                color: var(--text-primary);
-                padding: 6px 12px;
-                border-radius: 4px;
-                cursor: pointer;
-                font-size: 13px;
-                font-family: 'Space Grotesk', sans-serif;
-            ">
-                Deselect All
-            </button>
-            <div style="width: 1px; height: 24px; background: var(--border-default);"></div>
-            <button id="bulkExportJson" style="
-                background: var(--accent-primary);
-                border: none;
-                color: white;
-                padding: 6px 14px;
-                border-radius: 4px;
-                cursor: pointer;
-                font-size: 13px;
-                font-weight: 500;
-                font-family: 'Space Grotesk', sans-serif;
-            ">
-                📄 Export JSON
-            </button>
-            <button id="bulkExportMarkdown" style="
-                background: var(--accent-primary);
-                border: none;
-                color: white;
-                padding: 6px 14px;
-                border-radius: 4px;
-                cursor: pointer;
-                font-size: 13px;
-                font-weight: 500;
-                font-family: 'Space Grotesk', sans-serif;
-            ">
-                📝 Export Markdown
-            </button>
-            <button id="bulkExportText" style="
-                background: var(--accent-primary);
-                border: none;
-                color: white;
-                padding: 6px 14px;
-                border-radius: 4px;
-                cursor: pointer;
-                font-size: 13px;
-                font-weight: 500;
-                font-family: 'Space Grotesk', sans-serif;
-            ">
-                📃 Export Text
-            </button>
+            <button id="bulkSelectAll" class="glass-btn">Select All</button>
+            <button id="bulkDeselectAll" class="glass-btn">Deselect All</button>
+            <div style="width: 1px; height: 24px; background: hsl(var(--border-glass));"></div>
+            <button id="bulkExportJson" class="glass-btn glass-btn-primary">Export JSON</button>
+            <button id="bulkExportMarkdown" class="glass-btn glass-btn-primary">Export Markdown</button>
+            <button id="bulkExportText" class="glass-btn glass-btn-primary">Export Text</button>
         `;
 
         document.body.appendChild(toolbar);
@@ -288,11 +227,11 @@ async function bulkExport(format) {
         if (countSpan) {
             const originalText = countSpan.textContent;
             countSpan.textContent = '✓ Export complete!';
-            countSpan.style.color = 'var(--success)';
+            countSpan.style.color = 'hsl(var(--success))';
 
             setTimeout(() => {
                 countSpan.textContent = originalText;
-                countSpan.style.color = 'var(--text-primary)';
+                countSpan.style.color = 'hsl(var(--text-primary))';
             }, 3000);
         }
 
@@ -310,10 +249,12 @@ function updateToggleButton() {
     if (btn) {
         if (bulkModeActive) {
             btn.textContent = '✕ Exit Bulk Mode';
-            btn.style.background = 'var(--danger)';
+            btn.style.borderColor = 'hsl(var(--danger))';
+            btn.style.color = 'hsl(var(--danger))';
         } else {
-            btn.textContent = '☑ Bulk Export';
-            btn.style.background = '#9C27B0';
+            btn.textContent = 'Bulk Export';
+            btn.style.borderColor = 'hsl(var(--accent))';
+            btn.style.color = '';
         }
     }
 }
