@@ -17,7 +17,8 @@ import { showDashboards } from './modules/dashboards.js';
 import { initDatasetSelector } from './modules/dataset.js';
 import { checkAndShowSplash } from './splash.js';
 import { createBackup, showBackups } from './modules/backup.js';
-import { initSidebarSections, initSidebarDrawers } from './modules/sidebar.js';
+import { initSidebarSections } from './modules/sidebar.js';
+import { initLayout } from './modules/layout.js';
 
 // Make functions globally available for inline event handlers
 window.setTheme = setTheme;
@@ -40,6 +41,11 @@ window.indexMissing = indexMissing;
 window.shutdownServer = shutdownServer;
 window.createBackup = createBackup;
 window.showBackups = showBackups;
+window.showSearchView = showSearchView;
+window.toggleChat = function () {
+    const panel = document.getElementById('chatPanel');
+    if (panel) panel.classList.toggle('collapsed');
+};
 
 function safeInit(name, fn) {
     try {
@@ -66,7 +72,7 @@ safeInit('saved-queries', initSavedQueries);
 safeInit('project-suggestion', initProjectSuggestion);
 safeInit('dataset-selector', initDatasetSelector);
 safeInit('sidebar-sections', initSidebarSections);
-safeInit('sidebar-drawers', initSidebarDrawers);
+safeInit('layout', initLayout);
 
 safeInit('bulk-export', async () => {
     const module = await import('./modules/bulk-export.js');
