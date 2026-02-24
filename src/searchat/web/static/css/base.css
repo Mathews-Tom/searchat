@@ -1,36 +1,138 @@
 /* Base Styles - Reset and Typography */
-* {
+*, *::before, *::after {
     box-sizing: border-box;
     margin: 0;
     padding: 0;
 }
 
-body {
-    font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-    font-size: 16px;
+html, body {
+    background: hsl(var(--bg-base));
+    color: hsl(var(--text-primary));
+    font-family: var(--font-sans);
+    font-size: 14px;
     line-height: 1.6;
-    margin: 0;
-    padding: 24px;
-    background: var(--bg-primary);
-    color: var(--text-primary);
+    min-height: 100vh;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
 }
 
+/* Selection */
+::selection {
+    background: hsl(var(--accent) / 0.25);
+    color: hsl(var(--text-primary));
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: hsl(var(--scrollbar-track));
+}
+
+::-webkit-scrollbar-thumb {
+    background: hsl(var(--scrollbar-thumb));
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--scrollbar-thumb) / 0.8);
+}
+
 /* Typography */
 h1 {
-    font-family: 'Space Grotesk', sans-serif;
+    font-family: var(--font-sans);
     font-size: 32px;
     font-weight: 700;
-    color: var(--text-primary);
+    color: hsl(var(--text-primary));
     margin: 0 0 8px 0;
     line-height: 1.2;
 }
 
+h2 {
+    font-family: var(--font-sans);
+    font-weight: 700;
+}
+
 h3 {
-    font-family: 'Space Grotesk', sans-serif;
+    font-family: var(--font-sans);
     font-size: 18px;
     font-weight: 500;
     margin: 0 0 16px 0;
     letter-spacing: -0.01em;
+}
+
+/* Mesh Background with Noise Texture */
+.mesh-bg {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    z-index: -1;
+    background: var(--gradient-mesh);
+    transition: opacity var(--transition-slow);
+}
+
+.mesh-bg::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+    opacity: var(--noise-opacity);
+    pointer-events: none;
+}
+
+/* Animations */
+@keyframes fadeSlideUp {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* Skip Link */
+.skip-link {
+    position: absolute;
+    top: -40px;
+    left: 0;
+    background: hsl(var(--accent));
+    color: hsl(var(--text-inverse));
+    padding: 8px 16px;
+    z-index: 10000;
+    transition: top var(--transition-fast);
+}
+
+.skip-link:focus {
+    top: 0;
+}
+
+/* Loading indicator with animated dots */
+.loading-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: hsl(var(--text-secondary));
+}
+
+.loading-indicator::after {
+    content: '';
+    width: 16px;
+    height: 16px;
+    border: 2px solid hsl(var(--border-subtle));
+    border-top-color: hsl(var(--accent));
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
 }
