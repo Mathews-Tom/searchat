@@ -6,28 +6,28 @@
   <title>Searchat — Backup & Restore Flow</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="shared/navigation.css">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     /* Light Theme (default) */
     :root {
-      --c-bg: #f6f8fa;
-      --c-surface: #ffffff;
-      --c-border: #d0d7de;
-      --c-text: #24292f;
-      --c-muted: #57606a;
+      --c-bg: hsl(240 20% 97%);
+      --c-surface: hsl(0 0% 100%);
+      --c-border: hsl(220 13% 91%);
+      --c-text: hsl(220 14% 10%);
+      --c-muted: hsl(220 9% 43%);
 
-      --c-backup: #0E7C3A;
-      --c-validate: #D4740A;
-      --c-restore: #1B6AC9;
-      --c-error: #C93B5E;
-      --c-safety: #8B3EC9;
+      --c-backup: hsl(145 79% 27%);
+      --c-validate: hsl(30 90% 43%);
+      --c-restore: hsl(213 76% 45%);
+      --c-error: hsl(345 55% 51%);
+      --c-safety: hsl(275 55% 51%);
 
-      --shadow-sm: 0 1px 3px rgba(28,33,39,0.08);
-      --shadow-md: 0 3px 10px rgba(28,33,39,0.13);
-      --shadow-lg: 0 8px 24px rgba(28,33,39,0.18);
+      --shadow-sm: 0 1px 2px hsl(220 14% 10% / 0.04), 0 1px 3px hsl(220 14% 10% / 0.03);
+      --shadow-md: 0 4px 6px hsl(220 14% 10% / 0.04), 0 2px 4px hsl(220 14% 10% / 0.03);
+      --shadow-lg: 0 10px 25px hsl(220 14% 10% / 0.06), 0 4px 10px hsl(220 14% 10% / 0.04);
 
       --r-sm: 3px;
       --r-md: 6px;
@@ -37,67 +37,67 @@
     /* Dark Theme - System preference */
     @media (prefers-color-scheme: dark) {
       :root:not([data-theme="light"]) {
-        --c-bg: #0d1117;
-        --c-surface: #161b22;
-        --c-border: #30363d;
-        --c-text: #c9d1d9;
-        --c-muted: #8b949e;
+        --c-bg: hsl(224 25% 8%);
+        --c-surface: hsl(224 22% 12%);
+        --c-border: hsl(224 15% 20%);
+        --c-text: hsl(220 14% 95%);
+        --c-muted: hsl(220 9% 65%);
 
-        --c-backup: #3fb950;
-        --c-validate: #ffa657;
-        --c-restore: #58a6ff;
-        --c-error: #ff7b9c;
-        --c-safety: #bc8cff;
+        --c-backup: hsl(130 55% 49%);
+        --c-validate: hsl(27 100% 67%);
+        --c-restore: hsl(213 100% 67%);
+        --c-error: hsl(348 100% 74%);
+        --c-safety: hsl(265 100% 77%);
 
-        --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
-        --shadow-md: 0 3px 10px rgba(0,0,0,0.4);
-        --shadow-lg: 0 8px 24px rgba(0,0,0,0.5);
+        --shadow-sm: 0 1px 2px hsl(0 0% 0% / 0.2), 0 1px 3px hsl(0 0% 0% / 0.15);
+        --shadow-md: 0 4px 6px hsl(0 0% 0% / 0.2), 0 2px 4px hsl(0 0% 0% / 0.15);
+        --shadow-lg: 0 10px 25px hsl(0 0% 0% / 0.3), 0 4px 10px hsl(0 0% 0% / 0.2);
       }
     }
 
     /* Dark Theme - Manual override */
     :root[data-theme="dark"] {
-      --c-bg: #0d1117;
-      --c-surface: #161b22;
-      --c-border: #30363d;
-      --c-text: #c9d1d9;
-      --c-muted: #8b949e;
+      --c-bg: hsl(224 25% 8%);
+      --c-surface: hsl(224 22% 12%);
+      --c-border: hsl(224 15% 20%);
+      --c-text: hsl(220 14% 95%);
+      --c-muted: hsl(220 9% 65%);
 
-      --c-backup: #3fb950;
-      --c-validate: #ffa657;
-      --c-restore: #58a6ff;
-      --c-error: #ff7b9c;
-      --c-safety: #bc8cff;
+      --c-backup: hsl(130 55% 49%);
+      --c-validate: hsl(27 100% 67%);
+      --c-restore: hsl(213 100% 67%);
+      --c-error: hsl(348 100% 74%);
+      --c-safety: hsl(265 100% 77%);
 
-      --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
-      --shadow-md: 0 3px 10px rgba(0,0,0,0.4);
-      --shadow-lg: 0 8px 24px rgba(0,0,0,0.5);
+      --shadow-sm: 0 1px 2px hsl(0 0% 0% / 0.2), 0 1px 3px hsl(0 0% 0% / 0.15);
+      --shadow-md: 0 4px 6px hsl(0 0% 0% / 0.2), 0 2px 4px hsl(0 0% 0% / 0.15);
+      --shadow-lg: 0 10px 25px hsl(0 0% 0% / 0.3), 0 4px 10px hsl(0 0% 0% / 0.2);
     }
 
     /* Light Theme - Manual override */
     :root[data-theme="light"] {
-      --c-bg: #f6f8fa;
-      --c-surface: #ffffff;
-      --c-border: #d0d7de;
-      --c-text: #24292f;
-      --c-muted: #57606a;
+      --c-bg: hsl(240 20% 97%);
+      --c-surface: hsl(0 0% 100%);
+      --c-border: hsl(220 13% 91%);
+      --c-text: hsl(220 14% 10%);
+      --c-muted: hsl(220 9% 43%);
 
-      --c-backup: #0E7C3A;
-      --c-validate: #D4740A;
-      --c-restore: #1B6AC9;
-      --c-error: #C93B5E;
-      --c-safety: #8B3EC9;
+      --c-backup: hsl(145 79% 27%);
+      --c-validate: hsl(30 90% 43%);
+      --c-restore: hsl(213 76% 45%);
+      --c-error: hsl(345 55% 51%);
+      --c-safety: hsl(275 55% 51%);
 
-      --shadow-sm: 0 1px 3px rgba(28,33,39,0.08);
-      --shadow-md: 0 3px 10px rgba(28,33,39,0.13);
-      --shadow-lg: 0 8px 24px rgba(28,33,39,0.18);
+      --shadow-sm: 0 1px 2px hsl(220 14% 10% / 0.04), 0 1px 3px hsl(220 14% 10% / 0.03);
+      --shadow-md: 0 4px 6px hsl(220 14% 10% / 0.04), 0 2px 4px hsl(220 14% 10% / 0.03);
+      --shadow-lg: 0 10px 25px hsl(220 14% 10% / 0.06), 0 4px 10px hsl(220 14% 10% / 0.04);
     }
 
     body {
       margin: 0;
       padding: 20px;
       background: var(--c-bg);
-      font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
       font-size: 13px;
       color: var(--c-text);
       line-height: 1.5;
@@ -111,7 +111,7 @@
       padding-bottom: 20px;
       border-bottom: 2px solid var(--c-border);
     }
-    .header h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; font-family: 'Space Grotesk', -apple-system, sans-serif; }
+    .header h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; font-family: 'DM Sans', -apple-system, sans-serif; }
     .header .subtitle { font-size: 16px; color: var(--c-muted); margin-bottom: 12px; }
     .header .meta {
       font-family: 'SFMono-Regular', Consolas, monospace;

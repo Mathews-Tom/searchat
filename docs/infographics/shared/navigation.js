@@ -112,13 +112,13 @@
             </svg>
             <span>Dark</span>
           </button>
-          <button class="theme-option" data-theme="system" aria-label="System theme">
+          <button class="theme-option" data-theme="auto" aria-label="Auto theme">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="2" y="3" width="20" height="14" rx="2"/>
               <line x1="8" y1="21" x2="16" y2="21"/>
               <line x1="12" y1="17" x2="12" y2="21"/>
             </svg>
-            <span>System</span>
+            <span>Auto</span>
           </button>
         </div>
       </div>
@@ -233,7 +233,7 @@
    * Load theme state and apply
    */
   function loadThemeState() {
-    const savedTheme = localStorage.getItem(THEME_KEY) || 'system';
+    const savedTheme = localStorage.getItem(THEME_KEY) || 'auto';
     applyTheme(savedTheme);
     updateThemeButtons(savedTheme);
   }
@@ -242,7 +242,7 @@
    * Apply theme to document
    */
   function applyTheme(theme) {
-    if (theme === 'system') {
+    if (theme === 'auto') {
       const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
       document.documentElement.dataset.theme = prefersDark ? 'dark' : 'light';
     } else {
@@ -308,9 +308,9 @@
     // Listen for system theme changes
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
     mediaQuery.addEventListener('change', () => {
-      const currentTheme = localStorage.getItem(THEME_KEY) || 'system';
-      if (currentTheme === 'system') {
-        applyTheme('system');
+      const currentTheme = localStorage.getItem(THEME_KEY) || 'auto';
+      if (currentTheme === 'auto') {
+        applyTheme('auto');
       }
     });
   }
@@ -334,7 +334,7 @@
       document.body.classList.toggle('nav-open', isOpen);
       updateToggleAriaExpanded(isOpen);
     } else if (e.key === THEME_KEY) {
-      const newTheme = e.newValue || 'system';
+      const newTheme = e.newValue || 'auto';
       applyTheme(newTheme);
       updateThemeButtons(newTheme);
     }
