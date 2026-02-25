@@ -2545,6 +2545,36 @@ textarea:focus-visible {
 }
 
 /* ══════════════════════════════════════════════════
+   SIDEBAR WARMUP INDICATOR
+══════════════════════════════════════════════════ */
+.sidebar-warmup-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: var(--radius-md);
+    background: hsl(var(--accent) / 0.08);
+    border: 1px solid hsl(var(--accent) / 0.15);
+    margin-bottom: 8px;
+}
+
+.sidebar-warmup-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid hsl(var(--border-glass));
+    border-top-color: hsl(var(--accent));
+    border-radius: 50%;
+    animation: splash-spin 0.8s linear infinite;
+    flex-shrink: 0;
+}
+
+.sidebar-warmup-label {
+    font-size: 11px;
+    font-weight: 550;
+    color: hsl(var(--text-secondary));
+}
+
+/* ══════════════════════════════════════════════════
    SERVER STATUS (Sidebar Footer)
 ══════════════════════════════════════════════════ */
 .server-status {

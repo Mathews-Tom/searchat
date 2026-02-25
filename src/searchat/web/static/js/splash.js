@@ -64,6 +64,15 @@ function clearLegacySplashFlag() {
 }
 
 /**
+ * Returns true when the sidebar warmup indicator is active
+ * (splash was dismissed before critical components finished loading).
+ */
+export function isWarmingUp() {
+    const indicator = document.getElementById('sidebarWarmupIndicator');
+    return indicator !== null && indicator.style.display !== 'none';
+}
+
+/**
  * Check warmup status and show splash if needed (first visit only)
  */
 export async function checkAndShowSplash() {
@@ -304,20 +313,68 @@ function pollWarmupStatus() {
 }
 
 /**
- * Dismiss splash screen and mark as seen
+ * Dismiss splash screen and mark as seen.
+ * If critical components are still loading, show a sidebar warmup indicator.
  */
-function dismissSplash() {
-    // Clear intervals and timeouts
+async function dismissSplash() {
+    markSplashDismissedForServer(_currentServerStartedAt);
+
+    // Check if critical components are ready before tearing down polling
+    let criticalReady = false;
+    try {
+        const response = await fetch('/api/status');
+        const status = await response.json();
+        criticalReady = CRITICAL_COMPONENTS.every(
+            name => status.components[name] === 'ready'
+        );
+    } catch {
+        // Network error — assume not ready
+    }
+
+    // Stop splash polling
     if (pollInterval) {
         clearInterval(pollInterval);
         pollInterval = null;
     }
-    markSplashDismissedForServer(_currentServerStartedAt);
 
-    // Fade out and remove
+    // Fade out and remove overlay
     const overlay = document.getElementById('splashOverlay');
     if (overlay) {
         overlay.classList.remove('splash-visible');
         setTimeout(() => overlay.remove(), 300);
     }
+
+    // If still warming up, show sidebar indicator and continue polling
+    if (!criticalReady) {
+        showSidebarWarmupIndicator();
+    }
+}
+
+/**
+ * Show an infinite spinner above the server status section
+ * that polls until all critical components are ready.
+ */
+function showSidebarWarmupIndicator() {
+    const indicator = document.getElementById('sidebarWarmupIndicator');
+    if (!indicator) return;
+
+    indicator.style.display = '';
+
+    const sidebarPoll = setInterval(async () => {
+        try {
+            const response = await fetch('/api/status');
+            const status = await response.json();
+
+            const ready = CRITICAL_COMPONENTS.every(
+                name => status.components[name] === 'ready'
+            );
+
+            if (ready) {
+                clearInterval(sidebarPoll);
+                indicator.style.display = 'none';
+            }
+        } catch {
+            // Keep polling on transient errors
+        }
+    }, STATUS_POLL_INTERVAL);
 }
