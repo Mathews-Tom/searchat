@@ -237,7 +237,13 @@ def find_similar_conversations(
             FROM hits
             JOIN parquet_scan(?) AS m
                 ON m.vector_id = hits.vector_id
-            JOIN parquet_scan(?) AS c
+            JOIN (
+                SELECT *
+                FROM parquet_scan(?)
+                QUALIFY row_number() OVER (
+                    PARTITION BY conversation_id ORDER BY updated_at DESC
+                ) = 1
+            ) AS c
                 ON c.conversation_id = m.conversation_id
             WHERE m.conversation_id != ?
             QUALIFY row_number() OVER (PARTITION BY m.conversation_id ORDER BY hits.distance) = 1
