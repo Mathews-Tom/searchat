@@ -192,7 +192,7 @@ class SearchEngine:
             SELECT {cols}
             FROM parquet_scan('{self.conversations_glob}')
             QUALIFY row_number() OVER (
-                PARTITION BY conversation_id ORDER BY updated_at DESC
+                PARTITION BY conversation_id ORDER BY updated_at DESC NULLS LAST
             ) = 1
         """)
         self._con.execute("INSTALL fts; LOAD fts;")
@@ -514,10 +514,11 @@ class SearchEngine:
         JOIN parquet_scan(?) AS m
           ON m.vector_id = hits.vector_id
         JOIN (
-          SELECT *
+          SELECT conversation_id, project_id, title, created_at,
+                 updated_at, message_count, file_path
           FROM parquet_scan(?)
           QUALIFY row_number() OVER (
-              PARTITION BY conversation_id ORDER BY updated_at DESC
+              PARTITION BY conversation_id ORDER BY updated_at DESC NULLS LAST
           ) = 1
         ) AS c
           ON c.conversation_id = m.conversation_id
