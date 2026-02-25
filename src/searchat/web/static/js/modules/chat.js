@@ -1,12 +1,13 @@
 // Chat UI handler
 
 import { loadConversationView } from './search.js';
+import { isWarmingUp } from '../splash.js';
 
 function setStatus(message, isError = false) {
     const status = document.getElementById('chatStatus');
     if (!status) return;
     status.textContent = message;
-    status.style.color = isError ? '#f44336' : '';
+    status.style.color = isError ? 'hsl(var(--danger))' : '';
 }
 
 function setSpinner(active) {
@@ -138,6 +139,12 @@ function restoreChatPreferences() {
 }
 
 async function runChatRag() {
+    if (isWarmingUp()) {
+        console.debug('runChatRag(): blocked by warmup guard');
+        setStatus('Search engine is still warming up\u2026', true);
+        return;
+    }
+
     const queryEl = document.getElementById('chatQuery');
     const providerEl = document.getElementById('chatProvider');
     const modelEl = document.getElementById('chatModel');

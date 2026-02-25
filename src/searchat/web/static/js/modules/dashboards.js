@@ -155,7 +155,7 @@ async function _renderDashboard(dashboardId, container) {
             <div>
                 <h2>${_escapeHtml(dashboard.name || 'Dashboard')}</h2>
                 <p>${_escapeHtml(dashboard.description || '')}</p>
-                ${refreshInterval ? `<p style="margin-top: 6px; font-size: 12px; color: var(--text-muted);">Auto-refresh: every ${refreshInterval}s</p>` : ''}
+                ${refreshInterval ? `<p style="margin-top: 6px; font-size: 12px; color: hsl(var(--text-tertiary));">Auto-refresh: every ${refreshInterval}s</p>` : ''}
             </div>
             <div class="dashboard-view-actions">
                 <button class="secondary" data-action="refresh" data-dashboard-id="${dashboardId}">Refresh</button>

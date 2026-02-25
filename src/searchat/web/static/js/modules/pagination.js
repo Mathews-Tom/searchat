@@ -40,11 +40,11 @@ export function renderPagination(resultsContainer, searchFunction) {
     }
 
     const paginationHtml = `
-        <div class="pagination" style="display: flex; justify-content: center; align-items: center; gap: 12px; margin: 32px 0; padding: 20px; background: var(--bg-surface); border: 1px solid var(--border-primary); border-radius: 12px;">
+        <div class="pagination glass" style="display: flex; justify-content: center; align-items: center; gap: 12px; margin: 32px 0; padding: 20px;">
             <button
                 onclick="window.goToPage(1)"
                 ${currentPage === 1 ? 'disabled' : ''}
-                style="padding: 8px 16px; background: var(--bg-primary); border: 1px solid var(--border-primary); border-radius: 6px; cursor: pointer; font-family: 'Space Grotesk', sans-serif; font-size: 14px; color: var(--text-primary);"
+                class="glass-btn"
                 title="First page"
             >
                 « First
@@ -53,7 +53,7 @@ export function renderPagination(resultsContainer, searchFunction) {
             <button
                 onclick="window.goToPage(${currentPage - 1})"
                 ${currentPage === 1 ? 'disabled' : ''}
-                style="padding: 8px 16px; background: var(--bg-primary); border: 1px solid var(--border-primary); border-radius: 6px; cursor: pointer; font-family: 'Space Grotesk', sans-serif; font-size: 14px; color: var(--text-primary);"
+                class="glass-btn"
                 title="Previous page"
             >
                 ‹ Previous
@@ -66,7 +66,7 @@ export function renderPagination(resultsContainer, searchFunction) {
             <button
                 onclick="window.goToPage(${currentPage + 1})"
                 ${currentPage === totalPages ? 'disabled' : ''}
-                style="padding: 8px 16px; background: var(--bg-primary); border: 1px solid var(--border-primary); border-radius: 6px; cursor: pointer; font-family: 'Space Grotesk', sans-serif; font-size: 14px; color: var(--text-primary);"
+                class="glass-btn"
                 title="Next page"
             >
                 Next ›
@@ -75,13 +75,13 @@ export function renderPagination(resultsContainer, searchFunction) {
             <button
                 onclick="window.goToPage(${totalPages})"
                 ${currentPage === totalPages ? 'disabled' : ''}
-                style="padding: 8px 16px; background: var(--bg-primary); border: 1px solid var(--border-primary); border-radius: 6px; cursor: pointer; font-family: 'Space Grotesk', sans-serif; font-size: 14px; color: var(--text-primary);"
+                class="glass-btn"
                 title="Last page"
             >
                 Last »
             </button>
 
-            <div style="margin-left: 16px; color: var(--text-muted); font-size: 14px;">
+            <div style="margin-left: 16px; color: hsl(var(--text-tertiary)); font-size: 14px;">
                 Page ${currentPage} of ${totalPages} (${totalResults} results)
             </div>
         </div>
@@ -129,25 +129,15 @@ function renderPageNumbers(totalPages) {
 
     return pages.map(page => {
         if (page === '...') {
-            return '<span style="color: var(--text-muted); padding: 8px;">...</span>';
+            return '<span style="color: hsl(var(--text-tertiary)); padding: 8px;">...</span>';
         }
 
         const isActive = page === currentPage;
         return `
             <button
                 onclick="window.goToPage(${page})"
-                style="
-                    min-width: 36px;
-                    padding: 8px 12px;
-                    background: ${isActive ? 'var(--accent-primary)' : 'var(--bg-primary)'};
-                    border: 1px solid ${isActive ? 'var(--accent-primary)' : 'var(--border-primary)'};
-                    border-radius: 6px;
-                    cursor: pointer;
-                    font-family: 'Space Grotesk', sans-serif;
-                    font-size: 14px;
-                    font-weight: ${isActive ? '600' : '400'};
-                    color: ${isActive ? 'white' : 'var(--text-primary)'};
-                "
+                class="${isActive ? 'glass-btn glass-btn-primary' : 'glass-btn'}"
+                style="min-width: 36px;"
             >
                 ${page}
             </button>

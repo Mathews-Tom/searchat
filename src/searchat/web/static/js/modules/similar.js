@@ -25,7 +25,7 @@ export async function loadSimilarConversations(conversationId, container) {
         if (!response.ok) {
             const payload = await response.json().catch(() => null);
             const msg = payload && payload.detail ? payload.detail : 'Failed to load similar conversations';
-            container.innerHTML = `<div style="color: var(--text-muted); padding: 20px; text-align: center;">${msg}</div>`;
+            container.innerHTML = `<div style="color: hsl(var(--text-tertiary)); padding: 20px; text-align: center;">${msg}</div>`;
             return;
         }
 
@@ -36,7 +36,7 @@ export async function loadSimilarConversations(conversationId, container) {
                 <div style="
                     text-align: center;
                     padding: 40px 20px;
-                    color: var(--text-muted);
+                    color: hsl(var(--text-tertiary));
                 ">
                     <div style="font-size: 48px; margin-bottom: 16px;">🔍</div>
                     <div style="font-size: 16px; margin-bottom: 8px;">No similar conversations found</div>
@@ -50,14 +50,14 @@ export async function loadSimilarConversations(conversationId, container) {
             <div style="
                 margin-bottom: 20px;
                 padding: 12px 16px;
-                background: var(--bg-surface);
+                background: hsl(var(--bg-surface));
                 border-radius: 8px;
-                border: 1px solid var(--border-default);
+                border: 1px solid hsl(var(--border-glass));
             ">
-                <div style="font-size: 16px; font-weight: 500; color: var(--text-primary); margin-bottom: 4px;">
+                <div style="font-size: 16px; font-weight: 500; color: hsl(var(--text-primary)); margin-bottom: 4px;">
                     🔗 ${data.similar_count} Related Conversation${data.similar_count !== 1 ? 's' : ''}
                 </div>
-                <div style="font-size: 13px; color: var(--text-muted);">
+                <div style="font-size: 13px; color: hsl(var(--text-tertiary));">
                     Found using semantic similarity analysis
                 </div>
             </div>
@@ -69,26 +69,26 @@ export async function loadSimilarConversations(conversationId, container) {
             const createdDate = new Date(conv.created_at).toLocaleDateString();
 
             // Color code similarity score
-            let scoreColor = 'var(--success)';
-            if (similarityPercent < 70) scoreColor = 'var(--warning)';
-            if (similarityPercent < 50) scoreColor = 'var(--text-muted)';
+            let scoreColor = 'hsl(var(--success))';
+            if (similarityPercent < 70) scoreColor = 'hsl(var(--warning))';
+            if (similarityPercent < 50) scoreColor = 'hsl(var(--text-tertiary))';
 
             html += `
                 <div class="similar-conversation-item" data-conversation-id="${conv.conversation_id}" style="
-                    background: var(--bg-elevated);
-                    border: 1px solid var(--border-default);
+                    background: hsl(var(--bg-elevated));
+                    border: 1px solid hsl(var(--border-glass));
                     border-radius: 8px;
                     padding: 14px 16px;
                     margin-bottom: 12px;
                     cursor: pointer;
                     transition: all 0.2s;
-                " onmouseover="this.style.borderColor='var(--accent-primary)'; this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='var(--border-default)'; this.style.transform='translateY(0)'">
+                " onmouseover="this.style.borderColor='hsl(var(--accent))'; this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='hsl(var(--border-glass))'; this.style.transform='translateY(0)'">
                     <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
                         <div style="flex: 1;">
-                            <div style="font-size: 15px; font-weight: 500; color: var(--text-primary); margin-bottom: 4px;">
+                            <div style="font-size: 15px; font-weight: 500; color: hsl(var(--text-primary)); margin-bottom: 4px;">
                                 ${conv.title}
                             </div>
-                            <div style="font-size: 12px; color: var(--text-muted);">
+                            <div style="font-size: 12px; color: hsl(var(--text-tertiary));">
                                 <span class="tool-badge ${conv.tool}" style="font-size: 11px; padding: 2px 6px;">${toolLabel}</span>
                                 <span style="margin-left: 8px;">${conv.project_id}</span>
                                 <span style="margin-left: 8px;">•</span>
@@ -125,6 +125,6 @@ export async function loadSimilarConversations(conversationId, container) {
         });
 
     } catch (error) {
-        container.innerHTML = `<div style="color: #f44336;">Error: ${error.message}</div>`;
+        container.innerHTML = `<div style="color: hsl(var(--danger));">Error: ${error.message}</div>`;
     }
 }

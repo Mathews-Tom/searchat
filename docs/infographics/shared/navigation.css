@@ -8,7 +8,8 @@
    =============================================== */
 
 /* Hide the original theme toggle since we've integrated it into the navigation */
-.theme-toggle {
+.theme-toggle,
+.theme-switcher {
   display: none !important;
 }
 

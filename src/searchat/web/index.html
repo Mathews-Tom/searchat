@@ -1,15 +1,15 @@
 <!DOCTYPE html>
-<html>
+<html lang="en" data-theme="dark">
 <head>
     <title>Searchat</title>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <!-- Preload fonts for optimal performance -->
+    <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 
     <!-- Stylesheets -->
     <link rel="stylesheet" href="/static/css/variables.css">
@@ -21,75 +21,98 @@
 
 </head>
 <body>
+    <div class="mesh-bg"></div>
     <a href="#search" class="skip-link">Skip to search</a>
+
+    <header>
+        <div class="header-left">
+            <button class="sidebar-toggle" id="sidebarToggle" aria-label="Toggle sidebar">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+            </button>
+            <span class="logo"><span class="text-shimmer">searchat</span></span>
+        </div>
+        <div class="search-header-wrap">
+            <div class="search-wrap">
+                <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                <input type="text" id="search" class="search-input" placeholder="Search conversations..." />
+                <kbd class="search-kbd">⌘K</kbd>
+            </div>
+        </div>
+        <div class="header-right">
+            <div class="theme-switcher" id="themeSwitcher">
+                <button class="theme-switcher-btn" data-theme-mode="light" title="Light">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="3"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41"/></svg>
+                </button>
+                <button class="theme-switcher-btn" data-theme-mode="dark" title="Dark">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8.5a5.5 5.5 0 1 1-7-7 4.5 4.5 0 0 0 7 7z"/></svg>
+                </button>
+                <button class="theme-switcher-btn" data-theme-mode="auto" title="Auto">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="2" width="14" height="10" rx="1.5"/><path d="M5 15h6M8 12v3"/></svg>
+                </button>
+            </div>
+            <button class="sidebar-toggle" id="rightPanelToggle" aria-label="Toggle API panel">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 3H3v18h18V3zM15 3v18"/></svg>
+            </button>
+        </div>
+    </header>
+
     <div class="container">
-        <!-- Left Sidebar: Search Tips -->
-        <div class="sidebar">
-            <h3>💡 Search Tips</h3>
+        <!-- Left Sidebar: Navigation -->
+        <div class="sidebar" id="leftSidebar">
+            <nav class="sidebar-nav">
+                <div class="nav-section-label">NAVIGATION</div>
+                <button class="nav-item active" data-action="showSearchView">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                    Search
+                </button>
+                <button class="nav-item" data-action="toggleChat">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                    Chat
+                </button>
+                <button class="nav-item" data-action="showBookmarks">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m19 21-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+                    Bookmarks
+                </button>
+                <button class="nav-item" data-action="showAnalytics">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+                    Analytics
+                </button>
+                <button class="nav-item" data-action="showDashboards">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                    Dashboards
+                </button>
 
-            <div class="tip">
-                <div class="tip-title">Search Modes</div>
-                <div class="tip-content">
-                    <strong>Hybrid</strong> - Best results (keyword + semantic)<br>
-                    <strong>Semantic</strong> - Find by meaning/concept<br>
-                    <strong>Keyword</strong> - Exact text matching
-                </div>
-            </div>
-
-            <div class="tip">
-                <div class="tip-title">Keyboard Shortcuts</div>
-                <div class="tip-content">
-                    Press <kbd>?</kbd> to see all shortcuts<br>
-                    <small style="color: var(--text-muted);">Quick access: <kbd>/</kbd> search, <kbd>r</kbd> resume, <kbd>c</kbd> chat</small>
-                </div>
-            </div>
-
-            <div class="tip">
-                <div class="tip-title">Live Indexing</div>
-                <div class="tip-content">
-                    New conversations are indexed automatically. In-progress sessions re-index 5 minutes after last edit.
-                </div>
-            </div>
-
-            <div class="tip">
-                <div class="tip-title">Missing Conversations?</div>
-                <div class="tip-content">
-                    Click <strong>Add Missing Conversations</strong> to index files not yet in the search index.
-                </div>
-            </div>
-
-            <div class="tip">
-                <div class="tip-title">Filter by Project</div>
-                <div class="tip-content">
-                    Use the Project dropdown to search within specific projects only.
-                </div>
-            </div>
-
-            <!-- System Overview Link -->
-            <div class="sidebar-section">
-                <h3>📊 System Overview</h3>
-                <a href="/docs/infographics.html" target="_blank" class="system-overview-link">
-                    View Interactive Infographics →
+                <div class="nav-divider"></div>
+                <div class="nav-section-label">TOOLS</div>
+                <button class="nav-item" data-action="toggleBulkMode">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                    Bulk Export
+                </button>
+                <button class="nav-item" data-action="indexMissing">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>
+                    Add Missing
+                </button>
+                <a class="nav-item" href="/docs/infographics.html" target="_blank">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+                    System Overview
                 </a>
-                <div class="tip" style="margin-top: 12px;">
-                    <div class="tip-content" style="font-size: 12px;">
-                        Explore detailed visualizations of Searchat's architecture, features, and performance metrics.
-                    </div>
-                </div>
-            </div>
 
+                <div class="nav-divider"></div>
+            </nav>
+
+            <!-- Saved Queries -->
             <div class="saved-queries-panel">
                 <div class="saved-queries-header">
                     <h3>Saved Queries</h3>
-                    <button id="saveQueryButton" type="button">Save Current</button>
+                    <button id="saveQueryButton" type="button" class="glass-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Save Current</button>
                 </div>
                 <div class="saved-queries-status" id="savedQueriesStatus"></div>
                 <div class="saved-queries-form" id="savedQueriesForm">
                     <input type="text" id="savedQueryName" placeholder="Query name" />
                     <input type="text" id="savedQueryDescription" placeholder="Description (optional)" />
                     <div class="saved-queries-actions">
-                        <button id="savedQuerySave" type="button">Save</button>
-                        <button id="savedQueryCancel" type="button" class="secondary">Cancel</button>
+                        <button id="savedQuerySave" type="button" class="glass-btn glass-btn-primary">Save</button>
+                        <button id="savedQueryCancel" type="button" class="glass-btn">Cancel</button>
                     </div>
                 </div>
                 <div id="savedQueriesList"></div>
@@ -97,13 +120,13 @@
 
             <!-- Backup & Restore Section -->
             <div class="sidebar-section">
-                <h3 style="color: var(--warning); margin-bottom: 16px;">🔒 Backup & Restore</h3>
+                <h3 style="color: hsl(var(--warning)); margin-bottom: 16px;">Backup & Restore</h3>
 
-                <button id="createBackupButton" data-action="createBackup" class="btn-block btn-success">
+                <button id="createBackupButton" data-action="createBackup" class="glass-btn btn-block" style="border-color: hsl(var(--success)); color: hsl(var(--success));">
                     Create Backup
                 </button>
 
-                <button id="manageBackupsButton" data-action="showBackups" class="btn-block btn-accent">
+                <button id="manageBackupsButton" data-action="showBackups" class="glass-btn btn-block" style="border-color: hsl(var(--accent)); color: hsl(var(--accent));">
                     Manage Backups
                 </button>
 
@@ -117,8 +140,8 @@
             <!-- Dataset (Active vs Snapshot) -->
             <div id="datasetPanel" class="sidebar-section">
                 <h3 style="margin-bottom: 10px;">Dataset</h3>
-                <label style="display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">Active vs snapshot (read-only)</label>
-                <select id="datasetSelect" style="width: 100%; background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border-default); border-radius: 8px; padding: 8px 10px; font-family: 'Space Grotesk', sans-serif; font-size: 13px;">
+                <label style="display: block; font-size: 12px; color: hsl(var(--text-tertiary)); margin-bottom: 6px;">Active vs snapshot (read-only)</label>
+                <select id="datasetSelect" class="glass-select" style="width: 100%;">
                     <option value="">Active index</option>
                 </select>
                 <div class="tip" style="margin-top: 12px;">
@@ -127,101 +150,51 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Warmup Indicator (shown when splash dismissed before ready) -->
+            <div id="sidebarWarmupIndicator" class="sidebar-warmup-indicator" style="display: none;">
+                <div class="sidebar-warmup-spinner"></div>
+                <span class="sidebar-warmup-label">Warming up...</span>
+            </div>
+
+            <!-- Server Status -->
+            <div class="server-status" id="serverStatus">
+                <div class="server-status-card">
+                    <span class="status-dot active"></span>
+                    <div class="server-status-text">
+                        <span class="server-status-label">Server running</span>
+                        <span class="server-port">localhost:8000</span>
+                    </div>
+                    <button class="server-stop-btn" data-action="shutdownServer"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><path d="M12 2v10"/></svg> Stop</button>
+                </div>
+            </div>
         </div>
 
         <!-- Main Content -->
         <div class="main-content">
-            <!-- Theme Toggle -->
-            <div class="theme-toggle" role="group" aria-label="Theme selection">
-                <button data-theme="light" aria-pressed="false">Light</button>
-                <button data-theme="system" aria-pressed="true" class="active">System</button>
-                <button data-theme="dark" aria-pressed="false">Dark</button>
-            </div>
-
             <div id="datasetBanner" class="dataset-banner" style="display: none;"></div>
 
             <div id="conversationHeader" style="display: none; margin-bottom: 16px;">
-                <a href="/" class="back-button">← Back to Search</a>
+                <a href="/" class="back-button">&larr; Back to Search</a>
             </div>
-            <h1 id="heroTitle" style="margin-bottom: 4px;"><span style="color: #4a9eff">sear</span><span style="background: linear-gradient(to right, #4a9eff, #ff9500); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">ch</span><span style="color: #ff9500">at</span></h1>
-            <p id="heroSubtitle" style="margin: 0 0 20px 0; font-size: 13px; color: var(--text-muted);">Local search for your AI coding conversations</p>
-            <input type="text" id="search" class="search-box" placeholder="Search conversations..." />
-            <div id="projectSuggestion" class="project-suggestion" style="display: none;"></div>
-
-            <div class="filters" id="filters" role="group" aria-label="Search filters">
-        <label>Mode: 
-            <select id="mode">
-                <option value="hybrid">Hybrid</option>
-                <option value="semantic">Semantic</option>
-                <option value="keyword">Keyword</option>
-            </select>
-        </label>
-        
-        <label>Project: 
-            <select id="project">
-                <option value="">All Projects</option>
-            </select>
-        </label>
-
-        <label>Tool:
-            <select id="tool">
-                <option value="">All Tools</option>
-                <option value="claude">Claude Code</option>
-                <option value="vibe">Vibe</option>
-                <option value="opencode">OpenCode</option>
-                <option value="codex">Codex</option>
-                <option value="gemini">Gemini CLI</option>
-                <option value="continue">Continue</option>
-                <option value="cursor">Cursor</option>
-                <option value="aider">Aider</option>
-            </select>
-        </label>
-        
-        <label>Date: 
-            <select id="date">
-                <option value="">Any time</option>
-                <option value="today">Today</option>
-                <option value="week">Last 7 days</option>
-                <option value="month">Last 30 days</option>
-                <option value="custom">Custom range</option>
-            </select>
-        </label>
-        
-        <span id="customDateRange" style="display:none;">
-            <label>From: <input type="date" id="dateFrom" /></label>
-            <label>To: <input type="date" id="dateTo" /></label>
-        </span>
-        
-        <label>Sort by: 
-            <select id="sortBy">
-                <option value="relevance">Relevance</option>
-                <option value="date_newest">Date (newest)</option>
-                <option value="date_oldest">Date (oldest)</option>
-                <option value="messages">Message count</option>
-            </select>
-        </label>
-
-        <label style="display: inline-flex; align-items: center; gap: 6px;">
-            <input type="checkbox" id="semanticHighlights" />
-            Semantic highlights (LLM)
-        </label>
-    </div>
+            <h1 id="heroTitle" style="display: none;"><span class="text-shimmer">searchat</span></h1>
+            <p id="heroSubtitle" style="display: none;">Local search for your AI coding conversations</p>
 
     <div class="toolbar" role="toolbar" aria-label="Search actions">
-            <button class="toolbar-btn" data-action="search">🔍 Search</button>
-            <button class="toolbar-btn" id="saveQueryButtonInline" type="button" data-action="saveQueryInline">💾 Save Query</button>
-            <button class="toolbar-btn-info" data-action="showAllConversations">📋 Show All</button>
-            <button class="toolbar-btn-warning" data-action="showBookmarks" title="View your bookmarked conversations">⭐ Bookmarks</button>
-            <button class="toolbar-btn-info" id="analyticsButton" data-action="showAnalytics" title="View search analytics and patterns">📊 Analytics</button>
-            <button class="toolbar-btn-muted" id="dashboardsButton" data-action="showDashboards" title="View saved dashboards">🧩 Dashboards</button>
-            <button class="toolbar-btn-accent" id="bulkModeToggle" data-action="toggleBulkMode" title="Select multiple conversations for bulk export">☑️ Bulk Export</button>
-            <button class="toolbar-btn-success" id="indexMissingButton" data-action="indexMissing" title="Safely add conversations that aren't in the index yet">➕ Add Missing</button>
-            <button class="toolbar-btn-danger" data-action="shutdownServer" title="Stop the search server">⏹️ Stop Server</button>
+            <button class="glass-btn glass-btn-primary" data-action="search"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg> Search</button>
+            <button class="glass-btn" id="saveQueryButtonInline" type="button" data-action="saveQueryInline"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Save Query</button>
+            <button class="glass-btn" data-action="showAllConversations"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg> Show All</button>
+            <span class="toolbar-divider"></span>
+            <button class="glass-btn" data-action="showBookmarks" title="View your bookmarked conversations"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m19 21-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg> Bookmarks</button>
+            <button class="glass-btn" id="analyticsButton" data-action="showAnalytics" title="View search analytics and patterns"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10M12 20V4M6 20v-6"/></svg> Analytics</button>
+            <button class="glass-btn" id="dashboardsButton" data-action="showDashboards" title="View saved dashboards"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg> Dashboards</button>
+            <span class="toolbar-divider"></span>
+            <button class="glass-btn" id="bulkModeToggle" data-action="toggleBulkMode" title="Select multiple conversations for bulk export"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg> Bulk Export</button>
+            <button class="glass-btn" id="indexMissingButton" data-action="indexMissing" title="Safely add conversations that aren't in the index yet"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add Missing</button>
+            <button class="glass-btn glass-btn-danger" data-action="shutdownServer" title="Stop the search server"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0M12 2v10"/></svg> Stop Server</button>
     </div>
 
-    <div id="projectSummary" class="project-summary" style="display: none;"></div>
-
-    <div class="chat-panel" id="chatPanel">
+    <div class="chat-panel glass-elevated" id="chatPanel">
         <div class="chat-header">
             <div>
                 <h2>Chat with History</h2>
@@ -229,13 +202,13 @@
             </div>
             <div class="chat-controls">
                 <label>Provider:
-                    <select id="chatProvider">
+                    <select id="chatProvider" class="glass-select">
                         <option value="ollama">Ollama (Local)</option>
                         <option value="openai">OpenAI</option>
                     </select>
                 </label>
                 <label>Model:
-                    <input type="text" id="chatModel" placeholder="optional" />
+                    <input type="text" id="chatModel" class="search-input" placeholder="optional" style="width: 140px;" />
                 </label>
                 <details class="chat-advanced" id="chatAdvanced">
                     <summary>Options</summary>
@@ -256,9 +229,9 @@
         <div class="chat-body">
             <textarea id="chatQuery" class="chat-textarea" placeholder="Ask about your chat history..."></textarea>
             <div class="chat-actions">
-                <button id="chatSend">Ask</button>
-                <button id="chatStop" class="secondary">Stop</button>
-                <button id="chatClear" class="secondary">Clear</button>
+                <button id="chatSend" class="glass-btn glass-btn-primary">Ask</button>
+                <button id="chatStop" class="glass-btn">Stop</button>
+                <button id="chatClear" class="glass-btn">Clear</button>
             </div>
             <div class="chat-status-row">
                 <div id="chatSpinner" class="chat-spinner" aria-hidden="true"></div>
@@ -269,12 +242,93 @@
         </div>
     </div>
 
+            <div id="projectSuggestion" class="project-suggestion" style="display: none;"></div>
+
+            <div class="filter-bar" id="filters" role="group" aria-label="Search filters">
+                <span class="filter-bar-label">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                    Filters
+                </span>
+                <div class="filter-chip" data-for="mode">
+                    <span class="filter-label">Mode</span>
+                    <span class="filter-value" id="modeChipValue">Hybrid</span>
+                    <svg class="filter-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+                </div>
+                <div class="filter-chip" data-for="project">
+                    <span class="filter-label">Project</span>
+                    <span class="filter-value" id="projectChipValue">All Projects</span>
+                    <svg class="filter-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+                </div>
+                <div class="filter-chip" data-for="tool">
+                    <span class="filter-label">Tool</span>
+                    <span class="filter-value" id="toolChipValue">All Tools</span>
+                    <svg class="filter-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+                </div>
+                <div class="filter-chip" data-for="date">
+                    <span class="filter-label">Date</span>
+                    <span class="filter-value" id="dateChipValue">Any time</span>
+                    <svg class="filter-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+                </div>
+                <div class="filter-chip" data-for="sortBy">
+                    <span class="filter-label">Sort</span>
+                    <span class="filter-value" id="sortByChipValue">Relevance</span>
+                    <svg class="filter-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+                </div>
+
+                <label class="filter-chip filter-chip-toggle">
+                    <input type="checkbox" id="semanticHighlights" />
+                    <span class="filter-label">Semantic Highlights</span>
+                </label>
+
+                <!-- Hidden selects (preserve IDs for JS compatibility) -->
+                <div class="sr-only">
+                    <select id="mode" class="glass-select">
+                        <option value="hybrid">Hybrid</option>
+                        <option value="semantic">Semantic</option>
+                        <option value="keyword">Keyword</option>
+                    </select>
+                    <select id="project" class="glass-select">
+                        <option value="">All Projects</option>
+                    </select>
+                    <select id="tool" class="glass-select">
+                        <option value="">All Tools</option>
+                        <option value="claude">Claude Code</option>
+                        <option value="vibe">Vibe</option>
+                        <option value="opencode">OpenCode</option>
+                        <option value="codex">Codex</option>
+                        <option value="gemini">Gemini CLI</option>
+                        <option value="continue">Continue</option>
+                        <option value="cursor">Cursor</option>
+                        <option value="aider">Aider</option>
+                    </select>
+                    <select id="date" class="glass-select">
+                        <option value="">Any time</option>
+                        <option value="today">Today</option>
+                        <option value="week">Last 7 days</option>
+                        <option value="month">Last 30 days</option>
+                        <option value="custom">Custom range</option>
+                    </select>
+                    <select id="sortBy" class="glass-select">
+                        <option value="relevance">Relevance</option>
+                        <option value="date_newest">Date (newest)</option>
+                        <option value="date_oldest">Date (oldest)</option>
+                        <option value="messages">Message count</option>
+                    </select>
+                </div>
+                <span id="customDateRange" style="display:none;">
+                    <label>From: <input type="date" id="dateFrom" /></label>
+                    <label>To: <input type="date" id="dateTo" /></label>
+                </span>
+            </div>
+
+    <div id="projectSummary" class="project-summary" style="display: none;"></div>
+
     <div id="results"></div>
         </div>
 
         <!-- Right Sidebar: Claude Self-Search Integration -->
-        <div class="sidebar">
-            <h3>🤖 Claude Self-Search</h3>
+        <div class="sidebar" id="rightSidebar">
+            <h3>Claude Self-Search</h3>
 
             <div class="tip">
                 <div class="tip-title">Enable in Claude Code</div>
@@ -307,10 +361,10 @@
             <div class="tip">
                 <div class="tip-title">Use Cases</div>
                 <div class="tip-content">
-                    • "Did we discuss X before?"<br>
-                    • "Find past solutions for Y"<br>
-                    • "How did we implement Z?"<br>
-                    • Check previous debugging sessions
+                    &bull; "Did we discuss X before?"<br>
+                    &bull; "Find past solutions for Y"<br>
+                    &bull; "How did we implement Z?"<br>
+                    &bull; Check previous debugging sessions
                 </div>
             </div>
 

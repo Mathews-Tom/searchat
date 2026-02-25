@@ -29,6 +29,11 @@ const HIGHLIGHTS = [
 
 let pollInterval = null;
 let _currentServerStartedAt = null;
+let _sidebarPollInterval = null;
+let _warmupStartedAt = null;
+
+const WARMUP_MAX_DURATION_MS = 120_000; // 2 minutes
+const SIDEBAR_POLL_MAX_FAILURES = 20;   // 10 seconds at 500ms
 
 /**
  * Check if user has seen splash before
@@ -61,6 +66,33 @@ function clearLegacySplashFlag() {
     } catch (error) {
         console.warn('Splash: failed to clear legacy localStorage key', error);
     }
+}
+
+/**
+ * Returns true when the sidebar warmup indicator is active
+ * (splash was dismissed before critical components finished loading).
+ * Includes a safety valve: expires after WARMUP_MAX_DURATION_MS to
+ * prevent permanently blocking search/chat.
+ */
+export function isWarmingUp() {
+    const indicator = document.getElementById('sidebarWarmupIndicator');
+    if (!indicator) return false;
+
+    const visible = getComputedStyle(indicator).display !== 'none';
+    if (!visible) {
+        _warmupStartedAt = null;
+        return false;
+    }
+
+    if (_warmupStartedAt === null) _warmupStartedAt = Date.now();
+    if (Date.now() - _warmupStartedAt > WARMUP_MAX_DURATION_MS) {
+        console.warn('isWarmingUp: warmup exceeded maximum duration, unblocking search/chat');
+        indicator.style.display = 'none';
+        _warmupStartedAt = null;
+        return false;
+    }
+
+    return true;
 }
 
 /**
@@ -105,7 +137,7 @@ function renderSplash(status) {
     const header = document.createElement('div');
     header.className = 'splash-header';
     header.innerHTML = `
-        <h1><span style="color: #4a9eff">sear</span><span style="background: linear-gradient(to right, #4a9eff, #ff9500); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">ch</span><span style="color: #ff9500">at</span></h1>
+        <h1><span class="text-shimmer">searchat</span></h1>
         <p>Warming up search engine...</p>
     `;
     content.appendChild(header);
@@ -115,7 +147,7 @@ function renderSplash(status) {
     highlightsContainer.className = 'splash-highlights';
     HIGHLIGHTS.forEach(highlight => {
         const item = document.createElement('div');
-        item.className = 'splash-highlight-item';
+        item.className = 'splash-highlight-item stat-card';
         item.innerHTML = `
             <span class="splash-highlight-icon">${highlight.icon}</span>
             <div class="splash-highlight-text">
@@ -304,20 +336,85 @@ function pollWarmupStatus() {
 }
 
 /**
- * Dismiss splash screen and mark as seen
+ * Dismiss splash screen and mark as seen.
+ * If critical components are still loading, show a sidebar warmup indicator.
  */
-function dismissSplash() {
-    // Clear intervals and timeouts
+async function dismissSplash() {
+    markSplashDismissedForServer(_currentServerStartedAt);
+
+    // Check if critical components are ready before tearing down polling
+    let criticalReady = false;
+    try {
+        const response = await fetch('/api/status');
+        if (!response.ok) throw new Error(`Status API returned ${response.status}`);
+        const status = await response.json();
+        criticalReady = CRITICAL_COMPONENTS.every(
+            name => status.components[name] === 'ready'
+        );
+    } catch (err) {
+        console.warn('dismissSplash: status check failed, assuming not ready', err);
+    }
+
+    // Stop splash polling
     if (pollInterval) {
         clearInterval(pollInterval);
         pollInterval = null;
     }
-    markSplashDismissedForServer(_currentServerStartedAt);
 
-    // Fade out and remove
+    // Fade out and remove overlay
     const overlay = document.getElementById('splashOverlay');
     if (overlay) {
         overlay.classList.remove('splash-visible');
         setTimeout(() => overlay.remove(), 300);
     }
+
+    // If still warming up, show sidebar indicator and continue polling
+    if (!criticalReady) {
+        showSidebarWarmupIndicator();
+    }
+}
+
+/**
+ * Show a spinner above the server status section that polls
+ * until all critical components are ready or max failures reached.
+ */
+function showSidebarWarmupIndicator() {
+    if (_sidebarPollInterval) return;
+
+    const indicator = document.getElementById('sidebarWarmupIndicator');
+    if (!indicator) {
+        console.warn('showSidebarWarmupIndicator: #sidebarWarmupIndicator not found in DOM');
+        return;
+    }
+
+    indicator.style.display = '';
+    let consecutiveFailures = 0;
+
+    _sidebarPollInterval = setInterval(async () => {
+        try {
+            const response = await fetch('/api/status');
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const status = await response.json();
+
+            const ready = CRITICAL_COMPONENTS.every(
+                name => status.components[name] === 'ready'
+            );
+            consecutiveFailures = 0;
+
+            if (ready) {
+                clearInterval(_sidebarPollInterval);
+                _sidebarPollInterval = null;
+                indicator.style.display = 'none';
+            }
+        } catch (err) {
+            consecutiveFailures++;
+            console.warn('Sidebar warmup poll failed:', err);
+            if (consecutiveFailures >= SIDEBAR_POLL_MAX_FAILURES) {
+                clearInterval(_sidebarPollInterval);
+                _sidebarPollInterval = null;
+                const label = indicator.querySelector('.sidebar-warmup-label');
+                if (label) label.textContent = 'Warmup check failed \u2014 reload page';
+            }
+        }
+    }, STATUS_POLL_INTERVAL);
 }

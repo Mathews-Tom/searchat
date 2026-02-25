@@ -16,8 +16,8 @@ export function initSuggestions() {
     container.style.cssText = `
         position: absolute;
         display: none;
-        background: var(--bg-elevated);
-        border: 1px solid var(--border-default);
+        background: hsl(var(--bg-elevated));
+        border: 1px solid hsl(var(--border-glass));
         border-radius: 8px;
         margin-top: 4px;
         max-height: 300px;
@@ -122,8 +122,8 @@ function displaySuggestions(suggestions, query) {
     let html = `
         <div style="
             padding: 8px 12px;
-            border-bottom: 1px solid var(--border-muted);
-            color: var(--text-muted);
+            border-bottom: 1px solid hsl(var(--border-subtle));
+            color: hsl(var(--text-tertiary));
             font-size: 12px;
             font-weight: 500;
         ">
@@ -140,17 +140,17 @@ function displaySuggestions(suggestions, query) {
                 padding: 10px 12px;
                 cursor: pointer;
                 transition: background 0.2s;
-                border-bottom: 1px solid var(--border-muted);
-                color: var(--text-primary);
+                border-bottom: 1px solid hsl(var(--border-subtle));
+                color: hsl(var(--text-primary));
                 font-size: 14px;
-            " onmouseover="this.style.background='var(--bg-surface)'" onmouseout="this.style.background='transparent'">
+            " onmouseover="this.style.background='hsl(var(--bg-surface))'" onmouseout="this.style.background='transparent'">
                 ${highlighted}
             </div>
         `;
     });
 
     // Remove border from last item
-    html = html.replace(/border-bottom: 1px solid var\(--border-muted\);(?![\s\S]*border-bottom)/, '');
+    html = html.replace(/border-bottom: 1px solid hsl\(var\(--border-subtle\)\);(?![\s\S]*border-bottom)/, '');
 
     container.innerHTML = html;
     container.style.display = 'block';
@@ -183,7 +183,7 @@ function highlightMatch(text, query) {
     const match = escapeHtml(text.substring(index, index + query.length));
     const after = escapeHtml(text.substring(index + query.length));
 
-    return `${before}<strong style="color: var(--accent-primary); font-weight: 600;">${match}</strong>${after}`;
+    return `${before}<strong style="color: hsl(var(--accent)); font-weight: 600;">${match}</strong>${after}`;
 }
 
 /**
@@ -192,7 +192,7 @@ function highlightMatch(text, query) {
 function updateActiveSuggestion(items) {
     items.forEach((item, index) => {
         if (index === activeSuggestionIndex) {
-            item.style.background = 'var(--bg-surface)';
+            item.style.background = 'hsl(var(--bg-surface))';
             item.scrollIntoView({ block: 'nearest' });
 
             // Update search box with active suggestion

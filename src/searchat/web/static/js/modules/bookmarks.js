@@ -88,16 +88,6 @@ export function createStarIcon(conversationId) {
     const star = document.createElement('button');
     star.className = 'bookmark-star';
     star.dataset.conversationId = conversationId;
-    star.style.cssText = `
-        background: transparent;
-        border: none;
-        font-size: 18px;
-        cursor: pointer;
-        padding: 4px 8px;
-        margin-left: 8px;
-        transition: all 0.2s;
-        vertical-align: middle;
-    `;
 
     const isFavorited = isBookmarked(conversationId);
     updateStarIcon(star, isFavorited);
@@ -160,13 +150,13 @@ export async function showBookmarks() {
         headerDiv.style.cssText = `
             margin-bottom: 20px;
             padding-bottom: 16px;
-            border-bottom: 1px solid var(--border-default);
+            border-bottom: 1px solid hsl(var(--border-glass));
         `;
         headerDiv.innerHTML = `
-            <h1 style="margin: 0 0 8px 0; color: var(--text-primary); font-family: 'Space Grotesk', sans-serif;">
-                ⭐ Bookmarked Conversations
+            <h1 style="margin: 0 0 8px 0; color: hsl(var(--text-primary));">
+                Bookmarked Conversations
             </h1>
-            <p style="margin: 0; color: var(--text-muted); font-size: 14px;">
+            <p style="margin: 0; color: hsl(var(--text-secondary)); font-size: 14px;">
                 ${data.total} bookmark${data.total !== 1 ? 's' : ''}
             </p>
         `;
@@ -174,13 +164,9 @@ export async function showBookmarks() {
 
         if (data.total === 0) {
             const emptyDiv = document.createElement('div');
-            emptyDiv.style.cssText = `
-                text-align: center;
-                padding: 60px 20px;
-                color: var(--text-muted);
-            `;
+            emptyDiv.className = 'empty-state';
             emptyDiv.innerHTML = `
-                <div style="font-size: 48px; margin-bottom: 16px;">☆</div>
+                <div class="empty-icon">☆</div>
                 <div style="font-size: 16px; margin-bottom: 8px;">No bookmarks yet</div>
                 <div style="font-size: 13px;">Star conversations to save them here for quick access</div>
             `;
@@ -206,16 +192,7 @@ export async function showBookmarks() {
                             <span>Bookmarked: ${addedDate}</span>
                         </div>
                     </div>
-                    <button class="remove-bookmark-btn" style="
-                        background: transparent;
-                        border: 1px solid var(--border-default);
-                        color: var(--text-muted);
-                        padding: 4px 10px;
-                        border-radius: 4px;
-                        cursor: pointer;
-                        font-size: 12px;
-                        transition: all 0.2s;
-                    " onmouseover="this.style.background='var(--danger)'; this.style.color='white'; this.style.borderColor='var(--danger)'" onmouseout="this.style.background='transparent'; this.style.color='var(--text-muted)'; this.style.borderColor='var(--border-default)'">
+                    <button class="remove-bookmark-btn glass-btn" style="border-color: hsl(var(--danger)); color: hsl(var(--danger)); font-size: 12px;">
                         Remove
                     </button>
                 </div>
@@ -269,6 +246,6 @@ export async function showBookmarks() {
         });
 
     } catch (error) {
-        resultsDiv.innerHTML = `<div style="color: #f44336;">Error: ${error.message}</div>`;
+        resultsDiv.innerHTML = `<div style="color: hsl(var(--danger));">Error: ${error.message}</div>`;
     }
 }

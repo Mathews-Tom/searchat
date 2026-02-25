@@ -11,7 +11,7 @@ export async function loadCodeBlocks(conversationId, container) {
         if (!response.ok) {
             const payload = await response.json().catch(() => null);
             const msg = payload && payload.detail ? payload.detail : 'Failed to load code blocks';
-            container.innerHTML = `<div style="color: #f44336;">${msg}</div>`;
+            container.innerHTML = `<div style="color: hsl(var(--danger));">${msg}</div>`;
             return;
         }
 
@@ -22,7 +22,7 @@ export async function loadCodeBlocks(conversationId, container) {
                 <div style="
                     text-align: center;
                     padding: 40px 20px;
-                    color: var(--text-muted);
+                    color: hsl(var(--text-tertiary));
                 ">
                     <div style="font-size: 48px; margin-bottom: 16px;">📄</div>
                     <div style="font-size: 16px; margin-bottom: 8px;">No code blocks found</div>
@@ -49,16 +49,16 @@ export async function loadCodeBlocks(conversationId, container) {
 
         let html = `
             <div style="
-                background: var(--bg-surface);
+                background: hsl(var(--bg-surface));
                 padding: 16px;
                 border-radius: 8px;
                 margin-bottom: 20px;
-                border: 1px solid var(--border-default);
+                border: 1px solid hsl(var(--border-glass));
             ">
-                <div style="font-size: 16px; font-weight: 500; color: var(--text-primary); margin-bottom: 8px;">
+                <div style="font-size: 16px; font-weight: 500; color: hsl(var(--text-primary)); margin-bottom: 8px;">
                     📊 ${data.total_blocks} Code Block${data.total_blocks !== 1 ? 's' : ''} Found
                 </div>
-                <div style="font-size: 13px; color: var(--text-muted);">
+                <div style="font-size: 13px; color: hsl(var(--text-tertiary));">
                     ${summary}
                 </div>
             </div>
@@ -69,13 +69,13 @@ export async function loadCodeBlocks(conversationId, container) {
             <div style="margin-bottom: 20px; display: flex; flex-wrap: wrap; gap: 8px;">
                 <button class="lang-filter active" data-lang="all" style="
                     padding: 6px 12px;
-                    background: var(--accent-primary);
+                    background: hsl(var(--accent));
                     color: white;
                     border: none;
                     border-radius: 6px;
                     font-size: 13px;
                     cursor: pointer;
-                    font-family: 'Space Grotesk', sans-serif;
+                    font-family: var(--font-sans);
                 ">
                     All (${data.total_blocks})
                 </button>
@@ -85,13 +85,13 @@ export async function loadCodeBlocks(conversationId, container) {
             html += `
                 <button class="lang-filter" data-lang="${lang}" style="
                     padding: 6px 12px;
-                    background: var(--bg-surface);
-                    color: var(--text-primary);
-                    border: 1px solid var(--border-default);
+                    background: hsl(var(--bg-surface));
+                    color: hsl(var(--text-primary));
+                    border: 1px solid hsl(var(--border-glass));
                     border-radius: 6px;
                     font-size: 13px;
                     cursor: pointer;
-                    font-family: 'Space Grotesk', sans-serif;
+                    font-family: var(--font-sans);
                 ">
                     ${lang} (${byLanguage[lang].length})
                 </button>
@@ -110,16 +110,16 @@ export async function loadCodeBlocks(conversationId, container) {
 
             html += `
                 <div class="code-block-item" data-language="${block.language}" data-language-source="${languageSource}" style="
-                    background: var(--bg-elevated);
-                    border: 1px solid var(--border-default);
+                    background: hsl(var(--bg-elevated));
+                    border: 1px solid hsl(var(--border-glass));
                     border-radius: 8px;
                     margin-bottom: 16px;
                     overflow: hidden;
                 ">
                     <div style="
-                        background: var(--bg-surface);
+                        background: hsl(var(--bg-surface));
                         padding: 10px 16px;
-                        border-bottom: 1px solid var(--border-default);
+                        border-bottom: 1px solid hsl(var(--border-glass));
                         display: flex;
                         justify-content: space-between;
                         align-items: center;
@@ -136,40 +136,40 @@ export async function loadCodeBlocks(conversationId, container) {
                             <span style="
                                 font-family: 'JetBrains Mono', monospace;
                                 font-size: 12px;
-                                color: var(--text-primary);
-                                background: var(--bg-elevated);
+                                color: hsl(var(--text-primary));
+                                background: hsl(var(--bg-elevated));
                                 padding: 4px 8px;
                                 border-radius: 4px;
                             ">
                                 ${block.language}
                             </span>
-                            <span style="font-size: 12px; color: var(--text-muted);">
+                            <span style="font-size: 12px; color: hsl(var(--text-tertiary));">
                                 ${block.lines} line${block.lines !== 1 ? 's' : ''}
                             </span>
                         </div>
                         <button onclick="window.copyCode(${index})" style="
                             padding: 4px 10px;
                             background: transparent;
-                            border: 1px solid var(--border-default);
+                            border: 1px solid hsl(var(--border-glass));
                             border-radius: 4px;
-                            color: var(--text-primary);
+                            color: hsl(var(--text-primary));
                             font-size: 12px;
                             cursor: pointer;
                             transition: all 0.2s;
-                        " onmouseover="this.style.background='var(--bg-surface)'" onmouseout="this.style.background='transparent'">
+                        " onmouseover="this.style.background='hsl(var(--bg-surface))'" onmouseout="this.style.background='transparent'">
                             📋 Copy
                         </button>
                     </div>
                     <pre id="code-${index}" style="
                         margin: 0;
                         padding: 16px;
-                        background: var(--bg-primary);
+                        background: hsl(var(--code-bg));
                         overflow-x: auto;
                     "><code class="pygments" style="
                         font-family: 'JetBrains Mono', monospace;
                         font-size: 13px;
                         line-height: 1.5;
-                        color: var(--text-primary);
+                        color: hsl(var(--text-primary));
                     ">${escapeHtml(block.code)}</code></pre>
                 </div>
             `;
@@ -195,11 +195,11 @@ export async function loadCodeBlocks(conversationId, container) {
                 // Update active button
                 container.querySelectorAll('.lang-filter').forEach(b => {
                     b.classList.remove('active');
-                    b.style.background = 'var(--bg-surface)';
-                    b.style.color = 'var(--text-primary)';
+                    b.style.background = 'hsl(var(--bg-surface))';
+                    b.style.color = 'hsl(var(--text-primary))';
                 });
                 btn.classList.add('active');
-                btn.style.background = 'var(--accent-primary)';
+                btn.style.background = 'hsl(var(--accent))';
                 btn.style.color = 'white';
 
                 // Filter code blocks
@@ -217,7 +217,7 @@ export async function loadCodeBlocks(conversationId, container) {
         window._codeBlocks = data.code_blocks;
 
     } catch (error) {
-        container.innerHTML = `<div style="color: #f44336;">Error: ${error.message}</div>`;
+        container.innerHTML = `<div style="color: hsl(var(--danger));">Error: ${error.message}</div>`;
     }
 }
 
@@ -300,15 +300,15 @@ export function copyCode(index) {
         const btn = event.target;
         const originalText = btn.textContent;
         btn.textContent = '✓ Copied!';
-        btn.style.background = 'var(--success)';
+        btn.style.background = 'hsl(var(--success))';
         btn.style.color = 'white';
-        btn.style.borderColor = 'var(--success)';
+        btn.style.borderColor = 'hsl(var(--success))';
 
         setTimeout(() => {
             btn.textContent = originalText;
             btn.style.background = 'transparent';
-            btn.style.color = 'var(--text-primary)';
-            btn.style.borderColor = 'var(--border-default)';
+            btn.style.color = 'hsl(var(--text-primary))';
+            btn.style.borderColor = 'hsl(var(--border-glass))';
         }, 2000);
     }).catch(err => {
         console.error('Failed to copy code:', err);

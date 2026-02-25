@@ -6,69 +6,69 @@
   <title>Searchat — Interactive Infographics</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     /* Light Theme (default) */
     :root {
-      --c-bg: #f6f8fa;
-      --c-surface: #ffffff;
-      --c-border: #d0d7de;
-      --c-text: #24292f;
-      --c-muted: #57606a;
-      --c-accent: #0969da;
-      --shadow-sm: 0 1px 3px rgba(28,33,39,0.08);
-      --shadow-md: 0 3px 10px rgba(28,33,39,0.13);
-      --shadow-lg: 0 8px 24px rgba(28,33,39,0.18);
+      --c-bg: hsl(240 20% 97%);
+      --c-surface: hsl(0 0% 100%);
+      --c-border: hsl(220 13% 91%);
+      --c-text: hsl(220 14% 10%);
+      --c-muted: hsl(220 9% 43%);
+      --c-accent: hsl(221 83% 53%);
+      --shadow-sm: 0 1px 2px hsl(220 14% 10% / 0.04), 0 1px 3px hsl(220 14% 10% / 0.03);
+      --shadow-md: 0 4px 6px hsl(220 14% 10% / 0.04), 0 2px 4px hsl(220 14% 10% / 0.03);
+      --shadow-lg: 0 10px 25px hsl(220 14% 10% / 0.06), 0 4px 10px hsl(220 14% 10% / 0.04);
     }
 
     /* Dark Theme - System preference */
     @media (prefers-color-scheme: dark) {
       :root:not([data-theme="light"]) {
-        --c-bg: #0d1117;
-        --c-surface: #161b22;
-        --c-border: #30363d;
-        --c-text: #c9d1d9;
-        --c-muted: #8b949e;
-        --c-accent: #58a6ff;
-        --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
-        --shadow-md: 0 3px 10px rgba(0,0,0,0.4);
-        --shadow-lg: 0 8px 24px rgba(0,0,0,0.5);
+        --c-bg: hsl(224 25% 8%);
+        --c-surface: hsl(224 22% 12%);
+        --c-border: hsl(224 15% 20%);
+        --c-text: hsl(220 14% 95%);
+        --c-muted: hsl(220 9% 65%);
+        --c-accent: hsl(217 91% 60%);
+        --shadow-sm: 0 1px 2px hsl(0 0% 0% / 0.2), 0 1px 3px hsl(0 0% 0% / 0.15);
+        --shadow-md: 0 4px 6px hsl(0 0% 0% / 0.2), 0 2px 4px hsl(0 0% 0% / 0.15);
+        --shadow-lg: 0 10px 25px hsl(0 0% 0% / 0.3), 0 4px 10px hsl(0 0% 0% / 0.2);
       }
     }
 
     /* Dark Theme - Manual override */
     :root[data-theme="dark"] {
-      --c-bg: #0d1117;
-      --c-surface: #161b22;
-      --c-border: #30363d;
-      --c-text: #c9d1d9;
-      --c-muted: #8b949e;
-      --c-accent: #58a6ff;
-      --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
-      --shadow-md: 0 3px 10px rgba(0,0,0,0.4);
-      --shadow-lg: 0 8px 24px rgba(0,0,0,0.5);
+      --c-bg: hsl(224 25% 8%);
+      --c-surface: hsl(224 22% 12%);
+      --c-border: hsl(224 15% 20%);
+      --c-text: hsl(220 14% 95%);
+      --c-muted: hsl(220 9% 65%);
+      --c-accent: hsl(217 91% 60%);
+      --shadow-sm: 0 1px 2px hsl(0 0% 0% / 0.2), 0 1px 3px hsl(0 0% 0% / 0.15);
+      --shadow-md: 0 4px 6px hsl(0 0% 0% / 0.2), 0 2px 4px hsl(0 0% 0% / 0.15);
+      --shadow-lg: 0 10px 25px hsl(0 0% 0% / 0.3), 0 4px 10px hsl(0 0% 0% / 0.2);
     }
 
     /* Light Theme - Manual override */
     :root[data-theme="light"] {
-      --c-bg: #f6f8fa;
-      --c-surface: #ffffff;
-      --c-border: #d0d7de;
-      --c-text: #24292f;
-      --c-muted: #57606a;
-      --c-accent: #0969da;
-      --shadow-sm: 0 1px 3px rgba(28,33,39,0.08);
-      --shadow-md: 0 3px 10px rgba(28,33,39,0.13);
-      --shadow-lg: 0 8px 24px rgba(28,33,39,0.18);
+      --c-bg: hsl(240 20% 97%);
+      --c-surface: hsl(0 0% 100%);
+      --c-border: hsl(220 13% 91%);
+      --c-text: hsl(220 14% 10%);
+      --c-muted: hsl(220 9% 43%);
+      --c-accent: hsl(221 83% 53%);
+      --shadow-sm: 0 1px 2px hsl(220 14% 10% / 0.04), 0 1px 3px hsl(220 14% 10% / 0.03);
+      --shadow-md: 0 4px 6px hsl(220 14% 10% / 0.04), 0 2px 4px hsl(220 14% 10% / 0.03);
+      --shadow-lg: 0 10px 25px hsl(220 14% 10% / 0.06), 0 4px 10px hsl(220 14% 10% / 0.04);
     }
 
     body {
       margin: 0;
       padding: 40px 20px;
       background: var(--c-bg);
-      font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
       font-size: 14px;
       color: var(--c-text);
       line-height: 1.6;
@@ -93,7 +93,7 @@
       font-weight: 700;
       margin-bottom: 12px;
       color: var(--c-text);
-      font-family: 'Space Grotesk', -apple-system, sans-serif;
+      font-family: 'DM Sans', -apple-system, sans-serif;
     }
 
     .subtitle {
@@ -289,7 +289,7 @@
         <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
       </svg>
     </button>
-    <button data-theme="system" title="System mode" aria-label="System mode">
+    <button data-theme="auto" title="Auto mode" aria-label="Auto mode">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
         <line x1="8" y1="21" x2="16" y2="21"></line>
@@ -391,7 +391,7 @@
     function applyTheme(theme) {
       const root = document.documentElement;
 
-      if (theme === 'system') {
+      if (theme === 'auto') {
         // Remove manual theme, let system preference take over
         root.removeAttribute('data-theme');
       } else {
@@ -419,7 +419,7 @@
 
     function initTheme() {
       // Get saved preference (default: system)
-      const savedTheme = localStorage.getItem('theme-preference') || 'system';
+      const savedTheme = localStorage.getItem('theme-preference') || 'auto';
 
       // Apply theme
       applyTheme(savedTheme);

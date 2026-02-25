@@ -180,12 +180,20 @@ class SearchEngine:
             raise FileNotFoundError(f"No conversation parquet files found in {self.conversations_dir}")
 
     def _build_fts_table(self) -> None:
-        """Create persistent DuckDB table from parquet and build FTS index."""
+        """Create persistent DuckDB table from parquet and build FTS index.
+
+        Deduplicates on conversation_id (keeps the most recently updated
+        row) so that FTS match_bm25 scalar lookups never encounter
+        multiple rows for the same key.
+        """
         cols = ", ".join(self.search_columns)
         self._con.execute(f"""
             CREATE OR REPLACE TABLE conversations AS
             SELECT {cols}
             FROM parquet_scan('{self.conversations_glob}')
+            QUALIFY row_number() OVER (
+                PARTITION BY conversation_id ORDER BY updated_at DESC NULLS LAST
+            ) = 1
         """)
         self._con.execute("INSTALL fts; LOAD fts;")
         self._con.execute(f"""
@@ -505,7 +513,14 @@ class SearchEngine:
         FROM hits
         JOIN parquet_scan(?) AS m
           ON m.vector_id = hits.vector_id
-        JOIN parquet_scan(?) AS c
+        JOIN (
+          SELECT conversation_id, project_id, title, created_at,
+                 updated_at, message_count, file_path
+          FROM parquet_scan(?)
+          QUALIFY row_number() OVER (
+              PARTITION BY conversation_id ORDER BY updated_at DESC NULLS LAST
+          ) = 1
+        ) AS c
           ON c.conversation_id = m.conversation_id
         WHERE {where_clause}
         QUALIFY row_number() OVER (PARTITION BY m.conversation_id ORDER BY hits.faiss_order) = 1

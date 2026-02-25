@@ -9,6 +9,7 @@ import { addCheckboxToResult } from './bulk-export.js';
 import { renderPagination, setTotalResults, getOffset, resetPagination, goToPage } from './pagination.js';
 import { getProjectSummaries } from './api.js';
 import { applySnapshotParam, isSnapshotActive, getSnapshotName } from './dataset.js';
+import { isWarmingUp } from '../splash.js';
 
 let _searchNonce = 0;
 const _snippetCodeMap = new Map();
@@ -402,6 +403,13 @@ async function copyTextToClipboard(text, buttonEl) {
  }
 
 export async function search(resetPage = true, attempt = 0) {
+    if (isWarmingUp()) {
+        console.debug('search(): blocked by warmup guard');
+        document.getElementById('results').innerHTML =
+            '<div class="loading">Search engine is still warming up\u2026</div>';
+        return;
+    }
+
     _searchNonce += 1;
     const nonce = _searchNonce;
 
@@ -487,9 +495,9 @@ export async function search(resetPage = true, attempt = 0) {
             if (attempt >= 6) {
                 const details = payload.errors ? JSON.stringify(payload.errors) : 'No warmup details available.';
                 resultsDiv.innerHTML = `
-                    <div style="color: #f44336; margin-bottom: 8px;">Search warmup is taking too long.</div>
+                    <div style="color: hsl(var(--danger)); margin-bottom: 8px;">Search warmup is taking too long.</div>
                     <div style="font-size: 12px; color: #888; margin-bottom: 10px;">${details}</div>
-                    <button id="fallbackKeyword" style="background: #2196F3; padding: 6px 10px; border: none; border-radius: 6px; color: white; cursor: pointer;">Switch to Keyword Mode</button>
+                    <button id="fallbackKeyword" style="background: hsl(var(--accent)); padding: 6px 10px; border: none; border-radius: 6px; color: white; cursor: pointer;">Switch to Keyword Mode</button>
                 `;
                 const button = document.getElementById('fallbackKeyword');
                 if (button) {
@@ -501,7 +509,7 @@ export async function search(resetPage = true, attempt = 0) {
                 return;
             }
 
-            resultsDiv.innerHTML = `<div class="loading"><span class="warmup-spinner"></span> Warming up search engine\u2026</div>`;
+            resultsDiv.innerHTML = '<div class="loading">Warming up search engine\u2026</div>';
             await _sleep(delay);
             if (nonce === _searchNonce) {
                 return search(false, attempt + 1);
@@ -510,14 +518,14 @@ export async function search(resetPage = true, attempt = 0) {
         }
 
         const msg = resolveErrorMessage(payload, 'Search warming failed');
-        resultsDiv.innerHTML = `<div style="color: #f44336;">${msg}</div>`;
+        resultsDiv.innerHTML = `<div style="color: hsl(var(--danger));">${msg}</div>`;
         return;
     }
 
     if (!response.ok) {
         const payload = await response.json().catch(() => null);
         const msg = resolveErrorMessage(payload, 'Search failed');
-        resultsDiv.innerHTML = `<div style="color: #f44336;">${msg}</div>`;
+        resultsDiv.innerHTML = `<div style="color: hsl(var(--danger));">${msg}</div>`;
         return;
     }
 
@@ -542,6 +550,7 @@ export async function search(resetPage = true, attempt = 0) {
         const div = document.createElement('div');
         const isWSL = r.source === 'WSL';
         div.className = `result ${isWSL ? 'wsl' : 'windows'}`;
+        div.style.animationDelay = `${index * 0.04}s`;
         div.id = `result-${index}`;
         div.dataset.conversationId = r.conversation_id;
         if (typeof r.message_start_index === 'number') {
@@ -640,9 +649,7 @@ export function showSearchView() {
     const resultsDiv = document.getElementById('results');
 
     if (header) header.style.display = 'none';
-    if (heroTitle) heroTitle.style.display = 'block';
-    if (heroSubtitle) heroSubtitle.style.display = 'block';
-    if (filters) filters.style.display = 'block';
+    if (filters) filters.style.display = '';
     if (chatPanel) chatPanel.style.display = 'block';
 
     sessionStorage.removeItem('activeConversationId');
@@ -795,6 +802,7 @@ export async function showAllConversations() {
             const div = document.createElement('div');
             const isWSL = r.source === 'WSL';
             div.className = `result ${isWSL ? 'wsl' : 'windows'}`;
+            div.style.animationDelay = `${index * 0.04}s`;
             div.id = `result-${globalIndex}`;
             div.dataset.conversationId = r.conversation_id;
             const shortId = r.conversation_id.split('-').pop();
@@ -865,7 +873,7 @@ export async function showAllConversations() {
         saveAllConversationsState();
         ensureResultsHandlers(resultsDiv);
     } catch (error) {
-        resultsDiv.innerHTML = `<div style="color: #f44336;">Error: ${error.message}</div>`;
+        resultsDiv.innerHTML = `<div style="color: hsl(var(--danger));">Error: ${error.message}</div>`;
     }
 }
 
@@ -926,7 +934,7 @@ export async function loadConversationView(conversationId, pushState = true) {
             const msg = payload && payload.detail ? payload.detail : 'Failed to load conversation';
             resultsDiv.innerHTML = '';
             const errorDiv = document.createElement('div');
-            errorDiv.style.color = '#f44336';
+            errorDiv.style.color = 'hsl(var(--danger))';
             errorDiv.textContent = msg;
             resultsDiv.appendChild(errorDiv);
             return;
@@ -982,13 +990,13 @@ export async function loadConversationView(conversationId, pushState = true) {
         exportBtn.className = 'export-btn';
         exportBtn.textContent = '📥 Export';
         exportBtn.style.cssText = `
-            background: var(--accent-primary);
+            background: hsl(var(--accent));
             color: white;
             border: none;
             padding: 8px 16px;
             border-radius: 6px;
             cursor: pointer;
-            font-family: 'Space Grotesk', sans-serif;
+            font-family: var(--font-sans);
             font-size: 14px;
             font-weight: 500;
             transition: all 0.2s;
@@ -1001,8 +1009,8 @@ export async function loadConversationView(conversationId, pushState = true) {
             right: 0;
             top: 100%;
             margin-top: 4px;
-            background: var(--bg-elevated);
-            border: 1px solid var(--border-default);
+            background: hsl(var(--bg-elevated));
+            border: 1px solid hsl(var(--border-glass));
             border-radius: 6px;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
             z-index: 1000;
@@ -1021,19 +1029,19 @@ export async function loadConversationView(conversationId, pushState = true) {
                 padding: 10px 14px;
                 cursor: pointer;
                 transition: background 0.2s;
-                border-bottom: 1px solid var(--border-muted);
+                border-bottom: 1px solid hsl(var(--border-subtle));
             `;
             option.innerHTML = `
-                <div style="font-weight: 500; color: var(--text-primary); margin-bottom: 2px;">
+                <div style="font-weight: 500; color: hsl(var(--text-primary)); margin-bottom: 2px;">
                     ${fmt.label}
                 </div>
-                <div style="font-size: 12px; color: var(--text-muted);">
+                <div style="font-size: 12px; color: hsl(var(--text-tertiary));">
                     ${fmt.desc}
                 </div>
             `;
 
             option.addEventListener('mouseenter', () => {
-                option.style.background = 'var(--bg-surface)';
+                option.style.background = 'hsl(var(--bg-surface))';
             });
             option.addEventListener('mouseleave', () => {
                 option.style.background = 'transparent';
@@ -1192,7 +1200,7 @@ export async function loadConversationView(conversationId, pushState = true) {
     } catch (error) {
         resultsDiv.innerHTML = '';
         const errorDiv = document.createElement('div');
-        errorDiv.style.color = '#f44336';
+        errorDiv.style.color = 'hsl(var(--danger))';
         errorDiv.textContent = `Error: ${error.message}`;
         resultsDiv.appendChild(errorDiv);
     }
