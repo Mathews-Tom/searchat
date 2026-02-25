@@ -9,6 +9,7 @@ import { addCheckboxToResult } from './bulk-export.js';
 import { renderPagination, setTotalResults, getOffset, resetPagination, goToPage } from './pagination.js';
 import { getProjectSummaries } from './api.js';
 import { applySnapshotParam, isSnapshotActive, getSnapshotName } from './dataset.js';
+import { isWarmingUp } from '../splash.js';
 
 let _searchNonce = 0;
 const _snippetCodeMap = new Map();
@@ -402,6 +403,12 @@ async function copyTextToClipboard(text, buttonEl) {
  }
 
 export async function search(resetPage = true, attempt = 0) {
+    if (isWarmingUp()) {
+        document.getElementById('results').innerHTML =
+            '<div class="loading">Search engine is still warming up\u2026</div>';
+        return;
+    }
+
     _searchNonce += 1;
     const nonce = _searchNonce;
 
