@@ -404,6 +404,7 @@ async function copyTextToClipboard(text, buttonEl) {
 
 export async function search(resetPage = true, attempt = 0) {
     if (isWarmingUp()) {
+        console.debug('search(): blocked by warmup guard');
         document.getElementById('results').innerHTML =
             '<div class="loading">Search engine is still warming up\u2026</div>';
         return;

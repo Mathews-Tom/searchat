@@ -29,6 +29,11 @@ const HIGHLIGHTS = [
 
 let pollInterval = null;
 let _currentServerStartedAt = null;
+let _sidebarPollInterval = null;
+let _warmupStartedAt = null;
+
+const WARMUP_MAX_DURATION_MS = 120_000; // 2 minutes
+const SIDEBAR_POLL_MAX_FAILURES = 20;   // 10 seconds at 500ms
 
 /**
  * Check if user has seen splash before
@@ -66,10 +71,28 @@ function clearLegacySplashFlag() {
 /**
  * Returns true when the sidebar warmup indicator is active
  * (splash was dismissed before critical components finished loading).
+ * Includes a safety valve: expires after WARMUP_MAX_DURATION_MS to
+ * prevent permanently blocking search/chat.
  */
 export function isWarmingUp() {
     const indicator = document.getElementById('sidebarWarmupIndicator');
-    return indicator !== null && indicator.style.display !== 'none';
+    if (!indicator) return false;
+
+    const visible = getComputedStyle(indicator).display !== 'none';
+    if (!visible) {
+        _warmupStartedAt = null;
+        return false;
+    }
+
+    if (_warmupStartedAt === null) _warmupStartedAt = Date.now();
+    if (Date.now() - _warmupStartedAt > WARMUP_MAX_DURATION_MS) {
+        console.warn('isWarmingUp: warmup exceeded maximum duration, unblocking search/chat');
+        indicator.style.display = 'none';
+        _warmupStartedAt = null;
+        return false;
+    }
+
+    return true;
 }
 
 /**
@@ -323,12 +346,13 @@ async function dismissSplash() {
     let criticalReady = false;
     try {
         const response = await fetch('/api/status');
+        if (!response.ok) throw new Error(`Status API returned ${response.status}`);
         const status = await response.json();
         criticalReady = CRITICAL_COMPONENTS.every(
             name => status.components[name] === 'ready'
         );
-    } catch {
-        // Network error — assume not ready
+    } catch (err) {
+        console.warn('dismissSplash: status check failed, assuming not ready', err);
     }
 
     // Stop splash polling
@@ -351,30 +375,46 @@ async function dismissSplash() {
 }
 
 /**
- * Show an infinite spinner above the server status section
- * that polls until all critical components are ready.
+ * Show a spinner above the server status section that polls
+ * until all critical components are ready or max failures reached.
  */
 function showSidebarWarmupIndicator() {
+    if (_sidebarPollInterval) return;
+
     const indicator = document.getElementById('sidebarWarmupIndicator');
-    if (!indicator) return;
+    if (!indicator) {
+        console.warn('showSidebarWarmupIndicator: #sidebarWarmupIndicator not found in DOM');
+        return;
+    }
 
     indicator.style.display = '';
+    let consecutiveFailures = 0;
 
-    const sidebarPoll = setInterval(async () => {
+    _sidebarPollInterval = setInterval(async () => {
         try {
             const response = await fetch('/api/status');
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const status = await response.json();
 
             const ready = CRITICAL_COMPONENTS.every(
                 name => status.components[name] === 'ready'
             );
+            consecutiveFailures = 0;
 
             if (ready) {
-                clearInterval(sidebarPoll);
+                clearInterval(_sidebarPollInterval);
+                _sidebarPollInterval = null;
                 indicator.style.display = 'none';
             }
-        } catch {
-            // Keep polling on transient errors
+        } catch (err) {
+            consecutiveFailures++;
+            console.warn('Sidebar warmup poll failed:', err);
+            if (consecutiveFailures >= SIDEBAR_POLL_MAX_FAILURES) {
+                clearInterval(_sidebarPollInterval);
+                _sidebarPollInterval = null;
+                const label = indicator.querySelector('.sidebar-warmup-label');
+                if (label) label.textContent = 'Warmup check failed \u2014 reload page';
+            }
         }
     }, STATUS_POLL_INTERVAL);
 }

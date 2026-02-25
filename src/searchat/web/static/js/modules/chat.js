@@ -140,6 +140,7 @@ function restoreChatPreferences() {
 
 async function runChatRag() {
     if (isWarmingUp()) {
+        console.debug('runChatRag(): blocked by warmup guard');
         setStatus('Search engine is still warming up\u2026', true);
         return;
     }
