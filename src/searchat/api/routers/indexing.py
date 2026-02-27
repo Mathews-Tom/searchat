@@ -84,6 +84,7 @@ async def index_missing(snapshot: str | None = Query(None, description="Backup s
                 "success": True,
                 "new_conversations": 0,
                 "failed_conversations": 0,
+                "empty_conversations": 0,
                 "total_files": len(all_files),
                 "already_indexed": len(indexed_paths),
                 "message": "All conversations are already indexed"
@@ -112,6 +113,9 @@ async def index_missing(snapshot: str | None = Query(None, description="Backup s
         elapsed_time = time.time() - start_time
         failed_count = stats.skipped_conversations
 
+        raw_empty = getattr(stats, 'empty_conversations', 0)
+        empty_count = raw_empty if isinstance(raw_empty, int) else 0
+
         if failed_count > 0:
             message = f"Added {stats.new_conversations} conversations, {failed_count} failed (see errors above)"
             logger.warning(f"Indexing complete: {stats.new_conversations} added, {failed_count} failed (see errors above)")
@@ -119,10 +123,14 @@ async def index_missing(snapshot: str | None = Query(None, description="Backup s
             message = f"Added {stats.new_conversations} conversations to index"
             logger.info(f"Indexing complete: {stats.new_conversations} added successfully")
 
+        if empty_count > 0:
+            logger.info(f"{empty_count} empty sessions skipped (no messages)")
+
         result = {
             "success": True,
             "new_conversations": stats.new_conversations,
             "failed_conversations": failed_count,
+            "empty_conversations": empty_count,
             "total_files": len(all_files),
             "already_indexed": len(indexed_paths),
             "time_seconds": round(elapsed_time, 2),

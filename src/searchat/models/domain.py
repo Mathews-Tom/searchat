@@ -89,6 +89,7 @@ class UpdateStats:
     updated_conversations: int
     skipped_conversations: int
     update_time_seconds: float
+    empty_conversations: int = 0
 
 
 @dataclass
