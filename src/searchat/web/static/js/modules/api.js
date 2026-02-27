@@ -116,21 +116,29 @@ export async function indexMissing() {
         const data = await response.json();
 
         if (data.success) {
-            const failedInfo = data.failed_conversations > 0
-                ? ` | <strong style="color: hsl(var(--danger));">${data.failed_conversations} failed</strong>`
-                : '';
+            const failedCount = data.failed_conversations || 0;
+            const emptyCount = data.empty_conversations || 0;
+
+            const detailParts = [];
+            if (emptyCount > 0) {
+                detailParts.push(`<strong>${emptyCount} empty sessions</strong> skipped`);
+            }
+            if (failedCount > 0) {
+                detailParts.push(`<strong style="color: hsl(var(--danger));">${failedCount} failed</strong>`);
+            }
+            const extraInfo = detailParts.length > 0 ? ' | ' + detailParts.join(' | ') : '';
 
             if (data.new_conversations === 0) {
-                const notifClass = data.failed_conversations > 0 ? 'notification-warning' : 'notification-info';
-                const statusText = data.failed_conversations > 0
-                    ? `All valid conversations indexed (${data.failed_conversations} corrupt files skipped)`
+                const notifClass = failedCount > 0 ? 'notification-warning' : 'notification-info';
+                const statusText = failedCount > 0
+                    ? `All valid conversations indexed (${failedCount} corrupt files skipped)`
                     : 'All conversations are already indexed';
 
                 resultsDiv.innerHTML = `
                     <div class="notification ${notifClass}">
                         <strong>${statusText}</strong>
                         <div class="notification-details">
-                            <strong>Total files:</strong> ${data.total_files} | <strong>Already indexed:</strong> ${data.already_indexed}${failedInfo}
+                            <strong>Total files:</strong> ${data.total_files} | <strong>Already indexed:</strong> ${data.already_indexed}${extraInfo}
                         </div>
                         <div class="notification-hint">
                             The live file watcher will automatically index new conversations as you create them.
@@ -138,13 +146,13 @@ export async function indexMissing() {
                     </div>
                 `;
             } else {
-                const notifClass = data.failed_conversations > 0 ? 'notification-warning' : 'notification-success';
+                const notifClass = failedCount > 0 ? 'notification-warning' : 'notification-success';
 
                 resultsDiv.innerHTML = `
                     <div class="notification ${notifClass}">
                         <strong>Added ${data.new_conversations} conversations to index</strong>
                         <div class="notification-details">
-                            <strong>Total files:</strong> ${data.total_files} | <strong>Previously indexed:</strong> ${data.already_indexed} | <strong>Time:</strong> ${data.time_seconds}s${failedInfo}
+                            <strong>Total files:</strong> ${data.total_files} | <strong>Previously indexed:</strong> ${data.already_indexed} | <strong>Time:</strong> ${data.time_seconds}s${extraInfo}
                         </div>
                         <div class="notification-hint">
                             Your new conversations are now searchable!

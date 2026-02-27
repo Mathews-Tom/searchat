@@ -53,6 +53,21 @@
     /* Noise */
     --noise-opacity: 0.03;
 
+    /* Icon Colors */
+    --icon-search: 217 91% 60%;
+    --icon-chat: 262 83% 58%;
+    --icon-bookmark: 38 92% 50%;
+    --icon-analytics: 142 71% 45%;
+    --icon-dashboard: 190 80% 50%;
+    --icon-export: 280 70% 55%;
+    --icon-add: 142 71% 45%;
+    --icon-info: 190 80% 50%;
+    --icon-stop: 0 72% 55%;
+
+    /* Button Gloss */
+    --btn-gloss: inset 0 1px 0 hsl(0 0% 100% / 0.08);
+    --btn-gloss-primary: inset 0 1px 0 hsl(0 0% 100% / 0.15);
+
     /* Tags */
     --tag-bg: 217 91% 60% / 0.12;
     --tag-text: 217 91% 72%;
@@ -135,6 +150,20 @@
     --gradient-mesh: radial-gradient(ellipse at 20% 50%, hsl(221 83% 53% / 0.04) 0%, transparent 50%), radial-gradient(ellipse at 80% 20%, hsl(262 83% 58% / 0.04) 0%, transparent 50%), radial-gradient(ellipse at 50% 80%, hsl(190 80% 50% / 0.03) 0%, transparent 50%);
 
     --noise-opacity: 0.015;
+
+    /* Icon Colors (light overrides) */
+    --icon-search: 221 83% 53%;
+    --icon-chat: 262 83% 50%;
+    --icon-bookmark: 38 92% 42%;
+    --icon-analytics: 142 71% 38%;
+    --icon-dashboard: 190 80% 42%;
+    --icon-export: 280 70% 48%;
+    --icon-add: 142 71% 38%;
+    --icon-info: 190 80% 42%;
+    --icon-stop: 0 72% 48%;
+
+    --btn-gloss: inset 0 1px 0 hsl(0 0% 100% / 0.25);
+    --btn-gloss-primary: inset 0 1px 0 hsl(0 0% 100% / 0.3);
 
     --tag-bg: 221 83% 53% / 0.08;
     --tag-text: 221 83% 40%;

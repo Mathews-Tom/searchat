@@ -7,9 +7,10 @@ from fastapi.testclient import TestClient
 from searchat.api.app import app
 
 
-def test_index_html_contains_chat_controls():
+def test_chat_page_contains_chat_controls():
+    """Chat controls live in the standalone /chat page (moved from index.html)."""
     client = TestClient(app)
-    resp = client.get("/")
+    resp = client.get("/chat")
     assert resp.status_code == 200
 
     html = resp.text

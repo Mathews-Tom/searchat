@@ -916,6 +916,7 @@ class ConversationIndexer:
         new_indexed_paths: set[str] = set()
         connector_name_by_file_path: dict[str, str] = {}
         processed_count = 0
+        empty_count = 0
 
         for idx, file_path in enumerate(new_files, 1):
             json_path = Path(file_path)
@@ -939,6 +940,7 @@ class ConversationIndexer:
 
                 # Skip conversations with no messages
                 if record.message_count == 0:
+                    empty_count += 1
                     continue
 
                 new_indexed_paths.add(record.file_path)
@@ -1067,8 +1069,9 @@ class ConversationIndexer:
         return UpdateStats(
             new_conversations=processed_count,
             updated_conversations=0,
-            skipped_conversations=len(file_paths) - processed_count,
-            update_time_seconds=elapsed
+            skipped_conversations=len(file_paths) - processed_count - empty_count,
+            update_time_seconds=elapsed,
+            empty_conversations=empty_count,
         )
 
     def index_adaptive(

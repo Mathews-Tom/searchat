@@ -4,7 +4,6 @@ import { initTheme, setTheme } from './modules/theme.js';
 import { restoreSearchState } from './modules/session.js';
 import { loadProjects, indexMissing, shutdownServer } from './modules/api.js';
 import { search, toggleCustomDate, loadConversationView, showSearchView, initProjectSuggestion, showAllConversations, resumeSession } from './modules/search.js';
-import { initChat } from './modules/chat.js';
 import { initShortcuts, toggleHelpModal } from './modules/shortcuts.js';
 import { initSearchHistory, restoreSearchFromHistory, clearHistory } from './modules/search-history.js';
 import { copyCode } from './modules/code-extraction.js';
@@ -42,10 +41,6 @@ window.shutdownServer = shutdownServer;
 window.createBackup = createBackup;
 window.showBackups = showBackups;
 window.showSearchView = showSearchView;
-window.toggleChat = function () {
-    const panel = document.getElementById('chatPanel');
-    if (panel) panel.classList.toggle('collapsed');
-};
 
 function safeInit(name, fn) {
     try {
@@ -63,7 +58,6 @@ function safeInit(name, fn) {
 // Initialize modules on page load. A failure in one module should not
 // break basic interactions like search and chat.
 safeInit('theme', initTheme);
-safeInit('chat', initChat);
 safeInit('shortcuts', initShortcuts);
 safeInit('search-history', initSearchHistory);
 safeInit('suggestions', initSuggestions);

@@ -41,10 +41,27 @@ function initSearchShortcut() {
     });
 }
 
+let _openDropdown = null;
+
+function closeOpenDropdown() {
+    if (_openDropdown) {
+        _openDropdown.remove();
+        _openDropdown = null;
+    }
+}
+
 function initFilterChips() {
-    // Selects where index 0 is "all/any" (not active), vs selects where
-    // every value is a real filter (always active).
     const alwaysActive = new Set(['mode', 'sortBy']);
+
+    document.addEventListener('click', (e) => {
+        if (_openDropdown && !e.target.closest('.filter-chip') && !e.target.closest('.filter-dropdown')) {
+            closeOpenDropdown();
+        }
+    });
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeOpenDropdown();
+    });
 
     document.querySelectorAll('.filter-chip[data-for]').forEach(chip => {
         const selectId = chip.dataset.for;
@@ -53,9 +70,47 @@ function initFilterChips() {
 
         const valueSpan = chip.querySelector('.filter-value');
 
-        chip.addEventListener('click', () => {
-            select.focus();
-            select.dispatchEvent(new MouseEvent('mousedown'));
+        chip.addEventListener('click', (e) => {
+            e.stopPropagation();
+
+            // Toggle: if dropdown already open for this chip, close it
+            if (_openDropdown && _openDropdown.dataset.forChip === selectId) {
+                closeOpenDropdown();
+                return;
+            }
+
+            closeOpenDropdown();
+
+            const dropdown = document.createElement('div');
+            dropdown.className = 'filter-dropdown';
+            dropdown.dataset.forChip = selectId;
+
+            Array.from(select.options).forEach((option, idx) => {
+                const item = document.createElement('button');
+                item.type = 'button';
+                item.className = 'filter-dropdown-item';
+                item.textContent = option.text;
+                if (idx === select.selectedIndex) {
+                    item.classList.add('selected');
+                }
+
+                item.addEventListener('click', () => {
+                    select.selectedIndex = idx;
+                    select.dispatchEvent(new Event('change'));
+                    closeOpenDropdown();
+                });
+
+                dropdown.appendChild(item);
+            });
+
+            // Position below the chip
+            const rect = chip.getBoundingClientRect();
+            dropdown.style.position = 'fixed';
+            dropdown.style.top = `${rect.bottom + 4}px`;
+            dropdown.style.left = `${rect.left}px`;
+
+            document.body.appendChild(dropdown);
+            _openDropdown = dropdown;
         });
 
         function sync() {

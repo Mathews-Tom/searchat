@@ -31,6 +31,7 @@ let pollInterval = null;
 let _currentServerStartedAt = null;
 let _sidebarPollInterval = null;
 let _warmupStartedAt = null;
+let _warmupUIActive = false;
 
 const WARMUP_MAX_DURATION_MS = 120_000; // 2 minutes
 const SIDEBAR_POLL_MAX_FAILURES = 20;   // 10 seconds at 500ms
@@ -96,6 +97,45 @@ export function isWarmingUp() {
 }
 
 /**
+ * Enable or disable interactive UI elements during warmup.
+ * When warming=true: search input disabled, chat link inert.
+ * When warming=false: everything restored.
+ */
+export function setWarmupUI(warming) {
+    if (warming === _warmupUIActive) return;
+    _warmupUIActive = warming;
+
+    const searchInput = document.getElementById('search');
+    const searchWrap = document.querySelector('.search-wrap');
+    const chatLink = document.getElementById('chatNavLink');
+
+    if (searchInput) {
+        searchInput.disabled = warming;
+    }
+    if (searchWrap) {
+        searchWrap.classList.toggle('warming-up', warming);
+    }
+    if (chatLink) {
+        if (warming) {
+            chatLink.dataset.href = chatLink.getAttribute('href');
+            chatLink.removeAttribute('href');
+            chatLink.setAttribute('aria-disabled', 'true');
+            chatLink.style.pointerEvents = 'none';
+            chatLink.style.opacity = '0.5';
+        } else {
+            const savedHref = chatLink.dataset.href;
+            if (savedHref) {
+                chatLink.setAttribute('href', savedHref);
+                delete chatLink.dataset.href;
+            }
+            chatLink.removeAttribute('aria-disabled');
+            chatLink.style.pointerEvents = '';
+            chatLink.style.opacity = '';
+        }
+    }
+}
+
+/**
  * Check warmup status and show splash if needed (first visit only)
  */
 export async function checkAndShowSplash() {
@@ -113,6 +153,7 @@ export async function checkAndShowSplash() {
             return;
         }
 
+        setWarmupUI(true);
         renderSplash(status);
         pollWarmupStatus();
     } catch (error) {
@@ -371,6 +412,8 @@ async function dismissSplash() {
     // If still warming up, show sidebar indicator and continue polling
     if (!criticalReady) {
         showSidebarWarmupIndicator();
+    } else {
+        setWarmupUI(false);
     }
 }
 
@@ -405,6 +448,7 @@ function showSidebarWarmupIndicator() {
                 clearInterval(_sidebarPollInterval);
                 _sidebarPollInterval = null;
                 indicator.style.display = 'none';
+                setWarmupUI(false);
             }
         } catch (err) {
             consecutiveFailures++;
