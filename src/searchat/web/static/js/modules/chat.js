@@ -285,10 +285,10 @@ export function initChat() {
     const maxTokensEl = document.getElementById('chatMaxTokens');
     const systemPromptEl = document.getElementById('chatSystemPrompt');
 
-    // Add collapse/expand functionality to chat panel
+    // Add collapse/expand functionality to chat panel (skip on dedicated chat page)
     const chatPanel = document.getElementById('chatPanel');
     const chatHeader = chatPanel?.querySelector('.chat-header');
-    if (chatHeader && chatPanel) {
+    if (chatHeader && chatPanel && chatPanel.dataset.noCollapse !== 'true') {
         const toggle = document.createElement('button');
         toggle.className = 'chat-toggle';
         toggle.setAttribute('aria-label', 'Toggle chat panel');

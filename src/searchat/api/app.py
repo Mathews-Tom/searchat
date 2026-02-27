@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import mimetypes
 import os
 import re
@@ -11,6 +12,10 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from datetime import datetime
+
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -79,37 +84,56 @@ mimetypes.add_type("text/javascript", ".js")
 mimetypes.add_type("text/javascript", ".mjs")
 
 
-# Cache HTML at module load for faster responses
-_HTML_PATH = Path(__file__).parent.parent / "web" / "index.html"
+# ---------------------------------------------------------------------------
+# Static-asset cache busting
+# ---------------------------------------------------------------------------
+_WEB_DIR = Path(__file__).parent.parent / "web"
+_HTML_PATH = _WEB_DIR / "index.html"
+_STATIC_DIR = _WEB_DIR / "static"
+
+_CACHE_BUST_RE = re.compile(
+    r"(?P<attr>\b(?:src|href))=(?P<q>['\"])(?P<path>/static/[^'\"]+)(?P=q)"
+)
 
 
-def _cache_bust_static_assets(html: str, version: str) -> str:
-    """Append a version query param to local /static assets.
+def _static_fingerprint() -> str:
+    """Hash the combined mtime of every file under web/static/.
 
-    This prevents browsers from keeping an outdated ES module graph after an
-    upgrade (a common source of "Unexpected token" and missing global handlers).
+    Changes on any JS/CSS/asset edit, no version bump needed.
     """
+    h = hashlib.md5(usedforsecurity=False)
+    for p in sorted(_STATIC_DIR.rglob("*")):
+        if p.is_file():
+            h.update(f"{p.relative_to(_STATIC_DIR)}:{p.stat().st_mtime_ns}".encode())
+    return h.hexdigest()[:10]
 
-    pattern = re.compile(r"(?P<attr>\b(?:src|href))=(?P<q>['\"])(?P<path>/static/[^'\"]+)(?P=q)")
+
+def _cache_bust_static_assets(html: str, fingerprint: str) -> str:
+    """Append a fingerprint query param to local /static asset URLs."""
 
     def repl(match: re.Match[str]) -> str:
-        attr = match.group("attr")
-        quote = match.group("q")
-        path = match.group("path")
-
+        attr, quote, path = match.group("attr"), match.group("q"), match.group("path")
         base, sep, fragment = path.partition("#")
         if "?" in base:
             return match.group(0)
-
-        busted = f"{base}?v={version}"
+        busted = f"{base}?v={fingerprint}"
         if sep:
             busted = f"{busted}#{fragment}"
         return f"{attr}={quote}{busted}{quote}"
 
-    return pattern.sub(repl, html)
+    return _CACHE_BUST_RE.sub(repl, html)
 
 
-_CACHED_HTML = _cache_bust_static_assets(_HTML_PATH.read_text(encoding="utf-8"), APP_VERSION)
+def _build_html_cache() -> tuple[str, str]:
+    """Read and cache-bust both HTML pages using the current static fingerprint."""
+    fp = _static_fingerprint()
+    index = _cache_bust_static_assets(_HTML_PATH.read_text(encoding="utf-8"), fp)
+    chat_path = _WEB_DIR / "chat.html"
+    chat = _cache_bust_static_assets(chat_path.read_text(encoding="utf-8"), fp) if chat_path.exists() else ""
+    return index, chat
+
+
+_CACHED_HTML, _CACHED_CHAT_HTML = _build_html_cache()
 
 
 @asynccontextmanager
@@ -161,9 +185,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ---------------------------------------------------------------------------
+# No-cache middleware for static assets (prevents stale JS/CSS during dev)
+# ---------------------------------------------------------------------------
+class NoCacheStaticMiddleware(BaseHTTPMiddleware):
+    """Force browsers to revalidate /static assets on every request."""
+
+    async def dispatch(self, request: Request, call_next):  # type: ignore[override]
+        response: Response = await call_next(request)
+        if request.url.path.startswith("/static"):
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+        return response
+
+
+app.add_middleware(NoCacheStaticMiddleware)
+
 # Mount static files
-static_path = Path(__file__).parent.parent / "web" / "static"
-app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
+app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
 # Mount docs directory for infographics
 docs_path = Path(__file__).parent.parent.parent.parent / "docs"
@@ -290,6 +330,12 @@ async def serve_conversation_page(conversation_id: str):
     """Serve HTML page for viewing a specific conversation."""
     # For now, serve the same main page (it handles conversation viewing via client-side routing)
     return HTMLResponse(_CACHED_HTML)
+
+
+@app.get("/chat", response_class=HTMLResponse)
+async def serve_chat_page():
+    """Serve the standalone Chat with History page."""
+    return HTMLResponse(_CACHED_CHAT_HTML)
 
 
 def main():
