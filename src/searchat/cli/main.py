@@ -380,6 +380,11 @@ def main():
 
             raise SystemExit(run_validate(argv[1:]))
 
+        if argv and argv[0] == "graph":
+            from searchat.cli.knowledge_graph_cmd import run_graph
+
+            raise SystemExit(run_graph(argv[1:]))
+
         if "-h" in argv_set or "--help" in argv_set:
             print("Usage: searchat")
             print()
@@ -391,6 +396,10 @@ def main():
             print("  searchat onboard [--project NAME] [--max-tokens N]")
             print("  searchat prune [--threshold FLOAT] [--domain DOMAIN] [--dry-run] [--force]")
             print("  searchat validate [--domain DOMAIN] [--project PROJECT]")
+            print("  searchat graph stats")
+            print("  searchat graph contradictions [--domain DOMAIN] [--unresolved-only]")
+            print("  searchat graph resolve <edge_id> <strategy> [--params JSON]")
+            print("  searchat graph lineage <record_id>")
             print()
             return
 

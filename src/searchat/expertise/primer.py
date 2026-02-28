@@ -2,8 +2,12 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 from searchat.expertise.models import ExpertiseRecord, ExpertiseSeverity, ExpertiseType, PrimeResult
+
+if TYPE_CHECKING:
+    from searchat.knowledge_graph.store import KnowledgeGraphStore
 
 
 class ExpertisePrioritizer:
@@ -48,9 +52,49 @@ class ExpertisePrioritizer:
     def _count_tokens(self, record: ExpertiseRecord) -> int:
         return int(len(record.content.split()) * 1.3)
 
-    def prioritize(self, records: list[ExpertiseRecord], max_tokens: int = 4000) -> PrimeResult:
+    def prioritize(
+        self,
+        records: list[ExpertiseRecord],
+        max_tokens: int = 4000,
+        kg_store: "KnowledgeGraphStore | None" = None,
+    ) -> PrimeResult:
         active = [r for r in records if r.is_active]
         filtered_inactive = len(records) - len(active)
+
+        # KG-aware filtering and annotation
+        superseded_ids: set[str] = set()
+        qualifying_notes: dict[str, list[str]] = {}
+        contradiction_ids: set[str] = set()
+
+        if kg_store is not None:
+            from searchat.knowledge_graph.models import EdgeType
+
+            for record in active:
+                edges = kg_store.get_edges_for_record(
+                    record.id, as_source=False, as_target=True
+                )
+                for edge in edges:
+                    if edge.edge_type == EdgeType.SUPERSEDES:
+                        # This record has an incoming SUPERSEDES edge — it is superseded
+                        superseded_ids.add(record.id)
+                    elif edge.edge_type == EdgeType.QUALIFIES:
+                        # Another record qualifies this one — collect notes
+                        qualifying_notes.setdefault(record.id, []).append(edge.source_id)
+
+                # Check for unresolved outgoing CONTRADICTS edges
+                out_edges = kg_store.get_edges_for_record(
+                    record.id, as_source=True, as_target=False
+                )
+                for edge in out_edges:
+                    if edge.edge_type == EdgeType.CONTRADICTS and edge.resolution_id is None:
+                        contradiction_ids.add(record.id)
+
+            active = [r for r in active if r.id not in superseded_ids]
+
+        # Annotate records with KG metadata via a lightweight wrapper approach:
+        # we store the sets on the instance so formatters can access them.
+        self._qualifying_notes = qualifying_notes
+        self._contradiction_ids = contradiction_ids
 
         scored = sorted(active, key=self._score, reverse=True)
 
@@ -96,7 +140,13 @@ class PrimeFormatter:
         ExpertiseType.INSIGHT: "INSIGHT",
     }
 
-    def format_markdown(self, result: PrimeResult, project: str | None = None) -> str:
+    def format_markdown(
+        self,
+        result: PrimeResult,
+        project: str | None = None,
+        contradiction_ids: set[str] | None = None,
+        qualifying_notes: dict[str, list[str]] | None = None,
+    ) -> str:
         header = f"## Project Expertise ({project})" if project else "## Project Expertise"
         lines: list[str] = [header, ""]
 
@@ -119,27 +169,44 @@ class PrimeFormatter:
                 continue
             lines.append(f"### {self._TYPE_LABEL[etype]}")
             for r in records:
+                contra_flag = (
+                    " *(contested)*"
+                    if contradiction_ids and r.id in contradiction_ids
+                    else ""
+                )
+                qual_suffix = ""
+                if qualifying_notes and r.id in qualifying_notes:
+                    qual_ids = qualifying_notes[r.id]
+                    qual_suffix = f" *(qualified by: {', '.join(qual_ids)})*"
+
                 if etype == ExpertiseType.BOUNDARY:
-                    lines.append(f"- **{r.content}**")
+                    lines.append(f"- **{r.content}**{contra_flag}{qual_suffix}")
                 elif etype == ExpertiseType.CONVENTION:
-                    lines.append(f"- {r.content}")
+                    lines.append(f"- {r.content}{contra_flag}{qual_suffix}")
                 elif etype == ExpertiseType.DECISION:
                     entry = f"- **{r.name or r.content}**"
                     if r.rationale:
                         entry += f": {r.rationale}"
+                    entry += contra_flag + qual_suffix
                     lines.append(entry)
                 elif etype == ExpertiseType.FAILURE:
                     entry = f"- \u26a0\ufe0f {r.content}"
                     if r.resolution:
                         entry += f" — {r.resolution}"
+                    entry += contra_flag + qual_suffix
                     lines.append(entry)
                 else:
-                    lines.append(f"- {r.content}")
+                    lines.append(f"- {r.content}{contra_flag}{qual_suffix}")
             lines.append("")
 
         return "\n".join(lines).rstrip() + "\n"
 
-    def format_json(self, result: PrimeResult) -> dict:
+    def format_json(
+        self,
+        result: PrimeResult,
+        contradiction_ids: set[str] | None = None,
+        qualifying_notes: dict[str, list[str]] | None = None,
+    ) -> dict:
         def _serialize_record(r: ExpertiseRecord) -> dict:
             return {
                 "id": r.id,
@@ -161,6 +228,10 @@ class PrimeFormatter:
                 "rationale": r.rationale,
                 "alternatives_considered": r.alternatives_considered,
                 "resolution": r.resolution,
+                "has_unresolved_contradiction": bool(
+                    contradiction_ids and r.id in contradiction_ids
+                ),
+                "qualified_by": (qualifying_notes or {}).get(r.id, []),
             }
 
         return {
@@ -172,7 +243,13 @@ class PrimeFormatter:
             "records_filtered_inactive": result.records_filtered_inactive,
         }
 
-    def format_prompt(self, result: PrimeResult, project: str | None = None) -> str:
+    def format_prompt(
+        self,
+        result: PrimeResult,
+        project: str | None = None,
+        contradiction_ids: set[str] | None = None,
+        qualifying_notes: dict[str, list[str]] | None = None,
+    ) -> str:
         lines: list[str] = []
         if project:
             lines.append(f"Project expertise for: {project}")
@@ -186,6 +263,10 @@ class PrimeFormatter:
                 entry = f"{i}. [{prefix}] {r.name or r.content}: {r.rationale}"
             else:
                 entry = f"{i}. [{prefix}] {r.content}"
+            if contradiction_ids and r.id in contradiction_ids:
+                entry += " [CONTESTED]"
+            if qualifying_notes and r.id in qualifying_notes:
+                entry += f" [QUALIFIED by {', '.join(qualifying_notes[r.id])}]"
             lines.append(entry)
 
         return "\n".join(lines)

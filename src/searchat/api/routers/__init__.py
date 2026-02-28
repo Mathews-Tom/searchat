@@ -14,6 +14,7 @@ from searchat.api.routers.docs import router as docs_router
 from searchat.api.routers.patterns import router as patterns_router
 from searchat.api.routers.dashboards import router as dashboards_router
 from searchat.api.routers.expertise import router as expertise_router
+from searchat.api.routers.knowledge_graph import router as knowledge_graph_router
 
 __all__ = [
     "search_router",
@@ -31,4 +32,5 @@ __all__ = [
     "patterns_router",
     "dashboards_router",
     "expertise_router",
+    "knowledge_graph_router",
 ]
