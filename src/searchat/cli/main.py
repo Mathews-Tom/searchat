@@ -360,6 +360,16 @@ def main():
 
             raise SystemExit(run_download_model(argv[1:]))
 
+        if argv and argv[0] == "extract":
+            from searchat.cli.extract import run_extract
+
+            raise SystemExit(run_extract(argv[1:]))
+
+        if argv and argv[0] == "onboard":
+            from searchat.cli.onboard import run_onboard
+
+            raise SystemExit(run_onboard(argv[1:]))
+
         if "-h" in argv_set or "--help" in argv_set:
             print("Usage: searchat")
             print()
@@ -367,6 +377,8 @@ def main():
             print()
             print("Commands:")
             print("  searchat download-model [--preset NAME] [--activate]")
+            print("  searchat extract [--mode MODE] [--project NAME] [--limit N]")
+            print("  searchat onboard [--project NAME] [--max-tokens N]")
             print()
             return
 

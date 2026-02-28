@@ -53,6 +53,7 @@ from searchat.api.routers import (
     docs_router,
     patterns_router,
     dashboards_router,
+    expertise_router,
 )
 from searchat.config.constants import (
     APP_VERSION,
@@ -225,6 +226,7 @@ app.include_router(code_router, prefix="/api", tags=["code"])
 app.include_router(docs_router, prefix="/api", tags=["docs"])
 app.include_router(patterns_router, prefix="/api", tags=["patterns"])
 app.include_router(dashboards_router, prefix="/api", tags=["dashboards"])
+app.include_router(expertise_router)
 
 
 def on_new_conversations(file_paths: list[str]) -> None:

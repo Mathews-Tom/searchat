@@ -99,6 +99,14 @@ from .constants import (
     ENV_RERANKING_MODEL,
     ENV_RERANKING_TOP_K,
     ERROR_NO_CONFIG,
+    DEFAULT_EXPERTISE_ENABLED,
+    DEFAULT_EXPERTISE_AUTO_EXTRACT,
+    DEFAULT_EXPERTISE_PRIME_TOKENS,
+    DEFAULT_EXPERTISE_DEDUP_THRESHOLD,
+    DEFAULT_EXPERTISE_DEDUP_FLAG_THRESHOLD,
+    ENV_EXPERTISE_ENABLED,
+    ENV_EXPERTISE_AUTO_EXTRACT,
+    ENV_EXPERTISE_PRIME_TOKENS,
 )
 
 
@@ -602,6 +610,38 @@ class RerankingConfig:
 
 
 @dataclass
+class ExpertiseConfig:
+    enabled: bool
+    auto_extract: bool
+    default_prime_tokens: int
+    dedup_similarity_threshold: float
+    dedup_flag_threshold: float
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "ExpertiseConfig":
+        return cls(
+            enabled=_get_env_bool(
+                ENV_EXPERTISE_ENABLED,
+                data.get("enabled", DEFAULT_EXPERTISE_ENABLED),
+            ),
+            auto_extract=_get_env_bool(
+                ENV_EXPERTISE_AUTO_EXTRACT,
+                data.get("auto_extract", DEFAULT_EXPERTISE_AUTO_EXTRACT),
+            ),
+            default_prime_tokens=_get_env_int(
+                ENV_EXPERTISE_PRIME_TOKENS,
+                data.get("default_prime_tokens", DEFAULT_EXPERTISE_PRIME_TOKENS),
+            ),
+            dedup_similarity_threshold=float(
+                data.get("dedup_similarity_threshold", DEFAULT_EXPERTISE_DEDUP_THRESHOLD)
+            ),
+            dedup_flag_threshold=float(
+                data.get("dedup_flag_threshold", DEFAULT_EXPERTISE_DEDUP_FLAG_THRESHOLD)
+            ),
+        )
+
+
+@dataclass
 class ServerConfig:
     cors_origins: list[str]
 
@@ -632,6 +672,7 @@ class Config:
     daemon: DaemonConfig
     reranking: RerankingConfig
     server: ServerConfig
+    expertise: ExpertiseConfig
     logging: LogConfig
 
     @classmethod
@@ -708,5 +749,6 @@ class Config:
             daemon=DaemonConfig.from_dict(data.get("daemon", {})),
             reranking=RerankingConfig.from_dict(data.get("reranking", {})),
             server=ServerConfig.from_dict(data.get("server", {})),
+            expertise=ExpertiseConfig.from_dict(data.get("expertise", {})),
             logging=LogConfig(**data.get("logging", {})),
         )
