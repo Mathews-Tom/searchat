@@ -119,6 +119,14 @@ from .constants import (
     ENV_EXPERTISE_EXCLUDE_TYPES,
     ENV_EXPERTISE_PRUNING_ENABLED,
     ENV_EXPERTISE_PRUNING_DRY_RUN,
+    DEFAULT_KG_ENABLED,
+    DEFAULT_KG_SIMILARITY_THRESHOLD,
+    DEFAULT_KG_CONTRADICTION_THRESHOLD,
+    DEFAULT_KG_NLI_MODEL,
+    ENV_KG_ENABLED,
+    ENV_KG_SIMILARITY_THRESHOLD,
+    ENV_KG_CONTRADICTION_THRESHOLD,
+    ENV_KG_NLI_MODEL,
 )
 
 
@@ -690,6 +698,35 @@ class ExpertiseConfig:
 
 
 @dataclass
+class KnowledgeGraphConfig:
+    enabled: bool
+    similarity_threshold: float
+    contradiction_threshold: float
+    nli_model: str
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "KnowledgeGraphConfig":
+        return cls(
+            enabled=_get_env_bool(
+                ENV_KG_ENABLED,
+                data.get("enabled", DEFAULT_KG_ENABLED),
+            ),
+            similarity_threshold=_get_env_float(
+                ENV_KG_SIMILARITY_THRESHOLD,
+                float(data.get("similarity_threshold", DEFAULT_KG_SIMILARITY_THRESHOLD)),
+            ),
+            contradiction_threshold=_get_env_float(
+                ENV_KG_CONTRADICTION_THRESHOLD,
+                float(data.get("contradiction_threshold", DEFAULT_KG_CONTRADICTION_THRESHOLD)),
+            ),
+            nli_model=_get_env_str(
+                ENV_KG_NLI_MODEL,
+                data.get("nli_model", DEFAULT_KG_NLI_MODEL),
+            ) or DEFAULT_KG_NLI_MODEL,
+        )
+
+
+@dataclass
 class ServerConfig:
     cors_origins: list[str]
 
@@ -721,6 +758,7 @@ class Config:
     reranking: RerankingConfig
     server: ServerConfig
     expertise: ExpertiseConfig
+    knowledge_graph: KnowledgeGraphConfig
     logging: LogConfig
 
     @classmethod
@@ -798,5 +836,6 @@ class Config:
             reranking=RerankingConfig.from_dict(data.get("reranking", {})),
             server=ServerConfig.from_dict(data.get("server", {})),
             expertise=ExpertiseConfig.from_dict(data.get("expertise", {})),
+            knowledge_graph=KnowledgeGraphConfig.from_dict(data.get("knowledge_graph", {})),
             logging=LogConfig(**data.get("logging", {})),
         )
