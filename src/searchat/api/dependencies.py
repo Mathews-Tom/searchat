@@ -40,6 +40,7 @@ _dashboards_service = None
 _analytics_service = None
 _watcher = None
 _duckdb_store = None
+_expertise_store = None
 
 # Snapshot-scoped caches (keyed by dataset root, i.e. backup directory path).
 _duckdb_store_by_dir: dict[str, "DuckDBStore"] = {}
@@ -65,7 +66,7 @@ indexing_state = {
 
 def initialize_services():
     """Initialize all services on app startup."""
-    global _config, _search_dir, _backup_manager, _platform_manager, _bookmarks_service, _saved_queries_service, _dashboards_service, _analytics_service, _duckdb_store
+    global _config, _search_dir, _backup_manager, _platform_manager, _bookmarks_service, _saved_queries_service, _dashboards_service, _analytics_service, _duckdb_store, _expertise_store
 
     readiness = get_readiness()
     readiness.set_component("services", "loading")
@@ -82,6 +83,10 @@ def initialize_services():
         from searchat.services.analytics import SearchAnalyticsService
 
         _duckdb_store = DuckDBStore(_search_dir, memory_limit_mb=_config.performance.memory_limit_mb)
+
+        if _config.expertise.enabled:
+            from searchat.expertise.store import ExpertiseStore
+            _expertise_store = ExpertiseStore(_search_dir)
         _bookmarks_service = BookmarksService(_config)
         _analytics_service = SearchAnalyticsService(_config)
         _saved_queries_service = SavedQueriesService(_config)
@@ -448,6 +453,13 @@ def get_platform_manager() -> PlatformManager:
     if _platform_manager is None:
         raise RuntimeError("Services not initialized. Call initialize_services() first.")
     return _platform_manager
+
+
+def get_expertise_store():
+    """Get expertise store singleton."""
+    if _expertise_store is None:
+        raise RuntimeError("Expertise store not initialized. Check expertise.enabled in config.")
+    return _expertise_store
 
 
 def get_bookmarks_service():
