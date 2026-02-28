@@ -370,6 +370,16 @@ def main():
 
             raise SystemExit(run_onboard(argv[1:]))
 
+        if argv and argv[0] == "prune":
+            from searchat.cli.prune import run_prune
+
+            raise SystemExit(run_prune(argv[1:]))
+
+        if argv and argv[0] == "validate":
+            from searchat.cli.validate_cmd import run_validate
+
+            raise SystemExit(run_validate(argv[1:]))
+
         if "-h" in argv_set or "--help" in argv_set:
             print("Usage: searchat")
             print()
@@ -379,6 +389,8 @@ def main():
             print("  searchat download-model [--preset NAME] [--activate]")
             print("  searchat extract [--mode MODE] [--project NAME] [--limit N]")
             print("  searchat onboard [--project NAME] [--max-tokens N]")
+            print("  searchat prune [--threshold FLOAT] [--domain DOMAIN] [--dry-run] [--force]")
+            print("  searchat validate [--domain DOMAIN] [--project PROJECT]")
             print()
             return
 

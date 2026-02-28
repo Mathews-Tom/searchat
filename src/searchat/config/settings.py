@@ -104,9 +104,21 @@ from .constants import (
     DEFAULT_EXPERTISE_PRIME_TOKENS,
     DEFAULT_EXPERTISE_DEDUP_THRESHOLD,
     DEFAULT_EXPERTISE_DEDUP_FLAG_THRESHOLD,
+    DEFAULT_EXPERTISE_STALENESS_THRESHOLD,
+    DEFAULT_EXPERTISE_MIN_AGE_DAYS,
+    DEFAULT_EXPERTISE_MIN_VALIDATION_COUNT,
+    DEFAULT_EXPERTISE_EXCLUDE_TYPES,
+    DEFAULT_EXPERTISE_PRUNING_ENABLED,
+    DEFAULT_EXPERTISE_PRUNING_DRY_RUN,
     ENV_EXPERTISE_ENABLED,
     ENV_EXPERTISE_AUTO_EXTRACT,
     ENV_EXPERTISE_PRIME_TOKENS,
+    ENV_EXPERTISE_STALENESS_THRESHOLD,
+    ENV_EXPERTISE_MIN_AGE_DAYS,
+    ENV_EXPERTISE_MIN_VALIDATION_COUNT,
+    ENV_EXPERTISE_EXCLUDE_TYPES,
+    ENV_EXPERTISE_PRUNING_ENABLED,
+    ENV_EXPERTISE_PRUNING_DRY_RUN,
 )
 
 
@@ -616,9 +628,24 @@ class ExpertiseConfig:
     default_prime_tokens: int
     dedup_similarity_threshold: float
     dedup_flag_threshold: float
+    staleness_threshold: float
+    min_age_days: int
+    min_validation_count: int
+    exclude_types: list[str]
+    pruning_enabled: bool
+    pruning_dry_run: bool
 
     @classmethod
     def from_dict(cls, data: dict) -> "ExpertiseConfig":
+        raw_exclude = _get_env_str(
+            ENV_EXPERTISE_EXCLUDE_TYPES,
+            data.get("exclude_types", DEFAULT_EXPERTISE_EXCLUDE_TYPES),
+        )
+        if isinstance(raw_exclude, str):
+            exclude_types = [t.strip() for t in raw_exclude.split(",") if t.strip()]
+        else:
+            exclude_types = list(raw_exclude) if raw_exclude else []
+
         return cls(
             enabled=_get_env_bool(
                 ENV_EXPERTISE_ENABLED,
@@ -637,6 +664,27 @@ class ExpertiseConfig:
             ),
             dedup_flag_threshold=float(
                 data.get("dedup_flag_threshold", DEFAULT_EXPERTISE_DEDUP_FLAG_THRESHOLD)
+            ),
+            staleness_threshold=_get_env_float(
+                ENV_EXPERTISE_STALENESS_THRESHOLD,
+                float(data.get("staleness_threshold", DEFAULT_EXPERTISE_STALENESS_THRESHOLD)),
+            ),
+            min_age_days=_get_env_int(
+                ENV_EXPERTISE_MIN_AGE_DAYS,
+                int(data.get("min_age_days", DEFAULT_EXPERTISE_MIN_AGE_DAYS)),
+            ),
+            min_validation_count=_get_env_int(
+                ENV_EXPERTISE_MIN_VALIDATION_COUNT,
+                int(data.get("min_validation_count", DEFAULT_EXPERTISE_MIN_VALIDATION_COUNT)),
+            ),
+            exclude_types=exclude_types,
+            pruning_enabled=_get_env_bool(
+                ENV_EXPERTISE_PRUNING_ENABLED,
+                bool(data.get("pruning_enabled", DEFAULT_EXPERTISE_PRUNING_ENABLED)),
+            ),
+            pruning_dry_run=_get_env_bool(
+                ENV_EXPERTISE_PRUNING_DRY_RUN,
+                bool(data.get("pruning_dry_run", DEFAULT_EXPERTISE_PRUNING_DRY_RUN)),
             ),
         )
 
