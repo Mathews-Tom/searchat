@@ -103,6 +103,11 @@ def mock_index_flat_l2(dimension):
     return MockFaissIndex(dimension)
 
 
+def mock_index_flat_ip(dimension):
+    """Factory for creating mock FAISS inner-product index."""
+    return MockFaissIndex(dimension)
+
+
 def mock_index_idmap2(base_index):
     """Factory for creating mock IDMap2 index."""
     return MockFaissIndexIDMap2(base_index.d)
@@ -119,18 +124,36 @@ class MockIDSelectorBatch:
             self.ids = []
 
 
+class MockIDSelectorArray:
+    """Mock for faiss.IDSelectorArray used by expertise embeddings."""
+
+    def __init__(self, id_array):
+        self.ids = list(id_array)
+
+
 mock_faiss_module = MagicMock()
 mock_faiss_module.IndexFlatL2 = mock_index_flat_l2
+mock_faiss_module.IndexFlatIP = mock_index_flat_ip
 mock_faiss_module.IndexIDMap2 = mock_index_idmap2
 mock_faiss_module.IDSelectorBatch = MockIDSelectorBatch
+mock_faiss_module.IDSelectorArray = MockIDSelectorArray
 mock_faiss_module._index_store = None
+mock_faiss_module._index_store_by_path: dict[str, MockFaissIndex] = {}
 
 
-def mock_write_index(index, _path):
+def mock_write_index(index, path):
     mock_faiss_module._index_store = index
+    mock_faiss_module._index_store_by_path[path] = index
+    # Touch the file so existence checks pass
+    from pathlib import Path as _P
+    _P(path).parent.mkdir(parents=True, exist_ok=True)
+    _P(path).touch()
 
 
-def mock_read_index(_path):
+def mock_read_index(path):
+    stored = mock_faiss_module._index_store_by_path.get(path)
+    if stored is not None:
+        return stored
     if mock_faiss_module._index_store is None:
         mock_faiss_module._index_store = MockFaissIndex()
     return mock_faiss_module._index_store
