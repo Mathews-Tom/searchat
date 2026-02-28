@@ -28,6 +28,15 @@ def run() -> None:
     mcp.tool(name="ask_about_history", description="Ask a question about your history using RAG")(tools.ask_about_history)
     mcp.tool(name="list_projects", description="List all project ids")(tools.list_projects)
     mcp.tool(name="get_statistics", description="Get index statistics")(tools.get_statistics)
+    mcp.tool(name="prime_expertise", description="Get priority-ranked expertise for agent priming")(
+        tools.prime_expertise
+    )
+    mcp.tool(name="record_expertise", description="Record a new expertise item in the knowledge store")(
+        tools.record_expertise
+    )
+    mcp.tool(name="search_expertise", description="Search expertise records by text query")(
+        tools.search_expertise
+    )
 
     result = mcp.run()
     if inspect.isawaitable(result):
