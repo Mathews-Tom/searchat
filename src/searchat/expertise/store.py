@@ -421,6 +421,40 @@ class ExpertiseStore:
         result["by_type"] = {r[0]: int(r[1]) for r in type_rows}
         return result
 
+    def get_stale_records(self, before: datetime) -> list[ExpertiseRecord]:
+        """Get active records with last_validated before the given datetime."""
+        con = self._connect()
+        try:
+            rows = con.execute(
+                f"SELECT {_SELECT_COLS} FROM expertise_records WHERE is_active = TRUE AND last_validated < ?",
+                [before],
+            ).fetchall()
+        finally:
+            con.close()
+        return [_row_to_record(r) for r in rows]
+
+    def bulk_soft_delete(self, record_ids: list[str]) -> int:
+        """Soft-delete multiple records. Returns count deleted."""
+        if not record_ids:
+            return 0
+        placeholders = ", ".join("?" * len(record_ids))
+        con = self._connect()
+        try:
+            # Count currently active records that will be affected before updating
+            count_row = con.execute(
+                f"SELECT COUNT(*) FROM expertise_records WHERE is_active = TRUE AND id IN ({placeholders})",
+                record_ids,
+            ).fetchone()
+            count = int(count_row[0]) if count_row else 0
+            if count > 0:
+                con.execute(
+                    f"UPDATE expertise_records SET is_active = FALSE WHERE id IN ({placeholders})",
+                    record_ids,
+                )
+        finally:
+            con.close()
+        return count
+
     def close(self) -> None:
         # Connections are per-operation; nothing to close globally.
         pass
