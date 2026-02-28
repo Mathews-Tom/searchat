@@ -63,6 +63,7 @@ def test_initialize_services_sets_components_ready(monkeypatch: pytest.MonkeyPat
         analytics=SimpleNamespace(enabled=False),
         paths=SimpleNamespace(search_directory=str(tmp_path)),
         expertise=SimpleNamespace(enabled=False),
+        knowledge_graph=SimpleNamespace(enabled=False),
     )
     monkeypatch.setattr(deps.Config, "load", staticmethod(lambda: cfg))
     monkeypatch.setattr(deps.PathResolver, "get_shared_search_dir", staticmethod(lambda _cfg: tmp_path))
