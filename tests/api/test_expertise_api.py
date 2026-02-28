@@ -334,13 +334,12 @@ class TestPrimeEndpoint:
     endpoint function itself is tested via the prioritizer unit tests and direct invocation.
     """
 
-    def test_prime_route_shadowed_by_record_id(self, client, patched_store):
-        # /prime is shadowed by /{record_id}; store.get("prime") returns None -> 404
-        patched_store.get.return_value = None
+    def test_prime_route_reachable_via_http(self, client, patched_store):
+        patched_store.query.return_value = []
 
         resp = client.get("/api/expertise/prime")
 
-        assert resp.status_code == 404
+        assert resp.status_code == 200
 
     def test_prime_json_via_direct_invocation(self, patched_store):
         """Test prime endpoint logic directly via the router function."""

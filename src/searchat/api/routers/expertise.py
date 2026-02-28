@@ -319,6 +319,83 @@ def expertise_status(project: str | None = Query(None)) -> StatusResponse:
     )
 
 
+# ---------------------------------------------------------------------------
+# Priming endpoint (must be registered before /{record_id} catch-all)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/prime")
+def prime_expertise(
+    project: str | None = Query(None),
+    domain: str | None = Query(None),
+    max_tokens: int | None = Query(None, ge=100, le=100000),
+    format: str = Query("json", description="Output format: json|markdown|prompt"),
+) -> Any:
+    """Token-budgeted, priority-ranked expertise priming."""
+    store = get_expertise_store()
+    config = get_config()
+
+    tokens = max_tokens or config.expertise.default_prime_tokens
+
+    query = ExpertiseQuery(
+        domain=domain,
+        project=project,
+        active_only=True,
+        limit=10000,
+    )
+    records = store.query(query)
+    prioritizer = ExpertisePrioritizer()
+    result = prioritizer.prioritize(records, max_tokens=tokens)
+
+    formatter = PrimeFormatter()
+    if format == "markdown":
+        return {"content": formatter.format_markdown(result, project=project)}
+    if format == "prompt":
+        return {"content": formatter.format_prompt(result, project=project)}
+    return formatter.format_json(result)
+
+
+@router.post("/extract", response_model=ExtractionResponse)
+def extract_expertise(body: ExtractionRequest) -> ExtractionResponse:
+    """Run extraction pipeline on provided text."""
+    from searchat.expertise.pipeline import ExtractionPipeline
+    from searchat.expertise.embeddings import ExpertiseEmbeddingIndex
+
+    store = get_expertise_store()
+    config = get_config()
+
+    embedding_index: ExpertiseEmbeddingIndex | None = None
+    search_dir = store._db_path.parent.parent
+    if config.expertise.enabled:
+        embedding_index = ExpertiseEmbeddingIndex(
+            search_dir,
+            embedding_model=config.embedding.model,
+        )
+
+    pipeline = ExtractionPipeline(store, embedding_index, config)
+    stats = pipeline.extract_from_text(
+        body.text,
+        domain=body.domain,
+        project=body.project,
+        conversation_id=body.conversation_id,
+        mode=body.mode,
+    )
+    return ExtractionResponse(
+        conversations_processed=stats.conversations_processed,
+        records_created=stats.records_created,
+        records_reinforced=stats.records_reinforced,
+        records_flagged=stats.records_flagged,
+        heuristic_extracted=stats.heuristic_extracted,
+        llm_extracted=stats.llm_extracted,
+        errors=stats.errors,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Record-level endpoints (parameterized routes last)
+# ---------------------------------------------------------------------------
+
+
 @router.get("/{record_id}", response_model=ExpertiseResponse)
 def get_expertise(record_id: str) -> ExpertiseResponse:
     """Get a single expertise record by ID."""
@@ -393,75 +470,3 @@ def validate_expertise(record_id: str) -> ExpertiseResponse:
     if updated is None:
         raise HTTPException(404, f"Record not found after validation: {record_id}")
     return _record_to_response(updated)
-
-
-# ---------------------------------------------------------------------------
-# Priming endpoint
-# ---------------------------------------------------------------------------
-
-
-@router.get("/prime")
-def prime_expertise(
-    project: str | None = Query(None),
-    domain: str | None = Query(None),
-    max_tokens: int | None = Query(None, ge=100, le=100000),
-    format: str = Query("json", description="Output format: json|markdown|prompt"),
-) -> Any:
-    """Token-budgeted, priority-ranked expertise priming."""
-    store = get_expertise_store()
-    config = get_config()
-
-    tokens = max_tokens or config.expertise.default_prime_tokens
-
-    query = ExpertiseQuery(
-        domain=domain,
-        project=project,
-        active_only=True,
-        limit=10000,
-    )
-    records = store.query(query)
-    prioritizer = ExpertisePrioritizer()
-    result = prioritizer.prioritize(records, max_tokens=tokens)
-
-    formatter = PrimeFormatter()
-    if format == "markdown":
-        return {"content": formatter.format_markdown(result, project=project)}
-    if format == "prompt":
-        return {"content": formatter.format_prompt(result, project=project)}
-    return formatter.format_json(result)
-
-
-@router.post("/extract", response_model=ExtractionResponse)
-def extract_expertise(body: ExtractionRequest) -> ExtractionResponse:
-    """Run extraction pipeline on provided text."""
-    from searchat.expertise.pipeline import ExtractionPipeline
-    from searchat.expertise.embeddings import ExpertiseEmbeddingIndex
-
-    store = get_expertise_store()
-    config = get_config()
-
-    embedding_index: ExpertiseEmbeddingIndex | None = None
-    search_dir = store._db_path.parent.parent
-    if config.expertise.enabled:
-        embedding_index = ExpertiseEmbeddingIndex(
-            search_dir,
-            embedding_model=config.embedding.model,
-        )
-
-    pipeline = ExtractionPipeline(store, embedding_index, config)
-    stats = pipeline.extract_from_text(
-        body.text,
-        domain=body.domain,
-        project=body.project,
-        conversation_id=body.conversation_id,
-        mode=body.mode,
-    )
-    return ExtractionResponse(
-        conversations_processed=stats.conversations_processed,
-        records_created=stats.records_created,
-        records_reinforced=stats.records_reinforced,
-        records_flagged=stats.records_flagged,
-        heuristic_extracted=stats.heuristic_extracted,
-        llm_extracted=stats.llm_extracted,
-        errors=stats.errors,
-    )
