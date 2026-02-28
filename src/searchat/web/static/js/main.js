@@ -13,6 +13,8 @@ import { showAnalytics } from './modules/analytics.js';
 import { goToPage } from './modules/pagination.js';
 import { initSavedQueries } from './modules/saved-queries.js';
 import { showDashboards } from './modules/dashboards.js';
+import { showExpertise } from './modules/expertise.js';
+import { showContradictions } from './modules/contradictions.js';
 import { initDatasetSelector } from './modules/dataset.js';
 import { checkAndShowSplash } from './splash.js';
 import { createBackup, showBackups } from './modules/backup.js';
@@ -33,6 +35,8 @@ window.toggleBulkMode = function () {
 };
 window.showAnalytics = showAnalytics;
 window.showDashboards = showDashboards;
+window.showExpertise = showExpertise;
+window.showContradictions = showContradictions;
 window.goToPage = (page) => goToPage(page, search);
 window.showAllConversations = showAllConversations;
 window.resumeSession = resumeSession;

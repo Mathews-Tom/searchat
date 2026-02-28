@@ -385,6 +385,21 @@ def main():
 
             raise SystemExit(run_graph(argv[1:]))
 
+        if argv and argv[0] == "expertise":
+            from searchat.cli.expertise_cmd import run_expertise
+
+            raise SystemExit(run_expertise(argv[1:]))
+
+        if argv and argv[0] == "contradictions":
+            from searchat.cli.contradictions_cmd import run_contradictions
+
+            raise SystemExit(run_contradictions(argv[1:]))
+
+        if argv and argv[0] == "ci-check":
+            from searchat.cli.ci_check_cmd import run_ci_check
+
+            raise SystemExit(run_ci_check(argv[1:]))
+
         if "-h" in argv_set or "--help" in argv_set:
             print("Usage: searchat")
             print()
@@ -400,6 +415,13 @@ def main():
             print("  searchat graph contradictions [--domain DOMAIN] [--unresolved-only]")
             print("  searchat graph resolve <edge_id> <strategy> [--params JSON]")
             print("  searchat graph lineage <record_id>")
+            print("  searchat expertise list [--domain DOMAIN] [--type TYPE] [--project PROJECT] [--tags TAGS] [--limit N]")
+            print("  searchat expertise record --type TYPE --domain DOMAIN --content CONTENT [--project PROJECT]")
+            print("  searchat expertise prime [--domain DOMAIN] [--project PROJECT] [--max-tokens N] [--format FORMAT]")
+            print("  searchat expertise status [--domain DOMAIN] [--project PROJECT]")
+            print("  searchat expertise search QUERY [--domain DOMAIN] [--type TYPE] [--limit N]")
+            print("  searchat contradictions [--domain DOMAIN] [--unresolved-only] [--limit N]")
+            print("  searchat ci-check [--fail-on-contradictions] [--fail-on-staleness-threshold FLOAT]")
             print()
             return
 

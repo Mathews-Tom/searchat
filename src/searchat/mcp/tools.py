@@ -407,6 +407,174 @@ def extract_patterns(
     })
 
 
+def prime_expertise(
+    *,
+    project: str | None = None,
+    domain: str | None = None,
+    max_tokens: int = 4000,
+    search_dir: str | None = None,
+) -> str:
+    """Return priority-ranked expertise as JSON for agent priming.
+
+    Fetches active expertise records filtered by project/domain, runs priority
+    ranking within the given token budget, and returns structured JSON.
+    """
+    from searchat.expertise.models import ExpertiseQuery
+    from searchat.expertise.primer import ExpertisePrioritizer, PrimeFormatter
+    from searchat.expertise.store import ExpertiseStore
+
+    if max_tokens < 100 or max_tokens > 32000:
+        raise ValueError("max_tokens must be between 100 and 32000")
+
+    dataset_dir = resolve_dataset(search_dir)
+    config = Config.load()
+    store = ExpertiseStore(dataset_dir)
+
+    q = ExpertiseQuery(
+        domain=domain,
+        project=project,
+        active_only=True,
+        limit=100_000,
+    )
+    records = store.query(q)
+
+    prioritizer = ExpertisePrioritizer()
+    result = prioritizer.prioritize(records, max_tokens=max_tokens)
+
+    formatter = PrimeFormatter()
+    payload = formatter.format_json(
+        result,
+        contradiction_ids=getattr(prioritizer, "_contradiction_ids", None),
+        qualifying_notes=getattr(prioritizer, "_qualifying_notes", None),
+    )
+    return _json_dumps(payload)
+
+
+def record_expertise(
+    *,
+    type: str,
+    domain: str,
+    content: str,
+    project: str | None = None,
+    severity: str | None = None,
+    resolution: str | None = None,
+    rationale: str | None = None,
+    search_dir: str | None = None,
+) -> str:
+    """Record a new expertise item in the knowledge store.
+
+    Returns JSON with the created record's ID and action taken.
+    """
+    from searchat.expertise.models import ExpertiseRecord, ExpertiseSeverity, ExpertiseType
+    from searchat.expertise.store import ExpertiseStore
+
+    try:
+        record_type = ExpertiseType(type)
+    except ValueError:
+        raise ValueError(f"Invalid type: {type!r}. Valid: {[t.value for t in ExpertiseType]}")
+
+    severity_val = None
+    if severity is not None:
+        try:
+            severity_val = ExpertiseSeverity(severity)
+        except ValueError:
+            raise ValueError(
+                f"Invalid severity: {severity!r}. Valid: {[s.value for s in ExpertiseSeverity]}"
+            )
+
+    record = ExpertiseRecord(
+        type=record_type,
+        domain=domain,
+        content=content,
+        project=project,
+        severity=severity_val,
+        resolution=resolution,
+        rationale=rationale,
+    )
+
+    dataset_dir = resolve_dataset(search_dir)
+    store = ExpertiseStore(dataset_dir)
+    record_id = store.insert(record)
+
+    return _json_dumps({
+        "id": record_id,
+        "action": "created",
+        "type": record_type.value,
+        "domain": domain,
+        "content": content,
+        "project": project,
+        "severity": severity_val.value if severity_val else None,
+        "created_at": record.created_at,
+    })
+
+
+def search_expertise(
+    *,
+    query: str,
+    domain: str | None = None,
+    type: str | None = None,
+    limit: int = 5,
+    search_dir: str | None = None,
+) -> str:
+    """Search expertise records by text query.
+
+    Returns JSON with matching active expertise records.
+    """
+    from searchat.expertise.models import ExpertiseQuery, ExpertiseType
+    from searchat.expertise.store import ExpertiseStore
+
+    if limit < 1 or limit > 100:
+        raise ValueError("limit must be between 1 and 100")
+
+    type_filter = None
+    if type is not None:
+        try:
+            type_filter = ExpertiseType(type)
+        except ValueError:
+            raise ValueError(f"Invalid type: {type!r}. Valid: {[t.value for t in ExpertiseType]}")
+
+    dataset_dir = resolve_dataset(search_dir)
+    store = ExpertiseStore(dataset_dir)
+
+    q = ExpertiseQuery(
+        q=query,
+        domain=domain,
+        type=type_filter,
+        active_only=True,
+        limit=limit,
+    )
+    records = store.query(q)
+
+    return _json_dumps({
+        "results": [
+            {
+                "id": r.id,
+                "type": r.type.value,
+                "domain": r.domain,
+                "content": r.content,
+                "project": r.project,
+                "confidence": r.confidence,
+                "severity": r.severity.value if r.severity else None,
+                "tags": r.tags,
+                "source_conversation_id": r.source_conversation_id,
+                "source_agent": r.source_agent,
+                "name": r.name,
+                "rationale": r.rationale,
+                "resolution": r.resolution,
+                "created_at": r.created_at,
+                "last_validated": r.last_validated,
+                "validation_count": r.validation_count,
+                "is_active": r.is_active,
+            }
+            for r in records
+        ],
+        "total": len(records),
+        "query": query,
+        "domain": domain,
+        "type": type,
+    })
+
+
 def generate_agent_config(
     *,
     format: str = "claude.md",
