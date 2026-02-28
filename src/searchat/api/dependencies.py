@@ -41,6 +41,7 @@ _analytics_service = None
 _watcher = None
 _duckdb_store = None
 _expertise_store = None
+_knowledge_graph_store = None
 
 # Snapshot-scoped caches (keyed by dataset root, i.e. backup directory path).
 _duckdb_store_by_dir: dict[str, "DuckDBStore"] = {}
@@ -66,7 +67,7 @@ indexing_state = {
 
 def initialize_services():
     """Initialize all services on app startup."""
-    global _config, _search_dir, _backup_manager, _platform_manager, _bookmarks_service, _saved_queries_service, _dashboards_service, _analytics_service, _duckdb_store, _expertise_store
+    global _config, _search_dir, _backup_manager, _platform_manager, _bookmarks_service, _saved_queries_service, _dashboards_service, _analytics_service, _duckdb_store, _expertise_store, _knowledge_graph_store
 
     readiness = get_readiness()
     readiness.set_component("services", "loading")
@@ -87,6 +88,9 @@ def initialize_services():
         if _config.expertise.enabled:
             from searchat.expertise.store import ExpertiseStore
             _expertise_store = ExpertiseStore(_search_dir)
+        if _config.knowledge_graph.enabled:
+            from searchat.knowledge_graph import KnowledgeGraphStore
+            _knowledge_graph_store = KnowledgeGraphStore(_search_dir)
         _bookmarks_service = BookmarksService(_config)
         _analytics_service = SearchAnalyticsService(_config)
         _saved_queries_service = SavedQueriesService(_config)
@@ -460,6 +464,13 @@ def get_expertise_store():
     if _expertise_store is None:
         raise RuntimeError("Expertise store not initialized. Check expertise.enabled in config.")
     return _expertise_store
+
+
+def get_knowledge_graph_store():
+    """Get knowledge graph store singleton."""
+    if _knowledge_graph_store is None:
+        raise RuntimeError("Knowledge graph store not initialized. Check knowledge_graph.enabled in config.")
+    return _knowledge_graph_store
 
 
 def get_bookmarks_service():
