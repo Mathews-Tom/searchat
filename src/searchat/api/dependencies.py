@@ -125,13 +125,14 @@ def start_background_warmup() -> None:
 
 async def _warmup_all() -> None:
     """Warm up heavy components in the background."""
-    await asyncio.to_thread(_warmup_duckdb_parquet)
-    # Warm search engine object first (cheap)
+    # DuckDB parquet scan and embedded model download are independent — run concurrently.
+    await asyncio.gather(
+        asyncio.to_thread(_warmup_duckdb_parquet),
+        asyncio.to_thread(_warmup_embedded_model),
+    )
+    # Search engine object (cheap), then semantic components that depend on it.
     await asyncio.to_thread(_ensure_search_engine)
-    # Then warm semantic components (FAISS, metadata, embedder)
     await asyncio.to_thread(_warmup_semantic_components)
-    # Finally, ensure embedded model is available if enabled
-    await asyncio.to_thread(_warmup_embedded_model)
 
 
 def _warmup_embedded_model() -> None:
