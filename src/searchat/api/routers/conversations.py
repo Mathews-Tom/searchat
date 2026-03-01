@@ -13,7 +13,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query, HTTPException
 from fastapi.responses import Response, StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from searchat.config.constants import VALID_TOOL_NAMES
 from searchat.api.models import (
@@ -1152,3 +1152,27 @@ async def bulk_export_conversations(
     except Exception as e:
         logger.error(f"Failed to bulk export conversations: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+# ---------------------------------------------------------------------------
+# Delete Conversations
+# ---------------------------------------------------------------------------
+
+class DeleteConversationsRequest(BaseModel):
+    conversation_ids: list[str] = Field(..., min_length=1, max_length=500)
+    delete_source_files: bool = False
+
+
+@router.delete("/conversations/delete")
+async def delete_conversations(request: DeleteConversationsRequest):
+    """Delete conversations from all storage layers."""
+    indexer = deps.get_indexer()
+
+    result = indexer.delete_conversations(
+        conversation_ids=request.conversation_ids,
+        delete_source_files=request.delete_source_files,
+    )
+
+    deps.invalidate_search_index()
+
+    return result

@@ -308,6 +308,49 @@ class ExpertiseStore:
 
         return records
 
+    def count(self, q: ExpertiseQuery) -> int:
+        """Return total matching records for the given query (ignoring limit/offset)."""
+        conditions: list[str] = []
+        params: list[Any] = []
+
+        if q.active_only:
+            conditions.append("is_active = TRUE")
+        if q.domain is not None:
+            conditions.append("domain = ?")
+            params.append(q.domain)
+        if q.type is not None:
+            conditions.append("type = ?")
+            params.append(q.type.value)
+        if q.project is not None:
+            conditions.append("project = ?")
+            params.append(q.project)
+        if q.severity is not None:
+            conditions.append("severity = ?")
+            params.append(q.severity.value)
+        if q.min_confidence is not None:
+            conditions.append("confidence >= ?")
+            params.append(q.min_confidence)
+        if q.after is not None:
+            conditions.append("created_at >= ?")
+            params.append(q.after)
+        if q.agent is not None:
+            conditions.append("source_agent = ?")
+            params.append(q.agent)
+        if q.q is not None:
+            conditions.append("(content ILIKE ? OR name ILIKE ?)")
+            pattern = f"%{q.q}%"
+            params.extend([pattern, pattern])
+
+        where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        sql = f"SELECT COUNT(*) FROM expertise_records {where}"
+
+        con = self._connect()
+        try:
+            result = con.execute(sql, params).fetchone()
+        finally:
+            con.close()
+        return result[0] if result else 0
+
     def validate_record(self, record_id: str) -> bool:
         con = self._connect()
         try:
