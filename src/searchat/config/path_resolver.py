@@ -223,16 +223,7 @@ class PathResolver:
                 if candidate.exists():
                     paths.append(candidate)
 
-        # Remove duplicates while preserving order
-        seen = set()
-        unique_paths = []
-        for path in paths:
-            # Resolve to absolute path for comparison
-            resolved = path.resolve() if path.exists() else path
-            path_str = str(resolved)
-            if path_str not in seen:
-                seen.add(path_str)
-                unique_paths.append(path)
+        unique_paths = PathResolver._deduplicate_paths(paths)
 
         if not unique_paths:
             searched = [
@@ -248,6 +239,38 @@ class PathResolver:
             )
 
         return unique_paths
+
+    @staticmethod
+    def _deduplicate_paths(paths: list[Path]) -> list[Path]:
+        """Remove duplicate paths while preserving order."""
+        seen: set[str] = set()
+        unique: list[Path] = []
+        for path in paths:
+            resolved = path.resolve() if path.exists() else path
+            key = str(resolved)
+            if key not in seen:
+                seen.add(key)
+                unique.append(path)
+        return unique
+
+    @staticmethod
+    def _resolve_from_env_or_candidates(
+        env_var: str,
+        candidates: list[Path],
+    ) -> list[Path]:
+        """Resolve agent dirs: check env var first, fall back to candidates, dedup."""
+        paths: list[Path] = []
+        env_value = os.getenv(env_var)
+        if env_value:
+            expanded = PathResolver.expand_path_template(env_value)
+            path = Path(expanded)
+            if path.exists():
+                paths.append(path)
+        if not paths:
+            for candidate in candidates:
+                if candidate.exists():
+                    paths.append(candidate)
+        return PathResolver._deduplicate_paths(paths)
 
     @staticmethod
     def ensure_directory(path: Path) -> Path:
@@ -294,125 +317,38 @@ class PathResolver:
 
     @staticmethod
     def resolve_opencode_dirs(config=None) -> list[Path]:
-        """
-        Resolve OpenCode data directories.
-
-        OpenCode stores data at ~/.local/share/opencode by default.
-
-        Returns:
-            List of accessible OpenCode data directories
-        """
-        paths: list[Path] = []
-
-        opencode_dir = os.getenv(ENV_OPENCODE_DATA_DIR)
-        if opencode_dir:
-            expanded = PathResolver.expand_path_template(opencode_dir)
-            path = Path(expanded)
-            if path.exists():
-                paths.append(path)
-
-        if not paths:
-            for candidate in OPENCODE_DIR_CANDIDATES:
-                if candidate.exists():
-                    paths.append(candidate)
-
-        seen: set[str] = set()
-        unique_paths: list[Path] = []
-        for path in paths:
-            resolved = path.resolve() if path.exists() else path
-            path_str = str(resolved)
-            if path_str not in seen:
-                seen.add(path_str)
-                unique_paths.append(path)
-
-        return unique_paths
+        """Resolve OpenCode data directories."""
+        return PathResolver._resolve_from_env_or_candidates(
+            ENV_OPENCODE_DATA_DIR, OPENCODE_DIR_CANDIDATES,
+        )
 
     @staticmethod
     def resolve_codex_dirs(_config=None) -> list[Path]:
         """Resolve OpenAI Codex data directories."""
-        paths: list[Path] = []
-
-        codex_dir = os.getenv(ENV_CODEX_DATA_DIR) or os.getenv("CODEX_HOME")
-        if codex_dir:
-            expanded = PathResolver.expand_path_template(codex_dir)
+        # Codex also checks CODEX_HOME as a fallback env var.
+        env_value = os.getenv(ENV_CODEX_DATA_DIR) or os.getenv("CODEX_HOME")
+        if env_value:
+            expanded = PathResolver.expand_path_template(env_value)
             path = Path(expanded)
             if path.exists():
-                paths.append(path)
-
-        if not paths:
-            for candidate in CODEX_DIR_CANDIDATES:
-                if candidate.exists():
-                    paths.append(candidate)
-
-        seen: set[str] = set()
-        unique_paths: list[Path] = []
-        for path in paths:
-            resolved = path.resolve() if path.exists() else path
-            path_str = str(resolved)
-            if path_str in seen:
-                continue
-            seen.add(path_str)
-            unique_paths.append(path)
-
-        return unique_paths
+                return PathResolver._deduplicate_paths([path])
+        return PathResolver._resolve_from_env_or_candidates(
+            ENV_CODEX_DATA_DIR, CODEX_DIR_CANDIDATES,
+        )
 
     @staticmethod
     def resolve_gemini_dirs(_config=None) -> list[Path]:
         """Resolve Google Gemini CLI data directories."""
-        paths: list[Path] = []
-
-        gemini_dir = os.getenv(ENV_GEMINI_DATA_DIR)
-        if gemini_dir:
-            expanded = PathResolver.expand_path_template(gemini_dir)
-            path = Path(expanded)
-            if path.exists():
-                paths.append(path)
-
-        if not paths:
-            for candidate in GEMINI_TMP_DIR_CANDIDATES:
-                if candidate.exists():
-                    paths.append(candidate)
-
-        seen: set[str] = set()
-        unique_paths: list[Path] = []
-        for path in paths:
-            resolved = path.resolve() if path.exists() else path
-            path_str = str(resolved)
-            if path_str in seen:
-                continue
-            seen.add(path_str)
-            unique_paths.append(path)
-
-        return unique_paths
+        return PathResolver._resolve_from_env_or_candidates(
+            ENV_GEMINI_DATA_DIR, GEMINI_TMP_DIR_CANDIDATES,
+        )
 
     @staticmethod
     def resolve_continue_dirs(_config=None) -> list[Path]:
         """Resolve Continue session directories."""
-        paths: list[Path] = []
-
-        continue_dir = os.getenv(ENV_CONTINUE_DATA_DIR)
-        if continue_dir:
-            expanded = PathResolver.expand_path_template(continue_dir)
-            path = Path(expanded)
-            if path.exists():
-                paths.append(path)
-
-        if not paths:
-            for candidate in CONTINUE_SESSIONS_DIR_CANDIDATES:
-                if candidate.exists():
-                    paths.append(candidate)
-
-        seen: set[str] = set()
-        unique_paths: list[Path] = []
-        for path in paths:
-            resolved = path.resolve() if path.exists() else path
-            path_str = str(resolved)
-            if path_str in seen:
-                continue
-            seen.add(path_str)
-            unique_paths.append(path)
-
-        return unique_paths
+        return PathResolver._resolve_from_env_or_candidates(
+            ENV_CONTINUE_DATA_DIR, CONTINUE_SESSIONS_DIR_CANDIDATES,
+        )
 
     @staticmethod
     def resolve_cursor_dirs(_config=None) -> list[Path]:
@@ -443,17 +379,7 @@ class PathResolver:
                 if candidate.exists():
                     paths.append(candidate)
 
-        seen: set[str] = set()
-        unique_paths: list[Path] = []
-        for path in paths:
-            resolved = path.resolve() if path.exists() else path
-            path_str = str(resolved)
-            if path_str in seen:
-                continue
-            seen.add(path_str)
-            unique_paths.append(path)
-
-        return unique_paths
+        return PathResolver._deduplicate_paths(paths)
 
     @staticmethod
     def resolve_aider_dirs(_config=None) -> list[Path]:
@@ -476,17 +402,7 @@ class PathResolver:
                 if path.exists():
                     paths.append(path)
 
-        seen: set[str] = set()
-        unique_paths: list[Path] = []
-        for path in paths:
-            resolved = path.resolve() if path.exists() else path
-            path_str = str(resolved)
-            if path_str in seen:
-                continue
-            seen.add(path_str)
-            unique_paths.append(path)
-
-        return unique_paths
+        return PathResolver._deduplicate_paths(paths)
 
     @staticmethod
     def resolve_all_agent_dirs(config=None) -> dict:

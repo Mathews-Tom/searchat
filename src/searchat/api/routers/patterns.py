@@ -2,12 +2,11 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from searchat.api.dependencies import get_config
-from searchat.api.readiness import get_readiness, warming_payload, error_payload
-from searchat.services.pattern_mining import extract_patterns, ExtractedPattern, PatternEvidence
+from searchat.api.utils import validate_provider, check_semantic_readiness
+from searchat.services.pattern_mining import extract_patterns
 
 router = APIRouter()
 
@@ -48,24 +47,12 @@ class PatternExtractResponse(BaseModel):
 @router.post("/patterns/extract", response_model=PatternExtractResponse)
 async def extract_patterns_endpoint(request: PatternExtractRequest):
     """Extract recurring patterns from conversation archives."""
-    provider = request.model_provider.lower()
-    if provider not in ("openai", "ollama", "embedded"):
-        raise HTTPException(
-            status_code=400,
-            detail="model_provider must be 'openai', 'ollama', or 'embedded'.",
-        )
+    provider = validate_provider(request.model_provider)
 
-    readiness = get_readiness().snapshot()
-    required = ["metadata", "faiss", "embedder"]
-    if provider == "embedded":
-        required.append("embedded_model")
-
-    for key in required:
-        if readiness.components.get(key) == "error":
-            return JSONResponse(status_code=500, content=error_payload())
-
-    if any(readiness.components.get(key) != "ready" for key in required):
-        return JSONResponse(status_code=503, content=warming_payload())
+    extra = ["embedded_model"] if provider == "embedded" else None
+    not_ready = check_semantic_readiness(extra)
+    if not_ready is not None:
+        return not_ready
 
     config = get_config()
 

@@ -32,9 +32,10 @@ class SavedQueryUpdateRequest(BaseModel):
 async def list_saved_queries():
     try:
         service = deps.get_saved_queries_service()
+        queries = service.list_queries()
         return {
-            "total": len(service.list_queries()),
-            "queries": service.list_queries(),
+            "total": len(queries),
+            "queries": queries,
         }
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc

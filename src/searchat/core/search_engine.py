@@ -608,10 +608,10 @@ class SearchEngine:
                     result_map[result.conversation_id] = result
         
         # Boost scores for results appearing in both
+        keyword_ids = {r.conversation_id for r in keyword}
+        semantic_ids = {r.conversation_id for r in semantic}
         for conv_id in scores:
-            in_keyword = any(r.conversation_id == conv_id for r in keyword)
-            in_semantic = any(r.conversation_id == conv_id for r in semantic)
-            if in_keyword and in_semantic:
+            if conv_id in keyword_ids and conv_id in semantic_ids:
                 scores[conv_id] *= 1.2  # 20% boost for appearing in both
 
         # Optional temporal decay: multiply by a recency-based factor.

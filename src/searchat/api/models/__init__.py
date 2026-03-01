@@ -1,9 +1,6 @@
 """Pydantic models for API requests and responses."""
 from searchat.api.models.requests import (
-    SearchRequest,
     ResumeRequest,
-    BackupCreateRequest,
-    BackupRestoreRequest,
     ChatRequest,
     ChatRagRequest,
 )
@@ -23,10 +20,7 @@ from searchat.api.models.responses import (
 
 __all__ = [
     # Requests
-    "SearchRequest",
     "ResumeRequest",
-    "BackupCreateRequest",
-    "BackupRestoreRequest",
     "ChatRequest",
     "ChatRagRequest",
     # Responses

@@ -98,12 +98,9 @@ class AgentConfigRequest(BaseModel):
 @router.post("/export/agent-config")
 async def generate_agent_config(request: AgentConfigRequest):
     """Generate agent configuration from conversation patterns."""
-    provider = request.model_provider.lower()
-    if provider not in ("openai", "ollama", "embedded"):
-        raise HTTPException(
-            status_code=400,
-            detail="model_provider must be 'openai', 'ollama', or 'embedded'.",
-        )
+    from searchat.api.utils import validate_provider
+
+    provider = validate_provider(request.model_provider)
 
     config = deps.get_config()
 

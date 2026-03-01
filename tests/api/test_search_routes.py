@@ -24,7 +24,7 @@ def semantic_components_ready():
     readiness.snapshot.return_value = Mock(
         components={"metadata": "ready", "faiss": "ready", "embedder": "ready"}
     )
-    with patch('searchat.api.routers.search.get_readiness', return_value=readiness):
+    with patch('searchat.api.readiness.get_readiness', return_value=readiness):
         yield
 
 
@@ -625,7 +625,7 @@ class TestSearchEndpoint:
     def test_search_highlight_extracts_terms_and_caches(self, client, mock_search_engine):
         from searchat.api.routers import search as search_router
 
-        search_router._highlight_cache.clear()
+        search_router._cached_highlight.cache_clear()
 
         config = SimpleNamespace(analytics=SimpleNamespace(enabled=False))
         with patch('searchat.api.routers.search.deps.resolve_dataset_search_dir', return_value=(Path("/tmp"), None)):
@@ -648,7 +648,7 @@ class TestSearchEndpoint:
     def test_search_highlight_llm_error_returns_503(self, client, mock_search_engine):
         from searchat.api.routers import search as search_router
 
-        search_router._highlight_cache.clear()
+        search_router._cached_highlight.cache_clear()
 
         config = SimpleNamespace(analytics=SimpleNamespace(enabled=False))
         with patch('searchat.api.routers.search.deps.resolve_dataset_search_dir', return_value=(Path("/tmp"), None)):

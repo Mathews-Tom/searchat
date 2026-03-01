@@ -62,7 +62,7 @@ def semantic_components_ready():
             "embedded_model": "ready",
         }
     )
-    with patch("searchat.api.routers.patterns.get_readiness", return_value=readiness):
+    with patch("searchat.api.readiness.get_readiness", return_value=readiness):
         yield
 
 
@@ -183,7 +183,7 @@ def test_extract_patterns_metadata_error(client):
         }
     )
 
-    with patch("searchat.api.routers.patterns.get_readiness", return_value=readiness):
+    with patch("searchat.api.readiness.get_readiness", return_value=readiness):
         resp = client.post(
             "/api/patterns/extract",
             json={
@@ -208,7 +208,7 @@ def test_extract_patterns_faiss_not_ready(client):
         }
     )
 
-    with patch("searchat.api.routers.patterns.get_readiness", return_value=readiness):
+    with patch("searchat.api.readiness.get_readiness", return_value=readiness):
         resp = client.post(
             "/api/patterns/extract",
             json={
@@ -233,7 +233,7 @@ def test_extract_patterns_embedder_not_ready(client):
         }
     )
 
-    with patch("searchat.api.routers.patterns.get_readiness", return_value=readiness):
+    with patch("searchat.api.readiness.get_readiness", return_value=readiness):
         resp = client.post(
             "/api/patterns/extract",
             json={
@@ -259,7 +259,7 @@ def test_extract_patterns_embedded_model_not_ready(client):
         }
     )
 
-    with patch("searchat.api.routers.patterns.get_readiness", return_value=readiness):
+    with patch("searchat.api.readiness.get_readiness", return_value=readiness):
         resp = client.post(
             "/api/patterns/extract",
             json={
