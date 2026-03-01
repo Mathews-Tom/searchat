@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "declaration": false,
+    "sourceMap": true,
+    "outDir": "../src/searchat/web/static/js/dist",
+    "rootDir": "../src/searchat/web/static/js/src",
+    "baseUrl": ".",
+    "paths": {
+      "@stores/*": ["../src/searchat/web/static/js/src/stores/*"],
+      "@modules/*": ["../src/searchat/web/static/js/src/modules/*"],
+      "@app-types/*": ["../src/searchat/web/static/js/src/types/*"],
+      "alpinejs": ["node_modules/@types/alpinejs", "node_modules/alpinejs/dist/module.esm.js"],
+      "htmx.org": ["node_modules/htmx.org/dist/htmx.esm.js"]
+    },
+    "typeRoots": ["node_modules/@types"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+  },
+  "include": ["../src/searchat/web/static/js/src/**/*.ts"],
+  "exclude": ["node_modules"]
+}
