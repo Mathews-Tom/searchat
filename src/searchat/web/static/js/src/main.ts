@@ -15,6 +15,7 @@ import { chatStore } from "@stores/chat";
 import { datasetStore } from "@stores/dataset";
 import { initShortcuts } from "@modules/shortcuts";
 import { initCodeCopy } from "@modules/code-copy";
+import { rebuildProgress } from "@modules/rebuild-progress";
 
 // Expose Alpine globally for x-data attribute access
 (window as unknown as { Alpine: typeof Alpine }).Alpine = Alpine;
@@ -25,6 +26,9 @@ Alpine.store("search", searchStore);
 Alpine.store("layout", layoutStore);
 Alpine.store("chat", chatStore);
 Alpine.store("dataset", datasetStore);
+
+// Register Alpine data components
+Alpine.data("rebuildProgress", rebuildProgress);
 
 // Start Alpine
 Alpine.start();

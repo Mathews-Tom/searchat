@@ -1,0 +1,32 @@
+<div x-data="rebuildProgress('{{ stream_url }}'{% if done_url %}, '{{ done_url }}'{% endif %})"
+     x-init="start()" style="max-width: 600px; margin: 40px auto;">
+    <div class="glass" style="padding: 24px;">
+        <!-- Header -->
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
+            <div class="rebuild-spinner" x-show="!done"></div>
+            <svg x-show="done" x-cloak width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="hsl(var(--success))" stroke-width="2.5" stroke-linecap="round">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+            </svg>
+            <span style="font-weight: 600; font-size: 15px; color: hsl(var(--text-primary));"
+                  x-text="done ? 'Complete' : 'Rebuilding...'"></span>
+        </div>
+
+        <!-- Progress bar -->
+        <div class="rebuild-progress-track">
+            <div class="rebuild-progress-fill"
+                 :class="{ 'rebuild-progress-indeterminate': pct < 0 }"
+                 :style="pct >= 0 ? 'width:' + pct + '%' : ''"></div>
+        </div>
+
+        <!-- Phase + counter -->
+        <div style="margin-top: 10px; display: flex; justify-content: space-between; font-size: 12px; color: hsl(var(--text-tertiary));">
+            <span x-text="phase"></span>
+            <span x-show="total > 0" x-text="current + ' / ' + total"></span>
+        </div>
+
+        <!-- Done message -->
+        <div x-show="message" x-cloak
+             style="margin-top: 16px; padding: 12px; border-radius: var(--radius-md); background: hsl(var(--success) / 0.1); color: hsl(var(--success)); font-size: 13px;"
+             x-html="message"></div>
+    </div>
+</div>

@@ -27,8 +27,66 @@
     <div id="globalLoadingBar"></div>
     {% block body %}{% endblock %}
 
+    <!-- Confirm modal (replaces native confirm() for hx-confirm) -->
+    <div id="confirmOverlay" class="confirm-overlay" aria-hidden="true">
+        <div class="confirm-dialog" role="alertdialog" aria-modal="true">
+            <p class="confirm-message" id="confirmMessage"></p>
+            <div class="confirm-actions">
+                <button class="glass-btn" id="confirmCancel">Cancel</button>
+                <button class="glass-btn glass-btn-primary" id="confirmOk">Confirm</button>
+            </div>
+        </div>
+    </div>
+
     <!-- App bundle: HTMX + Alpine.js + stores bundled via esbuild -->
     <script type="module" src="{{ static_url('/static/js/dist/main.js') }}"></script>
+
+    <script>
+    // Intercept hx-confirm to show glassmorphic modal instead of native confirm()
+    (function() {
+        var overlay  = document.getElementById('confirmOverlay');
+        var msgEl    = document.getElementById('confirmMessage');
+        var okBtn    = document.getElementById('confirmOk');
+        var cancelBtn = document.getElementById('confirmCancel');
+        var pending  = null;
+
+        function show(message, issueRequest) {
+            msgEl.textContent = message;
+            overlay.classList.add('active');
+            overlay.setAttribute('aria-hidden', 'false');
+            okBtn.focus();
+            pending = issueRequest;
+        }
+
+        function hide() {
+            overlay.classList.remove('active');
+            overlay.setAttribute('aria-hidden', 'true');
+            pending = null;
+        }
+
+        okBtn.addEventListener('click', function() {
+            var fn = pending;
+            hide();
+            if (fn) fn(true);
+        });
+
+        cancelBtn.addEventListener('click', function() { hide(); });
+
+        overlay.addEventListener('click', function(e) {
+            if (e.target === overlay) hide();
+        });
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' && overlay.classList.contains('active')) hide();
+        });
+
+        document.body.addEventListener('htmx:confirm', function(e) {
+            if (!e.detail.question) return;
+            e.preventDefault();
+            show(e.detail.question, function() { e.detail.issueRequest(true); });
+        });
+    })();
+    </script>
 
     {% block scripts %}{% endblock %}
 </body>
