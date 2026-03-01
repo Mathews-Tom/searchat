@@ -244,12 +244,19 @@ async def test_app_lifespan_profile_logging(monkeypatch: pytest.MonkeyPatch) -> 
 
 
 @pytest.mark.asyncio
-async def test_app_root_and_conversation_page_serve_cached_html() -> None:
+async def test_app_root_and_conversation_page_serve_html() -> None:
+    """Verify that / and /conversation/{id} both return HTML via Jinja2 templates."""
+    from httpx import ASGITransport, AsyncClient
     api_app = _api_app_module()
 
-    root_resp = await api_app.root()
-    conv_resp = await api_app.serve_conversation_page("conv-1")
-    assert root_resp.body == conv_resp.body
+    transport = ASGITransport(app=api_app.app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        root_resp = await client.get("/")
+        conv_resp = await client.get("/conversation/conv-1")
+        assert root_resp.status_code == 200
+        assert conv_resp.status_code == 200
+        assert "text/html" in root_resp.headers["content-type"]
+        assert "text/html" in conv_resp.headers["content-type"]
 
 
 @pytest.mark.asyncio

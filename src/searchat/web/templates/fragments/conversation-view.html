@@ -1,0 +1,83 @@
+{% if error %}
+<div style="text-align: center; padding: 40px; color: hsl(var(--danger));">
+    <p>{{ error }}</p>
+    <a href="/" style="color: hsl(var(--accent));">&#8592; Back to Search</a>
+</div>
+{% elif conversation %}
+<div>
+    <!-- Header -->
+    <a href="/" class="back-button"
+       hx-get="/fragments/search-results?show_all=true"
+       hx-target="#results"
+       hx-push-url="/">&#8592; Back to Search</a>
+
+    <div class="header">
+        <h2>{{ conversation.title or 'Untitled Conversation' }}</h2>
+        <div style="display: flex; flex-wrap: wrap; gap: 12px; font-size: 14px; color: hsl(var(--text-tertiary));">
+            {% if conversation.project_id %}
+            <span>Project: {{ conversation.project_id }}</span>
+            {% endif %}
+            {% if conversation.created_at %}
+            <span>Created: {{ conversation.created_at[:10] }}</span>
+            {% endif %}
+            {% if conversation.message_count %}
+            <span>{{ conversation.message_count }} messages</span>
+            {% endif %}
+            {% if conversation.tool %}
+            <span class="tool-badge {{ conversation.tool }}">{{ conversation.tool }}</span>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Similar Conversations Panel -->
+    <div id="similarPanel"
+         hx-get="/fragments/similar/{{ conversation_id }}"
+         hx-trigger="load"
+         hx-target="this"
+         style="margin-bottom: 24px;">
+    </div>
+
+    <!-- Code Blocks Section -->
+    {% if code_blocks %}
+    <div class="glass" style="margin-bottom: 24px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <h3 style="margin: 0; font-size: 16px; font-weight: 600;">
+                Code Blocks
+                <span style="color: hsl(var(--text-tertiary)); font-weight: 400; font-size: 13px; margin-left: 8px;">{{ code_blocks | length }}</span>
+            </h3>
+        </div>
+        {% for block in code_blocks %}
+        <div class="code-block-wrap" style="margin-bottom: 16px; border: 1px solid hsl(var(--border-glass)); border-radius: var(--radius-md); overflow: hidden;">
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: hsl(var(--bg-elevated)); border-bottom: 1px solid hsl(var(--border-glass));">
+                <div style="display: flex; gap: 12px; align-items: center; font-size: 12px;">
+                    <span style="font-family: var(--font-mono); color: hsl(var(--accent)); font-weight: 600;">{{ block.language or 'plaintext' }}</span>
+                    <span style="color: hsl(var(--text-tertiary));">{{ block.lines }} lines</span>
+                    <span style="color: hsl(var(--text-tertiary));">{{ block.role }}</span>
+                </div>
+                <button class="glass-btn code-block-copy" style="font-size: 18px; padding: 2px 10px; line-height: 1;"
+                        onclick="var p=this.parentElement.nextElementSibling;navigator.clipboard.writeText(p.textContent);this.innerHTML='&#x2713;';this.style.color='hsl(var(--success))';setTimeout(function(){this.innerHTML='&#x2398;';this.style.color=''}.bind(this),1500);"
+                        title="Copy to clipboard">&#x2398;</button>
+            </div>
+            <pre data-no-copy style="margin: 0; padding: 12px; overflow-x: auto; font-size: 13px; line-height: 1.5; background: hsl(var(--bg-surface));"><code>{{ block.code }}</code></pre>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Messages -->
+    {% for msg in (conversation.messages or []) %}
+    <div class="message {{ msg.role or 'unknown' }}">
+        <div class="role">{{ msg.role or 'Unknown' }}</div>
+        <div class="content">{{ msg.content or '' }}</div>
+        {% if msg.timestamp %}
+        <div style="font-size: 11px; color: hsl(var(--text-tertiary)); margin-top: 12px;">{{ msg.timestamp }}</div>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div style="text-align: center; padding: 40px; color: hsl(var(--text-tertiary));">
+    <p>Conversation not found.</p>
+    <a href="/" style="color: hsl(var(--accent));">&#8592; Back to Search</a>
+</div>
+{% endif %}

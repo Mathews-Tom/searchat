@@ -1,0 +1,41 @@
+{% if backups %}
+<div class="results-header" style="margin-bottom: 12px;">
+    <h2 style="margin: 0; font-size: 18px;">Backups</h2>
+    <span style="color: hsl(var(--text-tertiary)); font-size: 13px;">{{ backups | length }} backup{{ 's' if backups | length != 1 else '' }}</span>
+</div>
+{% for b in backups %}
+<div class="glass" style="padding: 16px; margin-bottom: 12px;">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+        <div>
+            <h3 style="margin: 0 0 4px 0; font-size: 14px; font-weight: 600;">{{ b.name or 'Unnamed' }}</h3>
+            <div style="font-size: 12px; color: hsl(var(--text-tertiary));">
+                Created: {{ b.created_at or 'Unknown' }}
+                {% if b.size_bytes %}
+                &middot; {{ '%.1f' % (b.size_bytes / 1048576) }} MB
+                {% endif %}
+            </div>
+        </div>
+        <div style="display: flex; gap: 8px;">
+            <button class="glass-btn" style="font-size: 12px; padding: 4px 12px;"
+                    hx-post="/api/backup/restore"
+                    hx-vals='{"backup_name": "{{ b.name }}"}'
+                    hx-target="#backupStatus"
+                    hx-confirm="Restore from backup '{{ b.name }}'? This will replace your current index.">
+                Restore
+            </button>
+            <button class="glass-btn glass-btn-danger" style="font-size: 12px; padding: 4px 12px;"
+                    hx-delete="/api/backup/delete/{{ b.name }}"
+                    hx-target="closest .glass"
+                    hx-swap="delete"
+                    hx-confirm="Delete backup '{{ b.name }}'?">
+                Delete
+            </button>
+        </div>
+    </div>
+</div>
+{% endfor %}
+{% else %}
+<div class="glass" style="padding: 32px; text-align: center;">
+    <p style="color: hsl(var(--text-tertiary)); margin: 0;">No backups found. Create one using the sidebar button.</p>
+</div>
+{% endif %}

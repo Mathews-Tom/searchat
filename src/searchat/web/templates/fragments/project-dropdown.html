@@ -1,0 +1,4 @@
+<button class="filter-dropdown-item" :class="{ selected: !$store.search.project }" @click="$store.search.project = ''; open = ''">All Projects</button>
+{% for project in projects %}
+<button class="filter-dropdown-item" :class="{ selected: $store.search.project === '{{ project }}' }" @click="$store.search.project = '{{ project }}'; open = ''">{{ project }}</button>
+{% endfor %}

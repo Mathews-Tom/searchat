@@ -1,0 +1,183 @@
+/* HTMX indicator styles */
+.htmx-indicator {
+    display: none;
+}
+
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator {
+    display: inline-block;
+}
+
+/* Swap transition: fade in */
+.htmx-swapping {
+    opacity: 0;
+    transition: opacity 150ms ease-out;
+}
+
+.htmx-settling {
+    opacity: 1;
+    transition: opacity 150ms ease-in;
+}
+
+/* Loading spinner for HTMX requests */
+.htmx-indicator.spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid hsl(var(--border-subtle));
+    border-top-color: hsl(var(--accent));
+    border-radius: 50%;
+    animation: htmx-spin 0.6s linear infinite;
+}
+
+@keyframes htmx-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Global loading bar — fixed top bar during any HTMX request */
+#globalLoadingBar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 3px;
+    z-index: 9999;
+    background: transparent;
+    pointer-events: none;
+}
+
+#globalLoadingBar::after {
+    content: '';
+    display: block;
+    width: 0%;
+    height: 100%;
+    background: linear-gradient(90deg, hsl(var(--accent)), hsl(190 80% 50%));
+    transition: width 0.3s ease;
+}
+
+#globalLoadingBar.htmx-request::after {
+    width: 100%;
+    animation: htmx-loading-bar 1.5s ease-in-out infinite;
+}
+
+@keyframes htmx-loading-bar {
+    0% { width: 0%; margin-left: 0; }
+    50% { width: 60%; margin-left: 20%; }
+    100% { width: 0%; margin-left: 100%; }
+}
+
+/* Dim target element while loading (only on content containers, not body) */
+#results.htmx-request {
+    pointer-events: none;
+    opacity: 0.5;
+    transition: opacity 0.15s;
+}
+
+/* Disable button while its request is in flight */
+button.htmx-request {
+    pointer-events: none;
+    opacity: 0.6;
+}
+
+/* ══════════════════════════════════════════════════
+   CONFIRM MODAL — replaces native confirm() for hx-confirm
+══════════════════════════════════════════════════ */
+.confirm-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: hsl(0 0% 0% / 0.45);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    pointer-events: none;
+}
+
+.confirm-overlay.active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.confirm-dialog {
+    background: hsl(var(--bg-glass));
+    backdrop-filter: blur(var(--blur-bg)) saturate(1.3);
+    -webkit-backdrop-filter: blur(var(--blur-bg)) saturate(1.3);
+    border: 1px solid hsl(var(--border-glass));
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg), 0 0 60px hsl(var(--accent) / 0.08);
+    padding: 24px 28px;
+    max-width: 400px;
+    width: 90%;
+    transform: scale(0.95) translateY(8px);
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.confirm-overlay.active .confirm-dialog {
+    transform: scale(1) translateY(0);
+}
+
+[data-theme="light"] .confirm-dialog {
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    background: hsl(0 0% 100% / 0.85);
+}
+
+.confirm-message {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.6;
+    color: hsl(var(--text-primary));
+    margin: 0 0 20px;
+}
+
+.confirm-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+/* ══════════════════════════════════════════════════
+   REBUILD PROGRESS — spinner + determinate bar
+══════════════════════════════════════════════════ */
+.rebuild-spinner {
+    width: 18px;
+    height: 18px;
+    border: 2.5px solid hsl(var(--border-subtle));
+    border-top-color: hsl(var(--accent));
+    border-radius: 50%;
+    animation: htmx-spin 0.6s linear infinite;
+    flex-shrink: 0;
+}
+
+.rebuild-progress-track {
+    height: 6px;
+    background: hsl(var(--bg-surface));
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.rebuild-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, hsl(var(--accent)), hsl(190 80% 50%));
+    border-radius: 3px;
+    transition: width 0.3s ease;
+}
+
+.rebuild-progress-indeterminate {
+    width: 40% !important;
+    animation: rebuild-indeterminate 1.4s ease-in-out infinite;
+}
+
+@keyframes rebuild-indeterminate {
+    0%   { margin-left: 0%;   width: 30%; }
+    50%  { margin-left: 40%;  width: 40%; }
+    100% { margin-left: 100%; width: 30%; }
+}
+
+/* Alpine.js cloak: hide elements until Alpine initializes */
+[x-cloak] {
+    display: none !important;
+}

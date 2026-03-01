@@ -1,0 +1,72 @@
+{% if error == "Search engine not ready" %}
+<div class="result" style="padding: 24px; text-align: center; color: hsl(var(--text-tertiary));"
+     hx-get="/fragments/search-results?show_all=true"
+     hx-trigger="load delay:2s"
+     hx-target="#results"
+     hx-swap="innerHTML">
+    <span class="htmx-indicator spinner" style="display: inline-block; margin-right: 8px;"></span>
+    Search engine warming up&hellip;
+</div>
+{% elif error %}
+<div class="result" style="padding: 24px; text-align: center; color: hsl(var(--text-tertiary));">
+    {{ error }}
+</div>
+{% elif results %}
+<div class="results-header">
+    {{ total }} result{{ 's' if total != 1 else '' }} in {{ search_time_ms }}ms
+</div>
+
+{% for r in results %}
+<div class="result" id="result-{{ loop.index0 }}"
+     hx-get="/fragments/conversation-view/{{ r.conversation_id }}"
+     hx-target="#results"
+     hx-push-url="/conversation/{{ r.conversation_id }}"
+     hx-indicator="#searchSpinner">
+    <div class="result-title">{{ r.title or 'Untitled' }}</div>
+    <div class="result-meta">
+        <span>{{ r.project_id }}</span>
+        {% if r.message_count %}
+        <span>&middot; {{ r.message_count }} messages</span>
+        {% endif %}
+    </div>
+    {% if r.snippet %}
+    <div class="result-snippet">{{ r.snippet }}</div>
+    {% endif %}
+    <div class="result-actions">
+        <button class="bookmark-star{% if r.conversation_id in bookmarked_ids %} active{% endif %}"
+                hx-post="/fragments/bookmark-toggle/{{ r.conversation_id }}"
+                hx-target="this"
+                hx-swap="outerHTML"
+                onclick="event.stopPropagation()"
+                title="{{ 'Remove bookmark' if r.conversation_id in bookmarked_ids else 'Add bookmark' }}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="{{ 'currentColor' if r.conversation_id in bookmarked_ids else 'none' }}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m19 21-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+            </svg>
+        </button>
+        {% if r.score %}
+        <span style="font-size: 12px; color: hsl(var(--text-tertiary)); font-family: var(--font-mono);">
+            {{ '%.2f' % r.score }}
+        </span>
+        {% endif %}
+    </div>
+</div>
+{% endfor %}
+
+{% if total_pages > 1 %}
+<div hx-get="/fragments/pagination?page={{ page }}&total_pages={{ total_pages }}&q={{ query|urlencode }}&mode={{ mode }}"
+     hx-trigger="load"
+     hx-target="this"
+     hx-swap="innerHTML">
+</div>
+{% endif %}
+
+{% elif query %}
+<div class="result" style="padding: 32px; text-align: center;">
+    <p style="color: hsl(var(--text-tertiary)); margin: 0;">No results found for "<strong>{{ query }}</strong>"</p>
+</div>
+{% else %}
+<div style="text-align: center; padding: 48px 24px;">
+    <h1 id="heroTitle"><span class="text-shimmer">searchat</span></h1>
+    <p id="heroSubtitle" style="color: hsl(var(--text-tertiary));">Local search for your AI coding conversations</p>
+</div>
+{% endif %}

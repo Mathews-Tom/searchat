@@ -1,0 +1,182 @@
+<div style="max-width: 1200px; margin: 0 auto;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px;">
+        <h2 style="margin: 0; font-size: 28px; color: hsl(var(--text-primary));">Expertise Browser</h2>
+        <div style="display: flex; gap: 12px; align-items: center;">
+            <button class="glass-btn glass-btn-primary" style="font-size: 12px; padding: 4px 12px;"
+                    hx-post="/fragments/rebuild-expertise-index"
+                    hx-target="#results"
+                    hx-confirm="Rebuild expertise embedding index?">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
+                Rebuild Index
+            </button>
+            <a href="/" style="color: hsl(var(--accent)); text-decoration: none; font-weight: 500;">&#8592; Back to Search</a>
+        </div>
+    </div>
+
+    <!-- Stats Row -->
+    {% if status %}
+    <div class="expertise-stats-row">
+        <div class="expertise-stat-card">
+            <span class="expertise-stat-label">Total Records</span>
+            <span class="expertise-stat-value">{{ status.total_records or 0 }}</span>
+        </div>
+        <div class="expertise-stat-card">
+            <span class="expertise-stat-label">Active</span>
+            <span class="expertise-stat-value">{{ status.active_records or 0 }}</span>
+        </div>
+        <div class="expertise-stat-card">
+            <span class="expertise-stat-label">Domains</span>
+            <span class="expertise-stat-value">{{ (status.domains or []) | length }}</span>
+        </div>
+    </div>
+
+    <!-- Domain Table -->
+    {% set domains = status.domains or [] %}
+    {% if domains %}
+    <div class="glass" style="margin-bottom: 24px;">
+        <div class="card-title">Domains</div>
+        <div class="expertise-table-wrap">
+            <table class="expertise-table">
+                <thead>
+                    <tr>
+                        <th>Domain</th>
+                        <th>Records</th>
+                        <th>Active</th>
+                        <th>Stale</th>
+                        <th>Contradictions</th>
+                        <th>Health</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for d in domains %}
+                    <tr style="cursor: pointer;"
+                        hx-get="/fragments/expertise-view?domain={{ d.name | urlencode }}"
+                        hx-target="#results"
+                        title="{{ d.name }}">
+                        <td>{{ d.display_name or d.name }}</td>
+                        <td>{{ d.record_count or 0 }}</td>
+                        <td>{{ d.active_count or 0 }}</td>
+                        <td>{{ d.stale_count or 0 }}</td>
+                        <td>{{ d.contradiction_count or 0 }}</td>
+                        <td>
+                            {% set health = d.health or 'healthy' %}
+                            <span class="health-badge health-badge--{{ health }}">{{ health }}</span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+    {% endif %}
+
+    <!-- Filter Bar -->
+    <div class="expertise-filter-bar" style="margin-bottom: 16px;">
+        <form hx-get="/fragments/expertise-view" hx-target="#results" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+            <input type="text" name="q" placeholder="Search records..." value="{{ q }}" style="flex: 1; min-width: 150px;" />
+            <select name="type">
+                <option value="">All Types</option>
+                {% for t in ['convention', 'pattern', 'failure', 'decision', 'boundary', 'insight'] %}
+                <option value="{{ t }}" {{ 'selected' if type == t else '' }}>{{ t | capitalize }}</option>
+                {% endfor %}
+            </select>
+            <select name="severity">
+                <option value="">All Severities</option>
+                {% for s in ['critical', 'high', 'medium', 'low'] %}
+                <option value="{{ s }}" {{ 'selected' if severity == s else '' }}>{{ s | capitalize }}</option>
+                {% endfor %}
+            </select>
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: hsl(var(--text-tertiary));">
+                <input type="checkbox" name="active_only" value="true" {{ 'checked' if active_only else '' }} />
+                Active only
+            </label>
+            {% if domain %}
+            <input type="hidden" name="domain" value="{{ domain }}" />
+            <span style="font-size: 12px; color: hsl(var(--accent));" title="{{ domain }}">Domain: {{ domain_display or domain }}</span>
+            {% endif %}
+            <button type="submit" class="glass-btn">Apply</button>
+        </form>
+    </div>
+
+    <!-- Record List -->
+    {% if records %}
+    <div style="margin-bottom: 12px; font-size: 13px; color: hsl(var(--text-tertiary));">
+        {{ total }} record{{ 's' if total != 1 else '' }} found
+    </div>
+    <div class="expertise-record-list">
+        {% for r in records %}
+        <div class="expertise-record-item glass">
+            <div class="expertise-record-main">
+                <div class="expertise-record-title">
+                    {{ r.name or (r.content[:80] if r.content else 'Unnamed') }}
+                </div>
+                {% if r.content %}
+                <div style="font-size: 12px; color: hsl(var(--text-secondary)); line-height: 1.5; margin-bottom: 6px;">
+                    {{ r.content }}
+                </div>
+                {% endif %}
+                <div class="expertise-record-meta">
+                    <span class="expertise-type-badge">{{ r.type or 'unknown' }}</span>
+                    {% if r.domain %}<span>{{ r.domain }}</span>{% endif %}
+                    {% if r.project %}<span>{{ r.project }}</span>{% endif %}
+                    {% if r.severity %}
+                    <span style="color: {{ 'hsl(var(--danger))' if r.severity == 'critical' else 'hsl(var(--warning))' if r.severity == 'high' else 'hsl(var(--text-tertiary))' }};">
+                        {{ r.severity }}
+                    </span>
+                    {% endif %}
+                    {% if r.confidence is not none %}
+                    <span class="expertise-record-confidence">{{ (r.confidence * 100) | round | int }}%</span>
+                    {% endif %}
+                </div>
+                {% if r.tags %}
+                <div class="expertise-record-tags">
+                    {% for tag in r.tags %}
+                    <span class="expertise-tag">{{ tag }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                {% if r.example or r.rationale %}
+                <details style="margin-top: 6px; font-size: 12px;">
+                    <summary style="cursor: pointer; color: hsl(var(--accent)); font-size: 11px;">Details</summary>
+                    {% if r.example %}
+                    <div style="margin-top: 4px; color: hsl(var(--text-secondary)); line-height: 1.5;">
+                        <strong style="color: hsl(var(--text-tertiary));">Example:</strong> {{ r.example }}
+                    </div>
+                    {% endif %}
+                    {% if r.rationale %}
+                    <div style="margin-top: 4px; color: hsl(var(--text-secondary)); line-height: 1.5;">
+                        <strong style="color: hsl(var(--text-tertiary));">Rationale:</strong> {{ r.rationale }}
+                    </div>
+                    {% endif %}
+                </details>
+                {% endif %}
+            </div>
+            {% if not r.is_active %}
+            <span style="font-size: 11px; color: hsl(var(--text-tertiary)); padding: 2px 6px; border: 1px solid hsl(var(--border-glass)); border-radius: 3px; flex-shrink: 0;">inactive</span>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Pagination -->
+    {% set total_pages = ((total + page_size - 1) // page_size) %}
+    {% if total_pages > 1 %}
+    <div style="display: flex; justify-content: center; gap: 8px; margin-top: 16px;">
+        {% for p in range(1, total_pages + 1) %}
+        {% if p <= 5 or p == total_pages or (p >= page - 1 and p <= page + 1) %}
+        <button class="glass-btn {{ 'glass-btn-primary' if p == page else '' }}" style="padding: 4px 12px; font-size: 13px;"
+                hx-get="/fragments/expertise-view?page={{ p }}&q={{ q | urlencode }}&type={{ type }}&severity={{ severity }}&active_only={{ active_only }}&domain={{ domain | urlencode }}"
+                hx-target="#results">
+            {{ p }}
+        </button>
+        {% endif %}
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% else %}
+    <div class="expertise-empty" style="padding: 32px; text-align: center; color: hsl(var(--text-tertiary));">
+        No records match the current filters.
+    </div>
+    {% endif %}
+</div>

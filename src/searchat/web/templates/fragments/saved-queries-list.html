@@ -1,0 +1,26 @@
+{% if queries %}
+{% for q in queries %}
+<div class="saved-query-item glass" style="padding: 10px 14px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+    <div style="flex: 1; min-width: 0; cursor: pointer;"
+         hx-get="/fragments/search-results?q={{ q.query or q.get('query', '') | urlencode }}&mode={{ q.mode or q.get('mode', 'hybrid') }}"
+         hx-target="#results">
+        <div style="font-size: 13px; font-weight: 500; color: hsl(var(--text-primary)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+            {{ q.name or q.get('name', q.query or q.get('query', '')) }}
+        </div>
+        {% if q.description or q.get('description') %}
+        <div style="font-size: 11px; color: hsl(var(--text-tertiary)); margin-top: 2px;">{{ q.description or q.get('description', '') }}</div>
+        {% endif %}
+    </div>
+    <button class="glass-btn" style="font-size: 11px; padding: 2px 8px; flex-shrink: 0;"
+            hx-delete="/fragments/saved-query/{{ q.id or q.get('id', '') }}"
+            hx-target="#savedQueriesList"
+            title="Delete query">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+    </button>
+</div>
+{% endfor %}
+{% else %}
+<div style="padding: 16px; text-align: center; font-size: 12px; color: hsl(var(--text-tertiary));">
+    No saved queries yet.
+</div>
+{% endif %}

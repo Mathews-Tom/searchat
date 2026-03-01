@@ -99,6 +99,9 @@ site/
 Pipfile.lock
 poetry.lock
 
+# Node.js
+node_modules/
+
 # Agentic Systems
 .claude/
 .opencode/

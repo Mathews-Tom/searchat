@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from threading import Lock
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 import faiss
@@ -96,7 +97,12 @@ class ExpertiseEmbeddingIndex:
             del self._vec_to_record[vec_id]
             self._save()
 
-    def rebuild(self, records: list[ExpertiseRecord]) -> None:
+    def rebuild(
+        self,
+        records: list[ExpertiseRecord],
+        progress_callback: Callable[[int, int], None] | None = None,
+        batch_size: int = 100,
+    ) -> None:
         with self._lock:
             self._index = self._create_index()
             self._record_to_vec = {}
@@ -104,10 +110,15 @@ class ExpertiseEmbeddingIndex:
             self._next_id = 0
             if records:
                 self._ensure_embedder()
-                texts = [r.content for r in records]
-                vecs = self._embed_batch(texts)
-                for record, vec in zip(records, vecs):
-                    self._add_vector(record.id, vec)
+                total = len(records)
+                for start in range(0, total, batch_size):
+                    chunk = records[start : start + batch_size]
+                    texts = [r.content for r in chunk]
+                    vecs = self._embed_batch(texts)
+                    for record, vec in zip(chunk, vecs):
+                        self._add_vector(record.id, vec)
+                    if progress_callback is not None:
+                        progress_callback(min(start + batch_size, total), total)
             self._save()
 
     # ------------------------------------------------------------------
@@ -149,7 +160,7 @@ class ExpertiseEmbeddingIndex:
         vid = self._next_id
         self._next_id += 1
         ids = np.array([vid], dtype=np.int64)
-        self._index.add_with_ids(vec, ids)
+        self._index.add_with_ids(vec.reshape(1, -1), ids)
         self._record_to_vec[record_id] = vid
         self._vec_to_record[vid] = record_id
 

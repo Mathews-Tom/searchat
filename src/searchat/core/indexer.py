@@ -7,7 +7,6 @@ import time
 from datetime import datetime
 from pathlib import Path
 from dataclasses import asdict
-
 import numpy as np
 import faiss
 import pyarrow as pa
@@ -722,7 +721,152 @@ class ConversationIndexer:
             rebuilt_index.add_with_ids(vectors_array, ids_array)  # type: ignore[call-arg]
 
         return rebuilt_index
-    
+
+    def delete_conversations(
+        self,
+        conversation_ids: list[str],
+        delete_source_files: bool = False,
+    ) -> dict:
+        """Delete conversations from all storage layers.
+
+        Args:
+            conversation_ids: IDs to delete.
+            delete_source_files: If True, also delete original source files from disk.
+
+        Returns:
+            Summary dict with deleted count, removed vectors, and source files deleted.
+        """
+        if not conversation_ids:
+            raise ValueError("conversation_ids must not be empty")
+
+        deletion_set = set(conversation_ids)
+
+        # 2. Resolve project_ids and file_paths from conversation parquets
+        project_to_cids: dict[str, set[str]] = {}
+        cid_to_file_path: dict[str, str] = {}
+
+        for parquet_file in self.conversations_dir.glob("project_*.parquet"):
+            table = pq.read_table(
+                parquet_file,
+                columns=["conversation_id", "project_id", "file_path"],
+            )
+            for row in table.to_pylist():
+                cid = row["conversation_id"]
+                if cid in deletion_set:
+                    pid = row["project_id"]
+                    project_to_cids.setdefault(pid, set()).add(cid)
+                    if row.get("file_path"):
+                        cid_to_file_path[cid] = row["file_path"]
+
+        # 3. Remove from conversation parquets
+        for project_id, cids in project_to_cids.items():
+            for cid in cids:
+                self._remove_conversation_from_project(project_id, cid)
+
+        # 4. Remove code blocks
+        for project_id, cids in project_to_cids.items():
+            for cid in cids:
+                self._remove_code_blocks_for_conversation(project_id, cid)
+
+        # 5. Filter embeddings metadata and collect removed vector IDs
+        removed_vector_ids: list[int] = []
+        metadata_path = self.indices_dir / "embeddings.metadata.parquet"
+        if metadata_path.exists() and metadata_path.stat().st_size > 0:
+            meta_table = pq.read_table(metadata_path)
+            cid_col = meta_table.column("conversation_id")
+            mask = pc.invert(pc.is_in(cid_col, value_set=pa.array(list(deletion_set))))
+            removed_mask = pc.is_in(cid_col, value_set=pa.array(list(deletion_set)))
+            removed_rows = meta_table.filter(removed_mask)
+            removed_vector_ids = removed_rows.column("vector_id").to_pylist()
+            filtered_meta = meta_table.filter(mask)
+            pq.write_table(filtered_meta, metadata_path)
+
+        # 6. Rebuild FAISS index
+        faiss_path = self.indices_dir / "embeddings.faiss"
+        if faiss_path.exists() and removed_vector_ids:
+            existing_index = faiss.read_index(str(faiss_path))
+            # Read remaining IDs from the filtered metadata
+            if metadata_path.exists():
+                remaining_meta = pq.read_table(metadata_path, columns=["vector_id"])
+                remaining_ids = remaining_meta.column("vector_id").to_pylist()
+            else:
+                remaining_ids = []
+            # Ensure direct map for vector reconstruction
+            try:
+                existing_index.make_direct_map()
+            except Exception:
+                pass
+            rebuilt = self._rebuild_idmap_index(
+                existing_index, remaining_ids, new_embeddings=[], new_ids=[]
+            )
+            faiss.write_index(rebuilt, str(faiss_path))
+
+        # 7. Update file_state.parquet
+        if self.file_state_path.exists():
+            fs_table = pq.read_table(self.file_state_path)
+            if "conversation_id" in fs_table.column_names:
+                fs_mask = pc.invert(
+                    pc.is_in(
+                        fs_table.column("conversation_id"),
+                        value_set=pa.array(list(deletion_set)),
+                    )
+                )
+                pq.write_table(fs_table.filter(fs_mask), self.file_state_path)
+
+        # 8. Update indexed_paths.parquet
+        remaining_paths = self.get_indexed_file_paths()
+        deleted_paths = set(cid_to_file_path.values())
+        remaining_paths -= deleted_paths
+        if remaining_paths:
+            self._write_indexed_paths(remaining_paths)
+        elif self.indexed_paths_path.exists():
+            self.indexed_paths_path.unlink()
+
+        # 9. Update index metadata
+        existing_meta = self._load_existing_metadata()
+        if existing_meta:
+            total_deleted = sum(len(cids) for cids in project_to_cids.values())
+            existing_meta["total_conversations"] = max(
+                0, existing_meta.get("total_conversations", 0) - total_deleted
+            )
+            existing_meta["total_chunks"] = max(
+                0, existing_meta.get("total_chunks", 0) - len(removed_vector_ids)
+            )
+            existing_meta["last_updated"] = datetime.now().isoformat()
+            metadata_json_path = self.indices_dir / "index_metadata.json"
+            with open(metadata_json_path, "w", encoding="utf-8") as f:
+                json.dump(existing_meta, f, indent=2)
+
+        # 10. Delete source files if requested
+        source_files_deleted = 0
+        if delete_source_files:
+            for cid in conversation_ids:
+                fp = cid_to_file_path.get(cid)
+                if not fp:
+                    continue
+                # Skip pseudo-paths (e.g. Cursor's SQLite-based paths)
+                if "#.vscdb.cursor/" in fp:
+                    continue
+                source_path = Path(fp)
+                if source_path.is_file():
+                    source_path.unlink()
+                    source_files_deleted += 1
+                    logger.info("Deleted source file: %s", fp)
+                else:
+                    logger.warning("Source file not found (may be already removed): %s", fp)
+
+        deleted_count = sum(len(cids) for cids in project_to_cids.values())
+        logger.info(
+            "Deleted %d conversations, removed %d vectors, deleted %d source files",
+            deleted_count, len(removed_vector_ids), source_files_deleted,
+        )
+
+        return {
+            "deleted": deleted_count,
+            "removed_vectors": len(removed_vector_ids),
+            "source_files_deleted": source_files_deleted,
+        }
+
     def _build_faiss_index(
         self,
         embeddings: np.ndarray,
@@ -840,6 +984,45 @@ class ConversationIndexer:
             self._write_indexed_paths(indexed_paths)
 
         return indexed_paths
+
+    def _extract_expertise(
+        self,
+        conversation_records: dict[str, list[ConversationRecord]],
+        progress: ProgressCallback,
+    ) -> None:
+        """Run heuristic expertise extraction on newly indexed conversations.
+
+        Best-effort: logs errors but never blocks the indexing pipeline.
+        """
+        if not self.config.expertise.enabled:
+            return
+
+        all_records = [r for batch in conversation_records.values() for r in batch]
+        if not all_records:
+            return
+
+        try:
+            from searchat.expertise.pipeline import create_pipeline
+
+            pipeline = create_pipeline(self.config, self.search_dir)
+            batch = [
+                {
+                    "full_text": r.full_text,
+                    "conversation_id": r.conversation_id,
+                    "project_id": r.project_id,
+                }
+                for r in all_records
+            ]
+            progress.update_phase("Extracting expertise")
+            stats = pipeline.extract_batch(batch, mode="heuristic_only")
+            logger.info(
+                "Expertise extraction: %d processed, %d created, %d reinforced",
+                stats.conversations_processed,
+                stats.records_created,
+                stats.records_reinforced,
+            )
+        except Exception as exc:
+            logger.error("Expertise extraction failed (non-blocking): %s", exc)
 
     def index_append_only(
         self,
@@ -1063,6 +1246,9 @@ class ConversationIndexer:
                         "project_id": record.project_id,
                     }
             self._write_file_state(list(file_state.values()))
+
+        # Run expertise extraction on newly indexed conversations
+        self._extract_expertise(new_conversation_records, progress)
 
         elapsed = time.time() - start_time
 
