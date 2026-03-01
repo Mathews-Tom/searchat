@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+
+{% block title %}Chat &mdash; Searchat{% endblock %}
+
+{% block head %}
+    <style>
+        .chat-page-container {
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 0 24px;
+        }
+        .chat-page-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 24px;
+            gap: 16px;
+        }
+        .chat-page-header .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .chat-page-header .back-link {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.875rem;
+            white-space: nowrap;
+        }
+        .chat-page-header .back-link:hover { color: var(--text-primary); }
+        .chat-header-top { margin-bottom: 12px; }
+    </style>
+{% endblock %}
+
+{% block body %}
+    <div class="mesh-bg"></div>
+
+    <header class="chat-page-header">
+        <div class="header-left">
+            <a href="/" class="back-link">&larr; Back to Search</a>
+            <span class="logo"><span class="text-shimmer">searchat</span></span>
+        </div>
+        <div class="header-right">
+            <div class="theme-switcher" id="themeSwitcher">
+                <button class="theme-switcher-btn" title="Light" @click="$store.theme.set('light')"
+                        :class="{ active: $store.theme.mode === 'light' }">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="3"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41"/></svg>
+                </button>
+                <button class="theme-switcher-btn" title="Dark" @click="$store.theme.set('dark')"
+                        :class="{ active: $store.theme.mode === 'dark' }">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8.5a5.5 5.5 0 1 1-7-7 4.5 4.5 0 0 0 7 7z"/></svg>
+                </button>
+                <button class="theme-switcher-btn" title="Auto" @click="$store.theme.set('auto')"
+                        :class="{ active: $store.theme.mode === 'auto' }">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="2" width="14" height="10" rx="1.5"/><path d="M5 15h6M8 12v3"/></svg>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <div class="chat-page-container">
+            <div class="chat-panel glass-elevated" id="chatPanel" data-no-collapse="true"
+                 x-data>
+                <div class="chat-header">
+                    <div class="chat-header-top">
+                        <div>
+                            <h2>Chat with History</h2>
+                            <p>Ask a question and get grounded answers with citations.</p>
+                        </div>
+                    </div>
+                    <div class="chat-controls">
+                        <label>Provider:
+                            <select id="chatProvider" class="glass-select"
+                                    x-model="$store.chat.provider"
+                                    @change="$store.chat.setProvider($event.target.value)">
+                                <option value="ollama">Ollama (Local)</option>
+                                <option value="openai">OpenAI</option>
+                            </select>
+                        </label>
+                        <label>Model:
+                            <input type="text" id="chatModel" class="search-input" placeholder="optional" style="width: 140px;"
+                                   x-model="$store.chat.model"
+                                   @change="$store.chat.setModel($event.target.value)" />
+                        </label>
+                        <details class="chat-advanced" id="chatAdvanced">
+                            <summary>Options</summary>
+                            <div class="chat-advanced-grid">
+                                <label>Temperature:
+                                    <input type="number" id="chatTemperature" placeholder="default" min="0" max="2" step="0.1"
+                                           x-model.number="$store.chat.temperature" />
+                                </label>
+                                <label>Max tokens:
+                                    <input type="number" id="chatMaxTokens" placeholder="default" min="1" max="32768" step="1"
+                                           x-model.number="$store.chat.maxTokens" />
+                                </label>
+                                <label class="chat-advanced-wide">System prompt:
+                                    <textarea id="chatSystemPrompt" class="chat-system-prompt" placeholder="optional (context will be appended)"
+                                              x-model="$store.chat.systemPrompt"></textarea>
+                                </label>
+                            </div>
+                        </details>
+                    </div>
+                </div>
+                <div class="chat-body">
+                    <textarea id="chatQuery" class="chat-textarea" placeholder="Ask about your chat history..."
+                              x-model="$store.chat.query"
+                              @keydown.ctrl.enter="$store.chat.send()"
+                              @keydown.meta.enter="$store.chat.send()"></textarea>
+                    <div class="chat-actions">
+                        <button id="chatSend" class="glass-btn glass-btn-primary"
+                                @click="$store.chat.send()"
+                                :disabled="$store.chat.sending">Ask</button>
+                        <button id="chatStop" class="glass-btn"
+                                @click="$store.chat.stop()"
+                                :disabled="!$store.chat.sending">Stop</button>
+                        <button id="chatClear" class="glass-btn"
+                                @click="$store.chat.clear()">Clear</button>
+                    </div>
+                    <div class="chat-status-row">
+                        <div id="chatSpinner" class="chat-spinner" aria-hidden="true"
+                             x-show="$store.chat.sending" x-cloak></div>
+                        <div id="chatStatus" class="chat-status"
+                             x-text="$store.chat.status"></div>
+                    </div>
+                    <div id="chatAnswer" class="chat-answer" aria-live="polite"
+                         x-html="$store.chat.answer"></div>
+                    <div id="chatSources" class="chat-sources"
+                         x-show="$store.chat.sources.length > 0" x-cloak>
+                        <template x-for="source in $store.chat.sources" :key="source.conversation_id">
+                            <div class="chat-source-item">
+                                <a :href="'/conversation/' + source.conversation_id"
+                                   x-text="source.title"></a>
+                                <span class="chat-source-score" x-text="'(' + source.score.toFixed(2) + ')'"></span>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+{% endblock %}
