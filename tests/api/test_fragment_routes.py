@@ -77,11 +77,9 @@ class TestProjectOptions:
         assert resp.status_code == 200
         assert "text/html" in resp.headers["content-type"]
 
-    @patch("searchat.api.routers.fragments.deps.get_search_engine")
-    def test_with_projects(self, mock_engine_getter, client: TestClient):
-        engine = Mock()
-        engine.get_projects.return_value = ["proj-a", "proj-b"]
-        mock_engine_getter.return_value = engine
+    @patch("searchat.api.routers.fragments._list_projects")
+    def test_with_projects(self, mock_list, client: TestClient):
+        mock_list.return_value = ["proj-a", "proj-b"]
         resp = client.get("/fragments/project-options")
         assert resp.status_code == 200
         assert "proj-a" in resp.text
@@ -305,3 +303,64 @@ class TestDatasetOptions:
         assert resp.status_code == 200
         assert "text/html" in resp.headers["content-type"]
         assert "Live Index" in resp.text
+
+
+# ---------------------------------------------------------------------------
+# Rebuild progress UI
+# ---------------------------------------------------------------------------
+
+
+class TestRebuildExpertiseIndex:
+    def test_post_returns_progress_html(self, client: TestClient):
+        resp = client.post("/fragments/rebuild-expertise-index")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+        assert "rebuildProgress" in resp.text
+        assert "rebuild-expertise-index/stream" in resp.text
+
+    def test_stream_no_store(self, client: TestClient):
+        resp = client.get("/fragments/rebuild-expertise-index/stream")
+        assert resp.status_code == 200
+        assert "text/event-stream" in resp.headers["content-type"]
+        assert "not available" in resp.text
+
+
+class TestRebuildKnowledgeGraph:
+    def test_post_returns_progress_html(self, client: TestClient):
+        resp = client.post("/fragments/rebuild-knowledge-graph")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+        assert "rebuildProgress" in resp.text
+        assert "rebuild-knowledge-graph/stream" in resp.text
+
+    def test_stream_no_store(self, client: TestClient):
+        resp = client.get("/fragments/rebuild-knowledge-graph/stream")
+        assert resp.status_code == 200
+        assert "text/event-stream" in resp.headers["content-type"]
+        assert "not available" in resp.text
+
+
+# ---------------------------------------------------------------------------
+# Contradiction resolution
+# ---------------------------------------------------------------------------
+
+
+class TestResolveContradiction:
+    def test_form_requires_params(self, client: TestClient):
+        resp = client.get("/fragments/resolve-contradiction")
+        assert resp.status_code == 422  # missing required query params
+
+    def test_form_no_store(self, client: TestClient):
+        resp = client.get(
+            "/fragments/resolve-contradiction?edge_id=e1&record_a=nonexistent&record_b=nonexistent"
+        )
+        assert resp.status_code == 200
+        assert "not available" in resp.text
+
+    def test_apply_no_store(self, client: TestClient):
+        resp = client.post(
+            "/fragments/apply-resolution",
+            data={"edge_id": "e1", "strategy": "dismiss", "reason": "test"},
+        )
+        assert resp.status_code == 200
+        assert "not available" in resp.text
