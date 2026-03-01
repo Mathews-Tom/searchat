@@ -596,19 +596,20 @@ async def contradictions_view(
                     "similarity": meta.get("similarity_score"),
                     "nli_score": meta.get("contradiction_score"),
                 })
-            # Compute basic stats
+            # Compute basic stats — reuse `edges` when it already has the
+            # unresolved set; fetch all only once for total counts.
             all_contradictions = kg_store.get_contradictions(unresolved_only=False)
-            unresolved = kg_store.get_contradictions(unresolved_only=True)
+            unresolved_edges = edges if unresolved_only else kg_store.get_contradictions(unresolved_only=True)
             node_count = 0
             if expertise_store:
                 all_records = expertise_store.query(ExpertiseQuery(active_only=False, limit=100000))
                 node_count = len(all_records)
-            health_score = max(0.0, 1.0 - (len(unresolved) / node_count if node_count > 0 else 0.0))
+            health_score = max(0.0, 1.0 - (len(unresolved_edges) / node_count if node_count > 0 else 0.0))
             stats = {
                 "node_count": node_count,
                 "edge_count": len(all_contradictions),
                 "contradiction_count": len(all_contradictions),
-                "unresolved_contradiction_count": len(unresolved),
+                "unresolved_contradiction_count": len(unresolved_edges),
                 "health_score": round(health_score, 4),
             }
         except Exception:
