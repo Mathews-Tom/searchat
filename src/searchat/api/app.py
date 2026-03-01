@@ -2,10 +2,8 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import mimetypes
 import os
-import re
 import time
 import warnings
 from collections.abc import AsyncIterator
@@ -38,6 +36,7 @@ from searchat.api.dependencies import (
 )
 import searchat.api.dependencies as deps
 from searchat.api.readiness import get_readiness
+from searchat.api.templates import templates
 from searchat.api.routers import (
     search_router,
     conversations_router,
@@ -55,6 +54,7 @@ from searchat.api.routers import (
     dashboards_router,
     expertise_router,
     knowledge_graph_router,
+    fragments_router,
 )
 from searchat.config.constants import (
     APP_VERSION,
@@ -87,55 +87,10 @@ mimetypes.add_type("text/javascript", ".mjs")
 
 
 # ---------------------------------------------------------------------------
-# Static-asset cache busting
+# Static-asset paths
 # ---------------------------------------------------------------------------
 _WEB_DIR = Path(__file__).parent.parent / "web"
-_HTML_PATH = _WEB_DIR / "index.html"
 _STATIC_DIR = _WEB_DIR / "static"
-
-_CACHE_BUST_RE = re.compile(
-    r"(?P<attr>\b(?:src|href))=(?P<q>['\"])(?P<path>/static/[^'\"]+)(?P=q)"
-)
-
-
-def _static_fingerprint() -> str:
-    """Hash the combined mtime of every file under web/static/.
-
-    Changes on any JS/CSS/asset edit, no version bump needed.
-    """
-    h = hashlib.md5(usedforsecurity=False)
-    for p in sorted(_STATIC_DIR.rglob("*")):
-        if p.is_file():
-            h.update(f"{p.relative_to(_STATIC_DIR)}:{p.stat().st_mtime_ns}".encode())
-    return h.hexdigest()[:10]
-
-
-def _cache_bust_static_assets(html: str, fingerprint: str) -> str:
-    """Append a fingerprint query param to local /static asset URLs."""
-
-    def repl(match: re.Match[str]) -> str:
-        attr, quote, path = match.group("attr"), match.group("q"), match.group("path")
-        base, sep, fragment = path.partition("#")
-        if "?" in base:
-            return match.group(0)
-        busted = f"{base}?v={fingerprint}"
-        if sep:
-            busted = f"{busted}#{fragment}"
-        return f"{attr}={quote}{busted}{quote}"
-
-    return _CACHE_BUST_RE.sub(repl, html)
-
-
-def _build_html_cache() -> tuple[str, str]:
-    """Read and cache-bust both HTML pages using the current static fingerprint."""
-    fp = _static_fingerprint()
-    index = _cache_bust_static_assets(_HTML_PATH.read_text(encoding="utf-8"), fp)
-    chat_path = _WEB_DIR / "chat.html"
-    chat = _cache_bust_static_assets(chat_path.read_text(encoding="utf-8"), fp) if chat_path.exists() else ""
-    return index, chat
-
-
-_CACHED_HTML, _CACHED_CHAT_HTML = _build_html_cache()
 
 
 @asynccontextmanager
@@ -229,6 +184,7 @@ app.include_router(patterns_router, prefix="/api", tags=["patterns"])
 app.include_router(dashboards_router, prefix="/api", tags=["dashboards"])
 app.include_router(expertise_router)
 app.include_router(knowledge_graph_router)
+app.include_router(fragments_router)
 
 
 def on_new_conversations(file_paths: list[str]) -> None:
@@ -318,9 +274,9 @@ async def _start_watcher_background(config):
 
 
 @app.get("/", response_class=HTMLResponse)
-async def root():
+async def root(request: Request):
     """Serve the main HTML page."""
-    return HTMLResponse(_CACHED_HTML)
+    return templates.TemplateResponse(request, "index.html")
 
 
 @app.get("/favicon.ico", include_in_schema=False)
@@ -330,16 +286,17 @@ async def favicon_ico():
 
 
 @app.get("/conversation/{conversation_id}", response_class=HTMLResponse)
-async def serve_conversation_page(conversation_id: str):
+async def serve_conversation_page(request: Request, conversation_id: str):
     """Serve HTML page for viewing a specific conversation."""
-    # For now, serve the same main page (it handles conversation viewing via client-side routing)
-    return HTMLResponse(_CACHED_HTML)
+    return templates.TemplateResponse(
+        request, "conversation.html", {"conversation_id": conversation_id}
+    )
 
 
 @app.get("/chat", response_class=HTMLResponse)
-async def serve_chat_page():
+async def serve_chat_page(request: Request):
     """Serve the standalone Chat with History page."""
-    return HTMLResponse(_CACHED_CHAT_HTML)
+    return templates.TemplateResponse(request, "chat.html")
 
 
 def main():

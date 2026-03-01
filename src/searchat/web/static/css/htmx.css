@@ -1,0 +1,84 @@
+/* HTMX indicator styles */
+.htmx-indicator {
+    display: none;
+}
+
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator {
+    display: inline-block;
+}
+
+/* Swap transition: fade in */
+.htmx-swapping {
+    opacity: 0;
+    transition: opacity 150ms ease-out;
+}
+
+.htmx-settling {
+    opacity: 1;
+    transition: opacity 150ms ease-in;
+}
+
+/* Loading spinner for HTMX requests */
+.htmx-indicator.spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid hsl(var(--border-subtle));
+    border-top-color: hsl(var(--accent));
+    border-radius: 50%;
+    animation: htmx-spin 0.6s linear infinite;
+}
+
+@keyframes htmx-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Global loading bar — fixed top bar during any HTMX request */
+#globalLoadingBar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 3px;
+    z-index: 9999;
+    background: transparent;
+    pointer-events: none;
+}
+
+#globalLoadingBar::after {
+    content: '';
+    display: block;
+    width: 0%;
+    height: 100%;
+    background: linear-gradient(90deg, hsl(var(--accent)), hsl(190 80% 50%));
+    transition: width 0.3s ease;
+}
+
+#globalLoadingBar.htmx-request::after {
+    width: 100%;
+    animation: htmx-loading-bar 1.5s ease-in-out infinite;
+}
+
+@keyframes htmx-loading-bar {
+    0% { width: 0%; margin-left: 0; }
+    50% { width: 60%; margin-left: 20%; }
+    100% { width: 0%; margin-left: 100%; }
+}
+
+/* Dim target element while loading (only on content containers, not body) */
+#results.htmx-request {
+    pointer-events: none;
+    opacity: 0.5;
+    transition: opacity 0.15s;
+}
+
+/* Disable button while its request is in flight */
+button.htmx-request {
+    pointer-events: none;
+    opacity: 0.6;
+}
+
+/* Alpine.js cloak: hide elements until Alpine initializes */
+[x-cloak] {
+    display: none !important;
+}

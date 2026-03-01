@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" x-data x-init="$store.theme.init()">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Searchat{% endblock %}</title>
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+    <!-- Stylesheets -->
+    <link rel="stylesheet" href="{{ static_url('/static/css/variables.css') }}">
+    <link rel="stylesheet" href="{{ static_url('/static/css/base.css') }}">
+    <link rel="stylesheet" href="{{ static_url('/static/css/layout.css') }}">
+    <link rel="stylesheet" href="{{ static_url('/static/css/components.css') }}">
+    <link rel="stylesheet" href="{{ static_url('/static/css/expertise.css') }}">
+    <link rel="stylesheet" href="{{ static_url('/static/css/pygments.css') }}">
+    <link rel="stylesheet" href="{{ static_url('/static/css/htmx.css') }}">
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+
+    {% block head %}{% endblock %}
+</head>
+<body hx-indicator="#globalLoadingBar">
+    <div id="globalLoadingBar"></div>
+    {% block body %}{% endblock %}
+
+    <!-- App bundle: HTMX + Alpine.js + stores bundled via esbuild -->
+    <script type="module" src="{{ static_url('/static/js/dist/main.js') }}"></script>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>
