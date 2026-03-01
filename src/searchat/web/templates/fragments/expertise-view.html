@@ -51,8 +51,9 @@
                     {% for d in domains %}
                     <tr style="cursor: pointer;"
                         hx-get="/fragments/expertise-view?domain={{ d.name | urlencode }}"
-                        hx-target="#results">
-                        <td>{{ d.name }}</td>
+                        hx-target="#results"
+                        title="{{ d.name }}">
+                        <td>{{ d.display_name or d.name }}</td>
                         <td>{{ d.record_count or 0 }}</td>
                         <td>{{ d.active_count or 0 }}</td>
                         <td>{{ d.stale_count or 0 }}</td>
@@ -92,7 +93,7 @@
             </label>
             {% if domain %}
             <input type="hidden" name="domain" value="{{ domain }}" />
-            <span style="font-size: 12px; color: hsl(var(--accent));">Domain: {{ domain }}</span>
+            <span style="font-size: 12px; color: hsl(var(--accent));" title="{{ domain }}">Domain: {{ domain_display or domain }}</span>
             {% endif %}
             <button type="submit" class="glass-btn">Apply</button>
         </form>
@@ -103,39 +104,57 @@
     <div style="margin-bottom: 12px; font-size: 13px; color: hsl(var(--text-tertiary));">
         {{ total }} record{{ 's' if total != 1 else '' }} found
     </div>
-    <div style="display: grid; gap: 8px;">
+    <div class="expertise-record-list">
         {% for r in records %}
-        <div class="expertise-record-item glass" style="padding: 14px 16px;">
-            <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;">
-                <div style="flex: 1; min-width: 0;">
-                    <div class="expertise-record-title" style="font-weight: 600; color: hsl(var(--text-primary)); margin-bottom: 4px;">
-                        {{ r.name or (r.content[:80] if r.content else 'Unnamed') }}
-                    </div>
-                    <div style="font-size: 12px; color: hsl(var(--text-tertiary)); display: flex; flex-wrap: wrap; gap: 8px;">
-                        <span class="expertise-type-badge">{{ r.type or 'unknown' }}</span>
-                        {% if r.domain %}<span>{{ r.domain }}</span>{% endif %}
-                        {% if r.project %}<span>{{ r.project }}</span>{% endif %}
-                        {% if r.severity %}
-                        <span style="color: {{ 'hsl(var(--danger))' if r.severity == 'critical' else 'hsl(var(--warning))' if r.severity == 'high' else 'hsl(var(--text-tertiary))' }};">
-                            {{ r.severity }}
-                        </span>
-                        {% endif %}
-                        {% if r.confidence is not none %}
-                        <span>{{ (r.confidence * 100) | round | int }}% confidence</span>
-                        {% endif %}
-                    </div>
-                    {% if r.tags %}
-                    <div style="margin-top: 6px;">
-                        {% for tag in r.tags %}
-                        <span class="expertise-tag" style="display: inline-block; background: hsl(var(--bg-surface)); padding: 1px 6px; border-radius: 3px; font-size: 11px; margin-right: 4px;">{{ tag }}</span>
-                        {% endfor %}
-                    </div>
+        <div class="expertise-record-item glass">
+            <div class="expertise-record-main">
+                <div class="expertise-record-title">
+                    {{ r.name or (r.content[:80] if r.content else 'Unnamed') }}
+                </div>
+                {% if r.content %}
+                <div style="font-size: 12px; color: hsl(var(--text-secondary)); line-height: 1.5; margin-bottom: 6px;">
+                    {{ r.content }}
+                </div>
+                {% endif %}
+                <div class="expertise-record-meta">
+                    <span class="expertise-type-badge">{{ r.type or 'unknown' }}</span>
+                    {% if r.domain %}<span>{{ r.domain }}</span>{% endif %}
+                    {% if r.project %}<span>{{ r.project }}</span>{% endif %}
+                    {% if r.severity %}
+                    <span style="color: {{ 'hsl(var(--danger))' if r.severity == 'critical' else 'hsl(var(--warning))' if r.severity == 'high' else 'hsl(var(--text-tertiary))' }};">
+                        {{ r.severity }}
+                    </span>
+                    {% endif %}
+                    {% if r.confidence is not none %}
+                    <span class="expertise-record-confidence">{{ (r.confidence * 100) | round | int }}%</span>
                     {% endif %}
                 </div>
-                {% if not r.is_active %}
-                <span style="font-size: 11px; color: hsl(var(--text-tertiary)); padding: 2px 6px; border: 1px solid hsl(var(--border-glass)); border-radius: 3px;">inactive</span>
+                {% if r.tags %}
+                <div class="expertise-record-tags">
+                    {% for tag in r.tags %}
+                    <span class="expertise-tag">{{ tag }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                {% if r.example or r.rationale %}
+                <details style="margin-top: 6px; font-size: 12px;">
+                    <summary style="cursor: pointer; color: hsl(var(--accent)); font-size: 11px;">Details</summary>
+                    {% if r.example %}
+                    <div style="margin-top: 4px; color: hsl(var(--text-secondary)); line-height: 1.5;">
+                        <strong style="color: hsl(var(--text-tertiary));">Example:</strong> {{ r.example }}
+                    </div>
+                    {% endif %}
+                    {% if r.rationale %}
+                    <div style="margin-top: 4px; color: hsl(var(--text-secondary)); line-height: 1.5;">
+                        <strong style="color: hsl(var(--text-tertiary));">Rationale:</strong> {{ r.rationale }}
+                    </div>
+                    {% endif %}
+                </details>
                 {% endif %}
             </div>
+            {% if not r.is_active %}
+            <span style="font-size: 11px; color: hsl(var(--text-tertiary)); padding: 2px 6px; border: 1px solid hsl(var(--border-glass)); border-radius: 3px; flex-shrink: 0;">inactive</span>
+            {% endif %}
         </div>
         {% endfor %}
     </div>

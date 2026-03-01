@@ -23,6 +23,21 @@ def _get_data_dir(config: Any) -> Any:
     return _P(config.paths.search_directory).expanduser()
 
 
+def _domain_display_name(raw: str) -> str:
+    """Extract a human-readable project name from a path-style domain identifier.
+
+    '-Users-druk-WorkSpace-AetherForge-CAIRN' → 'CAIRN'
+    'general' → 'general'
+    """
+    # Split on '-' (path separator used in project IDs) and take the last segment
+    parts = raw.split("-")
+    # Walk backwards past empty segments from leading dashes
+    for part in reversed(parts):
+        if part:
+            return part
+    return raw
+
+
 def _safe_get(getter: Any) -> Any:
     """Call a dependency getter, returning None if services aren't ready."""
     try:
@@ -458,11 +473,46 @@ async def expertise_view(
             # Build status data from domain stats
             all_records = store.query(ExpertiseQuery(active_only=False, limit=10000))
             active = [r for r in all_records if r.is_active]
-            domains_set = sorted({r.domain for r in all_records})
+            domains_set = sorted({r.domain for r in all_records if r.domain})
+
+            # Compute per-domain contradiction counts from KG store
+            kg_store = _safe_get(deps.get_knowledge_graph_store)
+            domain_contradiction_counts: dict[str, int] = {}
+            if kg_store:
+                try:
+                    unresolved_edges = kg_store.get_contradictions(unresolved_only=True)
+                    # Map record IDs to domains for counting
+                    id_to_domain = {r.id: r.domain for r in all_records if r.domain}
+                    for edge in unresolved_edges:
+                        for rid in (edge.source_id, edge.target_id):
+                            d_name = id_to_domain.get(rid, "")
+                            if d_name:
+                                domain_contradiction_counts[d_name] = domain_contradiction_counts.get(d_name, 0) + 1
+                except Exception:
+                    pass
+
             domain_stats = []
             for d in domains_set:
-                stats = store.get_domain_stats(d)
-                domain_stats.append(stats)
+                raw = store.get_domain_stats(d)
+                active_count = raw.get("active_records", 0)
+                stale_count = raw.get("total_records", 0) - active_count
+                c_count = domain_contradiction_counts.get(d, 0)
+                if c_count > 5:
+                    health = "critical"
+                elif stale_count > active_count:
+                    health = "warning"
+                else:
+                    health = "healthy"
+                domain_stats.append({
+                    "name": d,
+                    "display_name": _domain_display_name(d),
+                    "record_count": raw.get("total_records", 0),
+                    "active_count": active_count,
+                    "stale_count": stale_count,
+                    "contradiction_count": c_count,
+                    "health": health,
+                    "avg_confidence": raw.get("avg_confidence", 0.0),
+                })
             status_data = {
                 "total_records": len(all_records),
                 "active_records": len(active),
@@ -485,13 +535,15 @@ async def expertise_view(
             records = [
                 {
                     "id": r.id, "name": r.name, "type": r.type.value if r.type else "",
-                    "domain": r.domain, "content": r.content, "project": r.project,
+                    "domain": r.domain, "project": r.project,
+                    "content": (r.content[:200] + "…") if len(r.content) > 200 else r.content,
                     "severity": r.severity.value if r.severity else None,
                     "tags": r.tags, "confidence": r.confidence, "is_active": r.is_active,
+                    "example": r.example, "rationale": r.rationale,
                 }
                 for r in result_records
             ]
-            total = len(records)
+            total = store.count(query_obj)
         except Exception:
             pass
 
@@ -502,6 +554,7 @@ async def expertise_view(
             "status": status_data,
             "total": total,
             "domain": domain,
+            "domain_display": _domain_display_name(domain) if domain else "",
             "type": type,
             "severity": severity,
             "active_only": active_only,
