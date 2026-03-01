@@ -1,0 +1,60 @@
+<!-- Inline resolution form — replaces a contradiction item's content -->
+<div style="display: grid; gap: 12px;">
+    <!-- Record comparison -->
+    <div class="contradiction-comparison">
+        <div class="contradiction-record-card">
+            <h4>Record A — {{ record_a.id[:12] }}</h4>
+            <div class="contradiction-record-content">{{ record_a.content[:300] }}{% if record_a.content|length > 300 %}…{% endif %}</div>
+            <div class="contradiction-record-meta">
+                {% if record_a.name %}<span><strong>Name:</strong> {{ record_a.name }}</span>{% endif %}
+                {% if record_a.domain %}<span><strong>Domain:</strong> {{ record_a.domain }}</span>{% endif %}
+            </div>
+        </div>
+        <div class="contradiction-record-card">
+            <h4>Record B — {{ record_b.id[:12] }}</h4>
+            <div class="contradiction-record-content">{{ record_b.content[:300] }}{% if record_b.content|length > 300 %}…{% endif %}</div>
+            <div class="contradiction-record-meta">
+                {% if record_b.name %}<span><strong>Name:</strong> {{ record_b.name }}</span>{% endif %}
+                {% if record_b.domain %}<span><strong>Domain:</strong> {{ record_b.domain }}</span>{% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Resolution strategies -->
+    <div class="contradiction-actions">
+        <h4>Resolution Strategy</h4>
+        <form hx-post="/fragments/apply-resolution" hx-target="closest .contradiction-item" hx-swap="outerHTML" style="display: grid; gap: 8px;">
+            <input type="hidden" name="edge_id" value="{{ edge_id }}" />
+            <input type="hidden" name="record_a_id" value="{{ record_a.id }}" />
+            <input type="hidden" name="record_b_id" value="{{ record_b.id }}" />
+
+            <div class="contradiction-action-row">
+                <label style="display: flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer; padding: 4px 8px; border-radius: var(--radius-md); border: 1px solid hsl(var(--border-glass));">
+                    <input type="radio" name="strategy" value="dismiss" checked /> Dismiss
+                </label>
+                <label style="display: flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer; padding: 4px 8px; border-radius: var(--radius-md); border: 1px solid hsl(var(--border-glass));">
+                    <input type="radio" name="strategy" value="keep_both" /> Keep Both
+                </label>
+                <label style="display: flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer; padding: 4px 8px; border-radius: var(--radius-md); border: 1px solid hsl(var(--border-glass));">
+                    <input type="radio" name="strategy" value="supersede" /> Supersede
+                </label>
+            </div>
+
+            <!-- Reason (for dismiss/keep_both) -->
+            <input type="text" name="reason" placeholder="Reason (required for dismiss/keep both)" value="Not a real contradiction"
+                   style="font-size: 12px; padding: 6px 10px;" />
+
+            <!-- Winner selector (for supersede) -->
+            <select name="winner_id" style="font-size: 12px; padding: 6px 10px;">
+                <option value="{{ record_a.id }}">Keep A — {{ record_a.name or record_a.id[:12] }}</option>
+                <option value="{{ record_b.id }}">Keep B — {{ record_b.name or record_b.id[:12] }}</option>
+            </select>
+
+            <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                <button type="button" class="glass-btn" style="font-size: 11px; padding: 4px 10px;"
+                        hx-get="/fragments/contradictions-view" hx-target="#results">Cancel</button>
+                <button type="submit" class="glass-btn glass-btn-primary" style="font-size: 11px; padding: 4px 10px;">Apply</button>
+            </div>
+        </form>
+    </div>
+</div>

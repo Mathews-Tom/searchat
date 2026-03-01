@@ -11,7 +11,7 @@
     {% elif health_pct >= 50 %}{% set health_color = 'var(--warning)' %}
     {% else %}{% set health_color = 'var(--danger)' %}{% endif %}
 
-    <div class="kg-stats-row" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; margin-bottom: 24px;">
+    <div class="expertise-stats-row" style="margin-bottom: 24px;">
         <div class="expertise-stat-card">
             <span class="expertise-stat-label">Nodes</span>
             <span class="expertise-stat-value">{{ stats.node_count or 0 }}</span>
@@ -31,8 +31,8 @@
         <div class="expertise-stat-card">
             <span class="expertise-stat-label">Health</span>
             <span class="expertise-stat-value" style="color: hsl({{ health_color }});">{{ health_pct }}%</span>
-            <div class="kg-health-bar" style="height: 4px; background: hsl(var(--bg-surface)); border-radius: 2px; margin-top: 6px;">
-                <div class="kg-health-bar-fill" style="width: {{ health_pct }}%; background: hsl({{ health_color }}); height: 100%; border-radius: 2px;"></div>
+            <div style="height: 4px; background: hsl(var(--bg-surface)); border-radius: 2px; margin-top: 6px;">
+                <div style="width: {{ health_pct }}%; background: hsl({{ health_color }}); height: 100%; border-radius: 2px;"></div>
             </div>
         </div>
     </div>
@@ -62,27 +62,43 @@
 
     <!-- Contradiction List -->
     {% if contradictions %}
-    <div class="contradiction-list" style="display: grid; gap: 8px;">
+    <div class="contradiction-list">
         {% for c in contradictions %}
-        <div class="contradiction-item glass" style="padding: 12px 16px; display: flex; justify-content: space-between; align-items: center;"
+        <div class="contradiction-item"
              data-edge-id="{{ c.edge_id }}" data-record-a="{{ c.record_id_a }}" data-record-b="{{ c.record_id_b }}">
-            <div>
-                <div class="contradiction-item-ids" style="font-family: var(--font-mono); font-size: 13px; color: hsl(var(--text-primary));">
-                    {{ c.record_id_a[:8] }} &#x21C4; {{ c.record_id_b[:8] }}
+            <div style="flex: 1; min-width: 0;">
+                <div style="display: flex; gap: 6px; align-items: baseline; margin-bottom: 4px;">
+                    <span style="font-weight: 600; font-size: 13px; color: hsl(var(--text-primary));">{{ c.name_a }}</span>
+                    <span style="color: hsl(var(--danger)); font-size: 12px;">&#x21C4;</span>
+                    <span style="font-weight: 600; font-size: 13px; color: hsl(var(--text-primary));">{{ c.name_b }}</span>
                 </div>
-                <div class="contradiction-item-meta" style="font-size: 11px; color: hsl(var(--text-tertiary)); margin-top: 2px;">
-                    {{ c.created_at }}
+                {% if c.content_a or c.content_b %}
+                <div style="font-size: 12px; color: hsl(var(--text-secondary)); line-height: 1.5; margin-bottom: 4px;">
+                    {% if c.content_a %}<div style="margin-bottom: 2px;">A: {{ c.content_a }}</div>{% endif %}
+                    {% if c.content_b %}<div>B: {{ c.content_b }}</div>{% endif %}
+                </div>
+                {% endif %}
+                <div class="contradiction-item-meta">
+                    <span>{{ c.created_at }}</span>
+                    {% if c.similarity is not none %}
+                    <span class="expertise-tag" style="margin-left: 6px;">sim {{ (c.similarity * 100) | round | int }}%</span>
+                    {% endif %}
+                    {% if c.nli_score is not none %}
+                    <span class="expertise-tag" style="margin-left: 4px;">NLI {{ (c.nli_score * 100) | round | int }}%</span>
+                    {% endif %}
                 </div>
             </div>
-            <button class="glass-btn" style="font-size: 11px; padding: 4px 10px;"
-                    onclick="window.location.href='/api/knowledge-graph/resolve?edge_id={{ c.edge_id }}'">
+            <button class="glass-btn" style="font-size: 11px; padding: 4px 10px; flex-shrink: 0;"
+                    hx-get="/fragments/resolve-contradiction?edge_id={{ c.edge_id }}&record_a={{ c.record_id_a }}&record_b={{ c.record_id_b }}"
+                    hx-target="closest .contradiction-item"
+                    hx-swap="innerHTML">
                 Resolve
             </button>
         </div>
         {% endfor %}
     </div>
     {% else %}
-    <div class="contradiction-all-resolved" style="text-align: center; padding: 40px 20px; color: hsl(var(--text-tertiary));">
+    <div style="text-align: center; padding: 40px 20px; color: hsl(var(--text-tertiary));">
         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
         </svg>

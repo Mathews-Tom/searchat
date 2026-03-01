@@ -582,13 +582,20 @@ async def contradictions_view(
     if kg_store:
         try:
             edges = kg_store.get_contradictions(unresolved_only=unresolved_only)
-            contradiction_edges = [
-                {
+            for e in edges:
+                rec_a = expertise_store.get(e.source_id) if expertise_store else None
+                rec_b = expertise_store.get(e.target_id) if expertise_store else None
+                meta = e.metadata or {}
+                contradiction_edges.append({
                     "edge_id": e.id, "record_id_a": e.source_id,
                     "record_id_b": e.target_id, "created_at": str(e.created_at),
-                }
-                for e in edges
-            ]
+                    "name_a": (rec_a.name or rec_a.content[:60]) if rec_a else e.source_id[:12],
+                    "name_b": (rec_b.name or rec_b.content[:60]) if rec_b else e.target_id[:12],
+                    "content_a": (rec_a.content[:150] + "…" if len(rec_a.content) > 150 else rec_a.content) if rec_a else "",
+                    "content_b": (rec_b.content[:150] + "…" if len(rec_b.content) > 150 else rec_b.content) if rec_b else "",
+                    "similarity": meta.get("similarity_score"),
+                    "nli_score": meta.get("contradiction_score"),
+                })
             # Compute basic stats
             all_contradictions = kg_store.get_contradictions(unresolved_only=False)
             unresolved = kg_store.get_contradictions(unresolved_only=True)
