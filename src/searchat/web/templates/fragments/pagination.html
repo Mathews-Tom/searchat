@@ -1,0 +1,42 @@
+<div class="pagination" style="display: flex; justify-content: center; gap: 4px; padding: 16px 0;">
+    {% if page > 1 %}
+    <button class="glass-btn"
+            hx-get="/fragments/search-results?q={{ q|urlencode }}&mode={{ mode }}&project={{ project }}&tool={{ tool }}&date={{ date }}&sortBy={{ sort_by }}&page={{ page - 1 }}"
+            hx-target="#results">&laquo; Prev</button>
+    {% endif %}
+
+    {% set start_page = [1, page - 2] | max %}
+    {% set end_page = [total_pages, page + 2] | min %}
+
+    {% if start_page > 1 %}
+    <button class="glass-btn"
+            hx-get="/fragments/search-results?q={{ q|urlencode }}&mode={{ mode }}&project={{ project }}&tool={{ tool }}&date={{ date }}&sortBy={{ sort_by }}&page=1"
+            hx-target="#results">1</button>
+    {% if start_page > 2 %}
+    <span style="padding: 6px 8px; color: hsl(var(--text-tertiary));">&hellip;</span>
+    {% endif %}
+    {% endif %}
+
+    {% for p in range(start_page, end_page + 1) %}
+    <button class="glass-btn{% if p == page %} glass-btn-primary{% endif %}"
+            {% if p != page %}
+            hx-get="/fragments/search-results?q={{ q|urlencode }}&mode={{ mode }}&project={{ project }}&tool={{ tool }}&date={{ date }}&sortBy={{ sort_by }}&page={{ p }}"
+            hx-target="#results"
+            {% endif %}>{{ p }}</button>
+    {% endfor %}
+
+    {% if end_page < total_pages %}
+    {% if end_page < total_pages - 1 %}
+    <span style="padding: 6px 8px; color: hsl(var(--text-tertiary));">&hellip;</span>
+    {% endif %}
+    <button class="glass-btn"
+            hx-get="/fragments/search-results?q={{ q|urlencode }}&mode={{ mode }}&project={{ project }}&tool={{ tool }}&date={{ date }}&sortBy={{ sort_by }}&page={{ total_pages }}"
+            hx-target="#results">{{ total_pages }}</button>
+    {% endif %}
+
+    {% if page < total_pages %}
+    <button class="glass-btn"
+            hx-get="/fragments/search-results?q={{ q|urlencode }}&mode={{ mode }}&project={{ project }}&tool={{ tool }}&date={{ date }}&sortBy={{ sort_by }}&page={{ page + 1 }}"
+            hx-target="#results">Next &raquo;</button>
+    {% endif %}
+</div>

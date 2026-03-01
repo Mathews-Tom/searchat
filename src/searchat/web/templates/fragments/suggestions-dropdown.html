@@ -1,0 +1,12 @@
+{% if suggestions %}
+<div class="suggestions-dropdown" style="position: absolute; top: 100%; left: 0; right: 0; background: hsl(var(--bg-elevated)); border: 1px solid hsl(var(--border-subtle)); border-radius: var(--radius-md); box-shadow: var(--shadow-lg); z-index: 100; max-height: 300px; overflow-y: auto;">
+    {% for item in suggestions %}
+    <button class="suggestion-item" style="display: block; width: 100%; text-align: left; padding: 8px 16px; border: none; background: transparent; color: hsl(var(--text-primary)); cursor: pointer; font-size: 13px;"
+            @click="$store.search.setQuery('{{ item|e }}'); document.getElementById('search').value = '{{ item|e }}'; htmx.trigger('#search', 'keyup', {key: 'Enter'})"
+            onmouseover="this.style.background='hsl(var(--bg-surface-hover))'"
+            onmouseout="this.style.background='transparent'">
+        {{ item }}
+    </button>
+    {% endfor %}
+</div>
+{% endif %}

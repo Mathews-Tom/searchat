@@ -1,0 +1,222 @@
+{% if analytics %}
+<div style="max-width: 1200px; margin: 0 auto;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; gap: 12px; flex-wrap: wrap;">
+        <div style="display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;">
+            <h2 style="margin: 0; font-size: 28px; color: hsl(var(--text-primary));">Search Analytics</h2>
+            <div style="display: inline-flex; align-items: center; gap: 8px; color: hsl(var(--text-secondary)); font-size: 13px;">
+                <span>Range:</span>
+                <select class="glass-select"
+                        hx-get="/fragments/analytics-dashboard"
+                        hx-target="#results"
+                        name="days">
+                    <option value="7" {{ 'selected' if days == 7 else '' }}>7 days</option>
+                    <option value="30" {{ 'selected' if days == 30 else '' }}>30 days</option>
+                    <option value="90" {{ 'selected' if days == 90 else '' }}>90 days</option>
+                </select>
+            </div>
+        </div>
+        <a href="/" style="color: hsl(var(--accent)); text-decoration: none; font-weight: 500;">&#8592; Back to Search</a>
+    </div>
+
+    {% set summary = analytics.summary or {} %}
+
+    <!-- Summary Cards -->
+    <div class="stat-grid" style="margin-bottom: 40px;">
+        <div class="stat-card">
+            <div class="stat-label">Total Searches</div>
+            <div class="stat-value neutral">{{ summary.total_searches or 0 }}</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Unique Queries</div>
+            <div class="stat-value neutral">{{ summary.unique_queries or 0 }}</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Avg Results</div>
+            <div class="stat-value neutral">{{ summary.avg_results or 0 }}</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Avg Time (ms)</div>
+            <div class="stat-value neutral">{{ summary.avg_time_ms or 0 }}</div>
+        </div>
+    </div>
+
+    <!-- Mode Distribution -->
+    {% set mode_dist = summary.mode_distribution or {} %}
+    {% if mode_dist %}
+    {% set mode_total = mode_dist.values() | sum %}
+    <div class="glass" style="margin-bottom: 24px;">
+        <div class="card-title">Search Mode Distribution</div>
+        <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+            {% for mode_name, count in mode_dist.items() %}
+            <div class="stat-card" style="flex: 1; min-width: 150px;">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                    <div style="width: 12px; height: 12px; border-radius: 50; background: var(--chart-{{ loop.index }});"></div>
+                    <div style="font-weight: 600; color: hsl(var(--text-primary)); text-transform: capitalize;">{{ mode_name }}</div>
+                </div>
+                <div class="stat-value">{{ count }}</div>
+                <div class="stat-sub">{{ '%.1f' % (count / mode_total * 100) if mode_total else 0 }}% of searches</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Top Queries -->
+    <div class="glass" style="margin-bottom: 24px;">
+        <div class="card-title">Top Searches (Last {{ days }} Days)</div>
+        {% set queries = (analytics.top_queries or {}).get('queries', analytics.top_queries or []) %}
+        {% if queries is mapping %}{% set queries = queries.get('queries', []) %}{% endif %}
+        {% if queries %}
+        <div style="display: grid; gap: 12px;">
+            {% for q in queries %}
+            <div class="glass" style="display: flex; align-items: center; gap: 16px; padding: 12px;">
+                <div style="font-size: 18px; font-weight: 700; color: hsl(var(--text-tertiary)); min-width: 30px;">#{{ loop.index }}</div>
+                <div style="flex: 1;">
+                    <div style="font-family: var(--font-mono); font-size: 14px; color: hsl(var(--text-primary)); margin-bottom: 4px;">{{ q.query }}</div>
+                    <div style="font-size: 12px; color: hsl(var(--text-tertiary));">
+                        {{ q.search_count }} searches &middot; {{ q.avg_results }} avg results &middot; {{ q.avg_time_ms }}ms avg time
+                    </div>
+                </div>
+                <button class="glass-btn glass-btn-primary" style="font-size: 12px; padding: 8px 16px;"
+                        hx-get="/fragments/search-results?q={{ q.query | urlencode }}"
+                        hx-target="#results">
+                    Search Again
+                </button>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div style="color: hsl(var(--text-tertiary)); font-style: italic;">No data available yet.</div>
+        {% endif %}
+    </div>
+
+    <!-- Dead Ends -->
+    <div class="glass" style="margin-bottom: 24px;">
+        <div class="card-title">Dead End Searches</div>
+        <p style="color: hsl(var(--text-secondary)); margin: 0 0 16px 0; font-size: 14px;">Queries that returned 3 or fewer results</p>
+        {% set dead_ends = (analytics.dead_ends or {}).get('queries', analytics.dead_ends or []) %}
+        {% if dead_ends is mapping %}{% set dead_ends = dead_ends.get('queries', []) %}{% endif %}
+        {% if dead_ends %}
+        <div style="display: grid; gap: 12px;">
+            {% for q in dead_ends %}
+            <div class="glass" style="display: flex; align-items: center; gap: 16px; padding: 12px;">
+                <div style="font-size: 18px; font-weight: 700; color: hsl(var(--text-tertiary)); min-width: 30px;">#{{ loop.index }}</div>
+                <div style="flex: 1;">
+                    <div style="font-family: var(--font-mono); font-size: 14px; color: hsl(var(--text-primary)); margin-bottom: 4px;">{{ q.query }}</div>
+                    <div style="font-size: 12px; color: hsl(var(--text-tertiary));">
+                        {{ q.search_count }} searches &middot; {{ q.avg_results }} avg results
+                    </div>
+                </div>
+                <span class="badge badge-warn">Low Results</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div style="color: hsl(var(--text-tertiary)); font-style: italic;">No dead ends found.</div>
+        {% endif %}
+    </div>
+
+    <!-- Trends -->
+    <div class="glass" style="margin-bottom: 24px;">
+        <div class="card-title">Trends (Last {{ days }} Days)</div>
+        <p style="color: hsl(var(--text-secondary)); margin: 0 0 16px 0; font-size: 14px;">Daily searches and average latency</p>
+        {% set points = (analytics.trends or {}).get('points', []) %}
+        {% if points %}
+        {% set max_searches = points | map(attribute='searches') | max or 1 %}
+        <div style="overflow-x: auto;">
+            <svg width="900" height="120" viewBox="0 0 900 120" role="img" aria-label="Search trend bars">
+                {% for p in points %}
+                {% set h = ((p.searches or 0) / max_searches * 100) | int %}
+                {% set bar_w = ((880 / points|length) | int) or 2 %}
+                {% set x = 10 + loop.index0 * bar_w %}
+                <rect x="{{ x }}" y="{{ 110 - h }}" width="{{ bar_w - 1 }}" height="{{ h }}" fill="var(--chart-1)" opacity="0.85">
+                    <title>{{ p.day }}: {{ p.searches }} searches</title>
+                </rect>
+                {% endfor %}
+            </svg>
+        </div>
+        {% else %}
+        <div style="color: hsl(var(--text-tertiary)); font-style: italic;">No data available yet.</div>
+        {% endif %}
+    </div>
+
+    <!-- Heatmap -->
+    <div class="glass" style="margin-bottom: 24px;">
+        <div class="card-title">Heatmap</div>
+        <p style="color: hsl(var(--text-secondary)); margin: 0 0 16px 0; font-size: 14px;">Search activity by day-of-week and hour-of-day (UTC)</p>
+        {% set cells = (analytics.heatmap or {}).get('cells', []) %}
+        {% if cells %}
+        {% set max_cell = cells | map(attribute='searches') | max or 1 %}
+        <div style="overflow-x: auto;">
+            <svg width="800" height="200" viewBox="0 0 800 200" role="img" aria-label="Activity heatmap">
+                {% set days_labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] %}
+                {% for day_label in days_labels %}
+                <text x="0" y="{{ 35 + loop.index0 * 22 }}" fill="hsl(var(--text-tertiary))" font-size="11">{{ day_label }}</text>
+                {% endfor %}
+                {% for cell in cells %}
+                {% set opacity = (cell.searches / max_cell * 0.9 + 0.1) if cell.searches else 0.05 %}
+                <rect x="{{ 40 + cell.hour * 30 }}" y="{{ 22 + cell.dow * 22 }}" width="28" height="20" rx="3"
+                      fill="var(--chart-1)" opacity="{{ '%.2f' % opacity }}">
+                    <title>{{ days_labels[cell.dow] }} {{ cell.hour }}:00 — {{ cell.searches }} searches</title>
+                </rect>
+                {% endfor %}
+            </svg>
+        </div>
+        {% else %}
+        <div style="color: hsl(var(--text-tertiary)); font-style: italic;">No data available yet.</div>
+        {% endif %}
+    </div>
+
+    <!-- Tool Comparison -->
+    <div class="glass" style="margin-bottom: 24px;">
+        <div class="card-title">Tool Filter Comparison</div>
+        <p style="color: hsl(var(--text-secondary)); margin: 0 0 16px 0; font-size: 14px;">How often you search within a specific tool filter</p>
+        {% set tools = (analytics.tools or {}).get('tools', []) %}
+        {% if tools %}
+        <div style="display: grid; gap: 8px;">
+            {% for t in tools %}
+            <div class="glass" style="display: flex; align-items: center; gap: 16px; padding: 12px;">
+                <div style="font-weight: 600; min-width: 100px; color: hsl(var(--text-primary));">{{ t.tool_filter or 'All' }}</div>
+                <div style="flex: 1; font-size: 13px; color: hsl(var(--text-tertiary));">
+                    {{ t.searches }} searches &middot; {{ t.avg_time_ms }}ms avg &middot; {{ t.avg_results }} avg results
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div style="color: hsl(var(--text-tertiary)); font-style: italic;">No data available yet.</div>
+        {% endif %}
+    </div>
+
+    <!-- Topics -->
+    <div class="glass">
+        <div class="card-title">Topics</div>
+        <p style="color: hsl(var(--text-secondary)); margin: 0 0 16px 0; font-size: 14px;">Clusters of repeated query themes</p>
+        {% set clusters = (analytics.topics or {}).get('clusters', []) %}
+        {% if clusters %}
+        <div style="display: grid; gap: 12px;">
+            {% for c in clusters %}
+            <div class="glass" style="padding: 12px;">
+                <div style="font-weight: 600; color: hsl(var(--text-primary)); margin-bottom: 4px;">
+                    {{ c.representative_query }}
+                    <span style="font-size: 12px; font-weight: 400; color: hsl(var(--text-tertiary)); margin-left: 8px;">{{ c.searches }} searches</span>
+                </div>
+                <div style="font-size: 12px; color: hsl(var(--text-tertiary));">
+                    {% for term in (c.top_terms or [])[:5] %}
+                    <span style="display: inline-block; background: hsl(var(--bg-surface)); padding: 2px 8px; border-radius: 4px; margin: 2px;">{{ term }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div style="color: hsl(var(--text-tertiary)); font-style: italic;">No topic data available yet.</div>
+        {% endif %}
+    </div>
+</div>
+{% else %}
+<div style="text-align: center; padding: 40px; color: hsl(var(--text-tertiary));">
+    <p>Analytics data unavailable. Ensure analytics tracking is enabled in settings.</p>
+    <a href="/" style="color: hsl(var(--accent));">&#8592; Back to Search</a>
+</div>
+{% endif %}

@@ -1,0 +1,40 @@
+{% if bookmarks %}
+<div class="results-header" style="margin-bottom: 12px;">
+    <span style="color: hsl(var(--text-tertiary)); font-size: 13px;">{{ bookmarks | length }} bookmark{{ 's' if bookmarks | length != 1 else '' }}</span>
+</div>
+{% for b in bookmarks %}
+<div class="glass result-card" style="padding: 16px; margin-bottom: 12px; cursor: pointer;"
+     hx-get="/fragments/conversation-view/{{ b.conversation_id or b.get('conversation_id', b.get('id', '')) }}"
+     hx-target="#results"
+     hx-push-url="/conversation/{{ b.conversation_id or b.get('conversation_id', b.get('id', '')) }}">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+        <div>
+            <h3 style="margin: 0 0 4px 0; font-size: 15px; font-weight: 600;">{{ b.title or b.get('title', 'Untitled') }}</h3>
+            <div style="font-size: 12px; color: hsl(var(--text-tertiary));">
+                {{ b.project_id or b.get('project_id', '') }}
+                {% if b.bookmarked_at or b.get('bookmarked_at') %}
+                &middot; Bookmarked {{ b.bookmarked_at or b.get('bookmarked_at', '') }}
+                {% endif %}
+            </div>
+            {% if b.notes or b.get('notes') %}
+            <p style="margin: 8px 0 0 0; font-size: 13px; color: hsl(var(--text-secondary)); font-style: italic;">{{ b.notes or b.get('notes', '') }}</p>
+            {% endif %}
+        </div>
+        <button class="bookmark-star active"
+                hx-post="/fragments/bookmark-toggle/{{ b.conversation_id or b.get('conversation_id', b.get('id', '')) }}"
+                hx-target="closest .glass"
+                hx-swap="delete"
+                onclick="event.stopPropagation()"
+                title="Remove bookmark">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2">
+                <path d="m19 21-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+            </svg>
+        </button>
+    </div>
+</div>
+{% endfor %}
+{% else %}
+<div class="glass" style="padding: 32px; text-align: center;">
+    <p style="color: hsl(var(--text-tertiary)); margin: 0;">No bookmarks yet. Click the bookmark icon on search results to save conversations.</p>
+</div>
+{% endif %}

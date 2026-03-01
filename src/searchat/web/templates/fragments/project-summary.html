@@ -1,0 +1,16 @@
+{% if summary %}
+<div class="glass" style="padding: 16px; margin-bottom: 16px;">
+    <h3 style="margin: 0 0 8px 0; font-size: 14px; color: hsl(var(--text-primary));">Project: {{ project }}</h3>
+    <div style="display: flex; gap: 24px; font-size: 13px; color: hsl(var(--text-secondary));">
+        {% if summary.conversation_count is defined %}
+        <span>{{ summary.conversation_count }} conversations</span>
+        {% endif %}
+        {% if summary.message_count is defined %}
+        <span>{{ summary.message_count }} messages</span>
+        {% endif %}
+        {% if summary.tools %}
+        <span>Tools: {{ summary.tools | join(', ') }}</span>
+        {% endif %}
+    </div>
+</div>
+{% endif %}

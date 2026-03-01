@@ -1,0 +1,18 @@
+{% if error %}
+<div class="glass" style="padding: 16px; margin-bottom: 12px; border-left: 3px solid hsl(var(--danger));">
+    <span style="color: hsl(var(--danger)); font-size: 13px;">Index error: {{ error }}</span>
+</div>
+{% elif result %}
+<div class="glass" style="padding: 16px; margin-bottom: 12px; border-left: 3px solid hsl(var(--success));">
+    <span style="color: hsl(var(--success)); font-size: 13px;">
+        {% if result.new_conversations %}
+        Indexed {{ result.new_conversations }} new conversation{{ 's' if result.new_conversations != 1 else '' }}.
+        {% else %}
+        No new conversations to index.
+        {% endif %}
+        {% if result.message %}
+        {{ result.message }}
+        {% endif %}
+    </span>
+</div>
+{% endif %}

@@ -1,0 +1,56 @@
+{% if dashboards %}
+<div style="max-width: 1200px; margin: 0 auto;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px;">
+        <h2 style="margin: 0; font-size: 28px; color: hsl(var(--text-primary));">Dashboards</h2>
+        <div style="display: flex; gap: 8px;">
+            <a href="/" style="color: hsl(var(--accent)); text-decoration: none; font-weight: 500;">&#8592; Back to Search</a>
+        </div>
+    </div>
+
+    <div style="display: grid; gap: 16px;">
+        {% for d in dashboards %}
+        <div class="glass" style="padding: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div style="flex: 1;">
+                    <h3 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 600; color: hsl(var(--text-primary));">
+                        {{ d.name or d.get('name', 'Unnamed Dashboard') }}
+                    </h3>
+                    {% if d.description or d.get('description') %}
+                    <p style="margin: 0 0 8px 0; font-size: 14px; color: hsl(var(--text-secondary));">
+                        {{ d.description or d.get('description', '') }}
+                    </p>
+                    {% endif %}
+                    <div style="font-size: 12px; color: hsl(var(--text-tertiary));">
+                        Created: {{ d.created_at or d.get('created_at', 'Unknown') }}
+                        {% set widgets = (d.layout or d.get('layout', {})).get('widgets', []) if (d.layout or d.get('layout')) else [] %}
+                        &middot; {{ widgets | length }} widget{{ 's' if widgets | length != 1 else '' }}
+                        {% if d.refresh_interval or d.get('refresh_interval') %}
+                        &middot; Refresh: {{ d.refresh_interval or d.get('refresh_interval') }}s
+                        {% endif %}
+                    </div>
+                </div>
+                <div style="display: flex; gap: 8px; flex-shrink: 0; margin-left: 16px;">
+                    <button class="glass-btn glass-btn-primary" style="font-size: 13px; padding: 6px 16px;"
+                            hx-get="/fragments/dashboard-detail/{{ d.id or d.get('id', '') }}"
+                            hx-target="#results">
+                        View
+                    </button>
+                    <a class="glass-btn" style="font-size: 13px; padding: 6px 16px; text-decoration: none;"
+                       href="/api/dashboards/{{ d.id or d.get('id', '') }}/export">
+                        Export
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% else %}
+<div class="glass" style="padding: 40px; text-align: center; max-width: 600px; margin: 0 auto;">
+    <h2 style="margin: 0 0 12px 0; font-size: 20px; color: hsl(var(--text-primary));">No Dashboards</h2>
+    <p style="color: hsl(var(--text-tertiary)); margin: 0 0 16px 0;">
+        Create a dashboard to monitor saved queries with auto-refresh support.
+    </p>
+    <a href="/" style="color: hsl(var(--accent)); text-decoration: none;">&#8592; Back to Search</a>
+</div>
+{% endif %}

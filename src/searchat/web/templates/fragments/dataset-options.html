@@ -1,0 +1,4 @@
+<option value="">Live Index</option>
+{% for b in backups %}
+<option value="{{ b.name }}">{{ b.name or 'Unnamed' }}</option>
+{% endfor %}

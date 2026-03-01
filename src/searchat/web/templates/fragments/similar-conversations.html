@@ -1,0 +1,51 @@
+{% if similar %}
+<div style="margin-bottom: 20px; padding: 12px 16px; background: hsl(var(--bg-surface)); border-radius: 8px; border: 1px solid hsl(var(--border-glass));">
+    <div style="font-size: 16px; font-weight: 500; color: hsl(var(--text-primary)); margin-bottom: 4px;">
+        {{ similar | length }} Related Conversation{{ 's' if similar | length != 1 else '' }}
+    </div>
+    <div style="font-size: 13px; color: hsl(var(--text-tertiary));">
+        Found using semantic similarity analysis
+    </div>
+</div>
+
+{% for conv in similar %}
+{% set similarity_pct = (conv.similarity_score * 100) | round | int %}
+{% if similarity_pct >= 70 %}{% set score_color = 'hsl(var(--success))' %}
+{% elif similarity_pct >= 50 %}{% set score_color = 'hsl(var(--warning))' %}
+{% else %}{% set score_color = 'hsl(var(--text-tertiary))' %}{% endif %}
+
+<a href="/conversation/{{ conv.conversation_id }}" style="text-decoration: none; display: block;">
+    <div class="similar-conversation-item glass" style="padding: 14px 16px; margin-bottom: 12px; cursor: pointer; transition: all 0.2s;">
+        <div style="display: flex; justify-content: space-between; align-items: start;">
+            <div style="flex: 1; min-width: 0;">
+                <div style="font-size: 15px; font-weight: 500; color: hsl(var(--text-primary)); margin-bottom: 4px;">
+                    {{ conv.title or 'Untitled' }}
+                </div>
+                <div style="font-size: 12px; color: hsl(var(--text-tertiary));">
+                    {% if conv.tool %}
+                    <span class="tool-badge {{ conv.tool }}" style="font-size: 11px; padding: 2px 6px;">{{ conv.tool }}</span>
+                    {% endif %}
+                    {% if conv.project_id %}
+                    <span style="margin-left: 8px;">{{ conv.project_id }}</span>
+                    {% endif %}
+                    <span style="margin-left: 8px;">&middot;</span>
+                    <span style="margin-left: 8px;">{{ conv.message_count or 0 }} messages</span>
+                    {% if conv.created_at %}
+                    <span style="margin-left: 8px;">&middot;</span>
+                    <span style="margin-left: 8px;">{{ conv.created_at[:10] }}</span>
+                    {% endif %}
+                </div>
+            </div>
+            <div style="background: {{ score_color }}; color: white; padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: 600; white-space: nowrap; margin-left: 12px;">
+                {{ similarity_pct }}% match
+            </div>
+        </div>
+    </div>
+</a>
+{% endfor %}
+{% else %}
+<div style="text-align: center; padding: 40px 20px; color: hsl(var(--text-tertiary));">
+    <div style="font-size: 16px; margin-bottom: 8px;">No similar conversations found</div>
+    <div style="font-size: 13px;">This conversation appears to be unique</div>
+</div>
+{% endif %}

@@ -1,0 +1,9 @@
+{% if error %}
+<div class="glass" style="padding: 12px; margin-top: 8px; border-left: 3px solid hsl(var(--danger));">
+    <span style="color: hsl(var(--danger)); font-size: 13px;">Backup failed: {{ error }}</span>
+</div>
+{% elif result %}
+<div class="glass" style="padding: 12px; margin-top: 8px; border-left: 3px solid hsl(var(--success));">
+    <span style="color: hsl(var(--success)); font-size: 13px;">Backup created successfully</span>
+</div>
+{% endif %}
