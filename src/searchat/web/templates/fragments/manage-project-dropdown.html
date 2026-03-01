@@ -1,0 +1,4 @@
+<button class="filter-dropdown-item" onclick="manageSetFilter('project','')">All Projects</button>
+{% for project in projects %}
+<button class="filter-dropdown-item" onclick="manageSetFilter('project','{{ project }}')">{{ project }}</button>
+{% endfor %}

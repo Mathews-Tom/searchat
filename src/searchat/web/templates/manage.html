@@ -1,0 +1,334 @@
+{% extends "base.html" %}
+
+{% block title %}Searchat - Manage Conversations{% endblock %}
+
+{% block head %}
+    <link rel="stylesheet" href="{{ static_url('/static/css/manage.css') }}">
+{% endblock %}
+
+{% block body %}
+    <!-- Theme Switcher -->
+    <div class="theme-switcher" id="themeSwitcher" style="position: absolute; top: 0; right: 0; display: flex; padding: 3px; border-radius: 10px; background: hsl(var(--bg-surface)); gap: 2px; z-index: 100;">
+        <button class="theme-switcher-btn" title="Light" @click="$store.theme.set('light')"
+                :class="{ active: $store.theme.mode === 'light' }">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="3"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41"/></svg>
+        </button>
+        <button class="theme-switcher-btn" title="Dark" @click="$store.theme.set('dark')"
+                :class="{ active: $store.theme.mode === 'dark' }">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8.5a5.5 5.5 0 1 1-7-7 4.5 4.5 0 0 0 7 7z"/></svg>
+        </button>
+        <button class="theme-switcher-btn" title="Auto" @click="$store.theme.set('auto')"
+                :class="{ active: $store.theme.mode === 'auto' }">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="2" width="14" height="10" rx="1.5"/><path d="M5 15h6M8 12v3"/></svg>
+        </button>
+    </div>
+
+    <div class="manage-page">
+        <div class="manage-header">
+            <a href="/" class="back-button">&larr; Back to Search</a>
+            <h1>Manage Conversations</h1>
+        </div>
+
+        <div class="manage-caution glass">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>
+                <path d="M12 9v4M12 17h.01"/>
+            </svg>
+            <div>
+                <strong>Irreversible action.</strong> Source JSONLs are no longer available. Deleted conversations cannot be recovered unless you have a backup.
+            </div>
+        </div>
+
+        <!-- Filter Bar -->
+        <div class="manage-filters glass" x-data="{ open: '' }" @click.outside="open = ''">
+            <span class="filter-bar-label">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                Filters
+            </span>
+
+            <!-- Project -->
+            <div class="filter-chip" :class="{ active: open === 'project' }" style="position: relative;"
+                 @click="open = open === 'project' ? '' : 'project'"
+                 hx-get="/fragments/manage-project-dropdown"
+                 hx-trigger="click once"
+                 hx-target="#manageProjectDropdown"
+                 hx-swap="innerHTML">
+                <span class="filter-label">Project</span>
+                <span class="filter-value" id="manageProjectLabel">All Projects</span>
+                <svg class="filter-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+                <div id="manageProjectDropdown" class="filter-dropdown" x-show="open === 'project'" x-cloak @click.stop style="position: absolute; top: 100%; left: 0; margin-top: 4px;">
+                    <button class="filter-dropdown-item selected">All Projects</button>
+                </div>
+            </div>
+
+            <!-- Tool -->
+            <div class="filter-chip" :class="{ active: open === 'tool' }" @click="open = open === 'tool' ? '' : 'tool'" style="position: relative;">
+                <span class="filter-label">Tool</span>
+                <span class="filter-value" id="manageToolLabel">All Tools</span>
+                <svg class="filter-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+                <div class="filter-dropdown" x-show="open === 'tool'" x-cloak @click.stop style="position: absolute; top: 100%; left: 0; margin-top: 4px;">
+                    <button class="filter-dropdown-item" onclick="manageSetFilter('tool','')">All Tools</button>
+                    <button class="filter-dropdown-item" onclick="manageSetFilter('tool','claude')">Claude Code</button>
+                    <button class="filter-dropdown-item" onclick="manageSetFilter('tool','vibe')">Vibe</button>
+                    <button class="filter-dropdown-item" onclick="manageSetFilter('tool','opencode')">OpenCode</button>
+                    <button class="filter-dropdown-item" onclick="manageSetFilter('tool','codex')">Codex</button>
+                    <button class="filter-dropdown-item" onclick="manageSetFilter('tool','gemini')">Gemini CLI</button>
+                    <button class="filter-dropdown-item" onclick="manageSetFilter('tool','continue')">Continue</button>
+                    <button class="filter-dropdown-item" onclick="manageSetFilter('tool','cursor')">Cursor</button>
+                    <button class="filter-dropdown-item" onclick="manageSetFilter('tool','aider')">Aider</button>
+                </div>
+            </div>
+
+            <!-- Sort -->
+            <div class="filter-chip" :class="{ active: open === 'sortBy' }" @click="open = open === 'sortBy' ? '' : 'sortBy'" style="position: relative;">
+                <span class="filter-label">Sort</span>
+                <span class="filter-value" id="manageSortLabel">Date (newest)</span>
+                <svg class="filter-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+                <div class="filter-dropdown" x-show="open === 'sortBy'" x-cloak @click.stop style="position: absolute; top: 100%; left: 0; margin-top: 4px;">
+                    <button class="filter-dropdown-item" onclick="manageSetFilter('sortBy','date_newest')">Date (newest)</button>
+                    <button class="filter-dropdown-item" onclick="manageSetFilter('sortBy','date_oldest')">Date (oldest)</button>
+                    <button class="filter-dropdown-item" onclick="manageSetFilter('sortBy','length')">Message count</button>
+                    <button class="filter-dropdown-item" onclick="manageSetFilter('sortBy','title')">Title</button>
+                </div>
+            </div>
+
+            <!-- Hidden inputs for HTMX -->
+            <input type="hidden" id="manageProject" name="project" value="">
+            <input type="hidden" id="manageTool" name="tool" value="">
+            <input type="hidden" id="manageSortBy" name="sortBy" value="date_newest">
+        </div>
+
+        <!-- Conversation List -->
+        <div id="manage-list"
+             hx-get="/fragments/manage-conversations"
+             hx-trigger="load, manage-reload from:body"
+             hx-target="this"
+             hx-include="#manageProject,#manageTool,#manageSortBy"
+             hx-indicator="#manageSpinner">
+            <div style="text-align: center; padding: 48px;">
+                <span class="htmx-indicator spinner" id="manageSpinner" style="display: inline-block;"></span>
+                <p style="color: hsl(var(--text-tertiary));">Loading conversations...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Preview Panel (slide-out) -->
+    <div class="preview-overlay" id="previewOverlay" onclick="closePreviewPanel()"></div>
+    <div class="preview-panel glass" id="previewPanel">
+        <div class="preview-panel-header">
+            <span class="preview-panel-title">Conversation Preview</span>
+            <button class="glass-btn preview-close-btn" onclick="closePreviewPanel()" title="Close preview">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M18 6 6 18M6 6l12 12"/>
+                </svg>
+            </button>
+        </div>
+        <div class="preview-panel-body" id="previewContent">
+            <div style="text-align: center; padding: 48px;">
+                <span class="htmx-indicator spinner" id="previewSpinner"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Fixed Bottom Toolbar -->
+    <div class="manage-toolbar glass" id="manageToolbar" style="display: none;">
+        <div class="manage-toolbar-left">
+            <span class="manage-selection-count" id="manageSelectionCount">0 selected</span>
+            <button class="glass-btn" onclick="manageSelectAll()">Select All</button>
+            <button class="glass-btn" onclick="manageDeselectAll()">Deselect All</button>
+        </div>
+        <div class="manage-toolbar-right">
+            <label class="manage-source-toggle">
+                <input type="checkbox" id="deleteSourceFiles">
+                <span>Also delete source files</span>
+            </label>
+            <button class="glass-btn glass-btn-danger" id="manageDeleteBtn" onclick="manageDeleteSelected()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                </svg>
+                Delete Selected
+            </button>
+        </div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    var selected = new Set();
+    var overlay = document.getElementById('confirmOverlay');
+    var msgEl = document.getElementById('confirmMessage');
+    var okBtn = document.getElementById('confirmOk');
+    var cancelBtn = document.getElementById('confirmCancel');
+
+    function updateToolbar() {
+        var toolbar = document.getElementById('manageToolbar');
+        var countEl = document.getElementById('manageSelectionCount');
+        if (selected.size > 0) {
+            toolbar.style.display = 'flex';
+            countEl.textContent = selected.size + ' selected';
+        } else {
+            toolbar.style.display = 'none';
+        }
+    }
+
+    // Delegate checkbox changes on the manage-list container
+    document.getElementById('manage-list').addEventListener('change', function(e) {
+        if (e.target.matches('.manage-checkbox input[type="checkbox"]')) {
+            var cid = e.target.value;
+            if (e.target.checked) {
+                selected.add(cid);
+            } else {
+                selected.delete(cid);
+            }
+            updateToolbar();
+        }
+    });
+
+    // Re-check boxes after HTMX swap (preserves selection across pagination)
+    document.body.addEventListener('htmx:afterSwap', function(e) {
+        if (e.target.id === 'manage-list') {
+            var checkboxes = e.target.querySelectorAll('.manage-checkbox input[type="checkbox"]');
+            checkboxes.forEach(function(cb) {
+                if (selected.has(cb.value)) cb.checked = true;
+            });
+            updateToolbar();
+        }
+    });
+
+    window.manageSelectAll = function() {
+        var checkboxes = document.querySelectorAll('#manage-list .manage-checkbox input[type="checkbox"]');
+        checkboxes.forEach(function(cb) {
+            cb.checked = true;
+            selected.add(cb.value);
+        });
+        updateToolbar();
+    };
+
+    window.manageDeselectAll = function() {
+        var checkboxes = document.querySelectorAll('#manage-list .manage-checkbox input[type="checkbox"]');
+        checkboxes.forEach(function(cb) {
+            cb.checked = false;
+        });
+        selected.clear();
+        updateToolbar();
+    };
+
+    window.manageDeleteSelected = function() {
+        if (selected.size === 0) return;
+
+        var deleteSource = document.getElementById('deleteSourceFiles').checked;
+        var n = selected.size;
+        var label = n + ' conversation' + (n > 1 ? 's' : '');
+        var msg = 'Remove ' + label + ' from the search index?';
+        if (deleteSource) {
+            msg += '\n\nThe original source files (e.g. ~/.claude/projects/.../*.jsonl) will also be permanently deleted from disk.';
+        }
+
+        // Show confirm modal
+        msgEl.textContent = msg;
+        overlay.classList.add('active');
+        overlay.setAttribute('aria-hidden', 'false');
+
+        var onOk, onCancel, onEsc;
+
+        function cleanup() {
+            okBtn.removeEventListener('click', onOk);
+            cancelBtn.removeEventListener('click', onCancel);
+            document.removeEventListener('keydown', onEsc);
+            overlay.classList.remove('active');
+            overlay.setAttribute('aria-hidden', 'true');
+        }
+
+        onOk = function() {
+            cleanup();
+            performDelete(Array.from(selected), deleteSource);
+        };
+        onCancel = function() { cleanup(); };
+        onEsc = function(e) { if (e.key === 'Escape') cleanup(); };
+
+        okBtn.addEventListener('click', onOk);
+        cancelBtn.addEventListener('click', onCancel);
+        document.addEventListener('keydown', onEsc);
+    };
+
+    function performDelete(ids, deleteSource) {
+        var btn = document.getElementById('manageDeleteBtn');
+        btn.disabled = true;
+        btn.textContent = 'Deleting...';
+
+        fetch('/api/conversations/delete', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                conversation_ids: ids,
+                delete_source_files: deleteSource
+            })
+        })
+        .then(function(resp) {
+            if (!resp.ok) throw new Error('Delete failed: ' + resp.status);
+            return resp.json();
+        })
+        .then(function(result) {
+            selected.clear();
+            updateToolbar();
+            // Reload the list
+            document.body.dispatchEvent(new CustomEvent('manage-reload'));
+            // Show brief success notification
+            var notification = document.createElement('div');
+            notification.className = 'manage-notification glass';
+            notification.innerHTML = '<strong>Deleted ' + result.deleted + ' conversation' + (result.deleted > 1 ? 's' : '') + '.</strong>'
+                + ' Removed ' + result.removed_vectors + ' vectors.'
+                + (result.source_files_deleted > 0 ? ' Deleted ' + result.source_files_deleted + ' source file' + (result.source_files_deleted > 1 ? 's' : '') + '.' : '');
+            document.querySelector('.manage-page').insertBefore(notification, document.getElementById('manage-list'));
+            setTimeout(function() { notification.remove(); }, 8000);
+        })
+        .catch(function(err) {
+            alert('Delete failed: ' + err.message);
+        })
+        .finally(function() {
+            btn.disabled = false;
+            btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg> Delete Selected';
+        });
+    }
+
+    // Preview panel
+    window.openPreviewPanel = function() {
+        document.getElementById('previewPanel').classList.add('open');
+        document.getElementById('previewOverlay').classList.add('open');
+        document.body.style.overflow = 'hidden';
+    };
+
+    window.closePreviewPanel = function() {
+        document.getElementById('previewPanel').classList.remove('open');
+        document.getElementById('previewOverlay').classList.remove('open');
+        document.body.style.overflow = '';
+    };
+
+    // Close preview on Escape key
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && document.getElementById('previewPanel').classList.contains('open')) {
+            closePreviewPanel();
+        }
+    });
+
+    // Filter management
+    window.manageSetFilter = function(key, value) {
+        document.getElementById('manage' + key.charAt(0).toUpperCase() + key.slice(1)).value = value;
+        // Update label
+        var labels = {
+            'tool': { '': 'All Tools', 'claude': 'Claude Code', 'vibe': 'Vibe', 'opencode': 'OpenCode', 'codex': 'Codex', 'gemini': 'Gemini CLI', 'continue': 'Continue', 'cursor': 'Cursor', 'aider': 'Aider' },
+            'sortBy': { 'date_newest': 'Date (newest)', 'date_oldest': 'Date (oldest)', 'length': 'Message count', 'title': 'Title' }
+        };
+        var labelMap = labels[key];
+        if (labelMap) {
+            var labelId = key === 'sortBy' ? 'manageSortLabel' : 'manage' + key.charAt(0).toUpperCase() + key.slice(1) + 'Label';
+            var labelEl = document.getElementById(labelId);
+            if (labelEl) labelEl.textContent = labelMap[value] || value || 'All';
+        }
+        // Trigger reload via custom event (HTMX listens on manage-list)
+        document.body.dispatchEvent(new CustomEvent('manage-reload'));
+    };
+})();
+</script>
+{% endblock %}

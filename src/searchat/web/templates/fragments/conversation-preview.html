@@ -1,0 +1,45 @@
+{% if error %}
+<div class="preview-error">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>
+    </svg>
+    <p>{{ error }}</p>
+</div>
+{% elif conversation %}
+<div class="preview-header">
+    <h3 class="preview-title">{{ conversation.title or 'Untitled Conversation' }}</h3>
+    <div class="preview-meta">
+        {% if conversation.project_id %}
+        <span>{{ conversation.project_id }}</span>
+        {% endif %}
+        {% if conversation.message_count %}
+        <span>{{ conversation.message_count }} messages</span>
+        {% endif %}
+        {% if conversation.created_at %}
+        <span>{{ conversation.created_at[:10] }}</span>
+        {% endif %}
+        {% if conversation.tool %}
+        <span class="manage-tool-badge manage-tool-{{ conversation.tool }}">{{ conversation.tool }}</span>
+        {% endif %}
+    </div>
+</div>
+
+<div class="preview-messages">
+    {% for msg in messages %}
+    <div class="preview-message preview-role-{{ msg.role or 'unknown' }}">
+        <div class="preview-message-role">{{ msg.role or 'unknown' }}</div>
+        <div class="preview-message-content">{{ msg.content }}</div>
+    </div>
+    {% endfor %}
+
+    {% if truncated %}
+    <div class="preview-truncated">
+        &hellip; {{ remaining }} more message{{ 's' if remaining != 1 else '' }} not shown
+    </div>
+    {% endif %}
+</div>
+{% else %}
+<div class="preview-error">
+    <p>Conversation not found.</p>
+</div>
+{% endif %}

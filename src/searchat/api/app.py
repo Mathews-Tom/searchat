@@ -299,6 +299,12 @@ async def serve_chat_page(request: Request):
     return templates.TemplateResponse(request, "chat.html")
 
 
+@app.get("/manage", response_class=HTMLResponse)
+async def serve_manage_page(request: Request):
+    """Serve the conversation management page."""
+    return templates.TemplateResponse(request, "manage.html")
+
+
 def main():
     """Run the server with configurable host and port."""
     import uvicorn

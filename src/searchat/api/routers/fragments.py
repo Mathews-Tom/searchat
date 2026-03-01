@@ -6,6 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import HTMLResponse
+from starlette.responses import StreamingResponse
 
 from searchat.api.templates import templates
 import searchat.api.dependencies as deps
@@ -163,13 +164,13 @@ async def project_summary(
 def _list_projects() -> list[str]:
     """Fetch project list from DuckDB store (mirrors /api/projects logic)."""
     try:
-        search_dir, snapshot_name = deps.resolve_dataset_search_dir(None)
+        search_dir, _snapshot_name = deps.resolve_dataset_search_dir(None)
+        store = deps.get_duckdb_store_for(search_dir)
+        if deps.projects_cache is None:
+            deps.projects_cache = store.list_projects()
+        return deps.projects_cache
     except (ValueError, RuntimeError):
         return []
-    store = deps.get_duckdb_store_for(search_dir)
-    if deps.projects_cache is None:
-        deps.projects_cache = store.list_projects()
-    return deps.projects_cache
 
 
 @router.get("/project-options", response_class=HTMLResponse)
@@ -187,6 +188,19 @@ async def project_dropdown(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
         request, "fragments/project-dropdown.html",
         {"projects": _list_projects()},
+    )
+
+
+@router.get("/manage-project-dropdown", response_class=HTMLResponse)
+async def manage_project_dropdown(request: Request) -> HTMLResponse:
+    """Return filter dropdown buttons for the manage page project filter."""
+    store = _safe_get(deps.get_duckdb_store)
+    projects: list[str] = []
+    if store:
+        projects = store.list_projects()
+    return templates.TemplateResponse(
+        request, "fragments/manage-project-dropdown.html",
+        {"projects": projects},
     )
 
 
@@ -662,78 +676,337 @@ async def shutdown_server(request: Request) -> HTMLResponse:
 # Rebuild Knowledge Graph & Expertise
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Manage Conversations
+# ---------------------------------------------------------------------------
+
+@router.get("/manage-conversations", response_class=HTMLResponse)
+async def manage_conversations(
+    request: Request,
+    project: str = Query("", description="Project filter"),
+    tool: str = Query("", description="Tool filter"),
+    date: str = Query("", description="Date filter"),
+    date_from: str = Query("", alias="dateFrom", description="Custom date from"),
+    date_to: str = Query("", alias="dateTo", description="Custom date to"),
+    sort_by: str = Query("date_newest", alias="sortBy", description="Sort order"),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(50, ge=1, le=200, description="Results per page"),
+) -> HTMLResponse:
+    """Return conversation cards with checkboxes for the manage page."""
+    from searchat.api.utils import detect_tool_from_path, parse_date_filter
+
+    store = _safe_get(deps.get_duckdb_store)
+    conversations: list[dict[str, Any]] = []
+    total = 0
+
+    if store:
+        parsed_from, parsed_to = parse_date_filter(date, date_from or None, date_to or None)
+        kwargs: dict[str, Any] = {
+            "sort_by": sort_by,
+            "project_id": project or None,
+            "tool": tool or None,
+            "date_from": parsed_from,
+            "date_to": parsed_to,
+            "limit": page_size,
+            "offset": (page - 1) * page_size,
+        }
+        conversations = store.list_conversations(**kwargs)
+        total = store.count_conversations(
+            project_id=project or None,
+            tool=tool or None,
+            date_from=parsed_from,
+            date_to=parsed_to,
+        )
+
+        # Enrich with tool badge
+        for c in conversations:
+            c["tool"] = detect_tool_from_path(c.get("file_path", ""))
+            # Shorten file_path for display (replace home dir with ~)
+            fp = c.get("file_path", "")
+            import os
+            home = os.path.expanduser("~")
+            if fp.startswith(home):
+                c["display_path"] = "~" + fp[len(home):]
+            else:
+                c["display_path"] = fp
+
+    total_pages = (total + page_size - 1) // page_size if total > 0 else 0
+
+    return templates.TemplateResponse(
+        request, "fragments/manage-conversations.html",
+        {
+            "conversations": conversations,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+            "project": project,
+            "tool": tool,
+            "date": date,
+            "sort_by": sort_by,
+        },
+    )
+
+
+@router.get("/conversation-preview/{conversation_id}", response_class=HTMLResponse)
+async def conversation_preview(
+    request: Request,
+    conversation_id: str,
+    max_messages: int = Query(10, ge=1, le=50, description="Max messages to preview"),
+) -> HTMLResponse:
+    """Return a lightweight conversation preview with truncated messages."""
+    from searchat.api.routers.conversations import get_conversation as _get_conv
+
+    conversation = None
+    messages: list[dict[str, Any]] = []
+    truncated = False
+    remaining = 0
+    error = None
+    try:
+        conversation = await _get_conv(conversation_id, snapshot=None)
+        if conversation and hasattr(conversation, "messages"):
+            all_msgs = conversation.messages or []
+            total = len(all_msgs)
+            truncated = total > max_messages
+            remaining = total - max_messages if truncated else 0
+            preview_msgs = all_msgs[:max_messages]
+            # Truncate long message content for preview
+            for msg in preview_msgs:
+                content = msg.content or ""
+                if len(content) > 500:
+                    content = content[:500] + "…"
+                messages.append({
+                    "role": msg.role or "unknown",
+                    "content": content,
+                })
+    except Exception as e:
+        error = str(e)
+
+    return templates.TemplateResponse(
+        request, "fragments/conversation-preview.html",
+        {
+            "conversation": conversation,
+            "messages": messages,
+            "truncated": truncated,
+            "remaining": remaining,
+            "error": error,
+            "conversation_id": conversation_id,
+        },
+    )
+
+
 @router.post("/rebuild-knowledge-graph", response_class=HTMLResponse)
 async def rebuild_knowledge_graph(request: Request) -> HTMLResponse:
-    """Run contradiction detection across all expertise records."""
+    """Return the progress UI that connects to the KG rebuild SSE stream."""
+    return templates.TemplateResponse(
+        request, "fragments/rebuild-progress.html",
+        {
+            "stream_url": "/fragments/rebuild-knowledge-graph/stream",
+            "done_url": "/fragments/contradictions-view",
+        },
+    )
+
+
+@router.get("/rebuild-knowledge-graph/stream")
+def rebuild_knowledge_graph_stream(request: Request) -> StreamingResponse:
+    """SSE stream: rebuild knowledge graph with live progress."""
+    import json as _json
+
+    from searchat.expertise.embeddings import ExpertiseEmbeddingIndex
+    from searchat.expertise.models import ExpertiseQuery as _EQ
+    from searchat.knowledge_graph.detector import ContradictionDetector
+    from searchat.knowledge_graph.models import EdgeType, KnowledgeEdge
+
+    kg_store = _safe_get(deps.get_knowledge_graph_store)
+    expertise_store = _safe_get(deps.get_expertise_store)
+
+    def _sse(event: str, data: dict[str, Any]) -> str:
+        return f"event: {event}\ndata: {_json.dumps(data)}\n\n"
+
+    def generate():  # type: ignore[no-untyped-def]
+        if not kg_store or not expertise_store:
+            yield _sse("done", {"message": "Knowledge graph or expertise store not available."})
+            return
+
+        config = deps.get_config()
+        records = expertise_store.query(_EQ(active_only=True, limit=10000))
+        total = len(records)
+
+        yield _sse("progress", {"phase": "Rebuilding embedding index", "current": 0, "total": total, "pct": -1})
+
+        embedding_index = ExpertiseEmbeddingIndex(data_dir=_get_data_dir(config))
+        embedding_index.rebuild(records)
+
+        yield _sse("progress", {"phase": "Scanning for contradictions", "current": 0, "total": total, "pct": 0})
+
+        detector = ContradictionDetector()
+        new_contradictions = 0
+        for i, record in enumerate(records):
+            candidates = detector.check_record(record, expertise_store, embedding_index)
+            for candidate in candidates:
+                edge = KnowledgeEdge(
+                    source_id=candidate.record_id_a,
+                    target_id=candidate.record_id_b,
+                    edge_type=EdgeType.CONTRADICTS,
+                    metadata={
+                        "similarity": candidate.similarity_score,
+                        "nli_score": candidate.contradiction_score,
+                    },
+                )
+                kg_store.create_edge(edge)
+                new_contradictions += 1
+
+            done_count = i + 1
+            if done_count % 10 == 0 or done_count == total:
+                pct = int(done_count / total * 100) if total else 100
+                yield _sse("progress", {
+                    "phase": "Scanning for contradictions",
+                    "current": done_count,
+                    "total": total,
+                    "pct": pct,
+                })
+
+        msg = (
+            f"<strong>Knowledge graph rebuilt.</strong> "
+            f"Scanned {total} records, found {new_contradictions} new contradiction(s)."
+        )
+        yield _sse("done", {"message": msg})
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+@router.post("/rebuild-expertise-index", response_class=HTMLResponse)
+async def rebuild_expertise_index(request: Request) -> HTMLResponse:
+    """Return the progress UI that connects to the expertise rebuild SSE stream."""
+    return templates.TemplateResponse(
+        request, "fragments/rebuild-progress.html",
+        {
+            "stream_url": "/fragments/rebuild-expertise-index/stream",
+            "done_url": "/fragments/expertise-view",
+        },
+    )
+
+
+@router.get("/rebuild-expertise-index/stream")
+def rebuild_expertise_index_stream(request: Request) -> StreamingResponse:
+    """SSE stream: rebuild expertise embedding index with live progress."""
+    import json as _json
+
+    from searchat.expertise.embeddings import ExpertiseEmbeddingIndex
+    from searchat.expertise.models import ExpertiseQuery as _EQ
+
+    expertise_store = _safe_get(deps.get_expertise_store)
+
+    def _sse(event: str, data: dict[str, Any]) -> str:
+        return f"event: {event}\ndata: {_json.dumps(data)}\n\n"
+
+    def generate():  # type: ignore[no-untyped-def]
+        if not expertise_store:
+            yield _sse("done", {"message": "Expertise store not available."})
+            return
+
+        config = deps.get_config()
+        records = expertise_store.query(_EQ(active_only=True, limit=100000))
+        total = len(records)
+
+        yield _sse("progress", {"phase": f"Encoding {total} records", "current": 0, "total": total, "pct": -1})
+
+        embedding_index = ExpertiseEmbeddingIndex(data_dir=_get_data_dir(config))
+        embedding_index.rebuild(records)
+
+        yield _sse("progress", {"phase": "Saving index", "current": total, "total": total, "pct": 100})
+
+        msg = f"<strong>Expertise index rebuilt.</strong> Indexed {total} active records."
+        yield _sse("done", {"message": msg})
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+# ---------------------------------------------------------------------------
+# Contradiction resolution fragments
+# ---------------------------------------------------------------------------
+
+
+@router.get("/resolve-contradiction", response_class=HTMLResponse)
+async def resolve_contradiction_form(
+    request: Request,
+    edge_id: str = Query(...),
+    record_a: str = Query(...),
+    record_b: str = Query(...),
+) -> HTMLResponse:
+    """Load the inline resolution form for a contradiction."""
+    expertise_store = _safe_get(deps.get_expertise_store)
+    if not expertise_store:
+        return HTMLResponse(
+            '<div style="padding: 8px; color: hsl(var(--danger)); font-size: 12px;">'
+            "Expertise store not available.</div>"
+        )
+
+    rec_a = expertise_store.get(record_a)
+    rec_b = expertise_store.get(record_b)
+
+    if not rec_a or not rec_b:
+        return HTMLResponse(
+            '<div style="padding: 8px; color: hsl(var(--danger)); font-size: 12px;">'
+            "Could not load one or both records.</div>"
+        )
+
+    return templates.TemplateResponse(
+        request, "fragments/resolve-contradiction.html",
+        {"edge_id": edge_id, "record_a": rec_a, "record_b": rec_b},
+    )
+
+
+@router.post("/apply-resolution", response_class=HTMLResponse)
+async def apply_resolution(request: Request) -> HTMLResponse:
+    """Apply a resolution strategy and return a success badge replacing the item."""
+    form = await request.form()
+    edge_id = str(form.get("edge_id", ""))
+    strategy = str(form.get("strategy", ""))
+    reason = str(form.get("reason", ""))
+    winner_id = str(form.get("winner_id", ""))
+
     kg_store = _safe_get(deps.get_knowledge_graph_store)
     expertise_store = _safe_get(deps.get_expertise_store)
 
     if not kg_store or not expertise_store:
         return HTMLResponse(
-            '<div class="glass" style="padding: 16px; color: hsl(var(--danger));">'
-            "Knowledge graph or expertise store not available.</div>"
+            '<div class="glass" style="padding: 12px; color: hsl(var(--danger)); font-size: 12px;">'
+            "Stores not available.</div>"
         )
 
-    from searchat.knowledge_graph.detector import ContradictionDetector
-    from searchat.expertise.embeddings import ExpertiseEmbeddingIndex
-    from searchat.expertise.models import ExpertiseQuery as _ExpertiseQuery
-    from searchat.knowledge_graph.models import EdgeType, KnowledgeEdge
+    from searchat.knowledge_graph.models import EdgeType
+    from searchat.knowledge_graph.resolver import ResolutionEngine
 
-    config = deps.get_config()
-    detector = ContradictionDetector()
-    records = expertise_store.query(_ExpertiseQuery(active_only=True, limit=10000))
-
-    # Build embedding index for similarity search
-    embedding_index = ExpertiseEmbeddingIndex(data_dir=_get_data_dir(config))
-    embedding_index.rebuild(records)
-
-    new_contradictions = 0
-    for record in records:
-        candidates = detector.check_record(record, expertise_store, embedding_index)
-        for candidate in candidates:
-            edge = KnowledgeEdge(
-                source_id=candidate.record_id_a,
-                target_id=candidate.record_id_b,
-                edge_type=EdgeType.CONTRADICTS,
-                metadata={
-                    "similarity": candidate.similarity_score,
-                    "nli_score": candidate.contradiction_score,
-                },
-            )
-            kg_store.create_edge(edge)
-            new_contradictions += 1
-
-    return HTMLResponse(
-        f'<div class="glass" style="padding: 16px;">'
-        f'<strong style="color: hsl(var(--success));">Knowledge graph rebuilt.</strong> '
-        f"Scanned {len(records)} records, found {new_contradictions} new contradiction(s)."
-        f"</div>"
-    )
-
-
-@router.post("/rebuild-expertise-index", response_class=HTMLResponse)
-async def rebuild_expertise_index(request: Request) -> HTMLResponse:
-    """Rebuild the expertise embedding index from all active records."""
-    expertise_store = _safe_get(deps.get_expertise_store)
-
-    if not expertise_store:
+    edge = kg_store.get_edge(edge_id)
+    if not edge or edge.edge_type != EdgeType.CONTRADICTS:
         return HTMLResponse(
-            '<div class="glass" style="padding: 16px; color: hsl(var(--danger));">'
-            "Expertise store not available.</div>"
+            '<div class="glass" style="padding: 12px; color: hsl(var(--danger)); font-size: 12px;">'
+            f"Edge not found or not a contradiction: {edge_id}</div>"
         )
 
-    from searchat.expertise.embeddings import ExpertiseEmbeddingIndex
-    from searchat.expertise.models import ExpertiseQuery as _ExpertiseQuery
+    engine = ResolutionEngine(kg_store=kg_store, expertise_store=expertise_store)
 
-    config = deps.get_config()
-    records = expertise_store.query(_ExpertiseQuery(active_only=True, limit=100000))
-
-    embedding_index = ExpertiseEmbeddingIndex(data_dir=_get_data_dir(config))
-    embedding_index.rebuild(records)
+    try:
+        if strategy == "dismiss":
+            engine.dismiss(edge_id, reason or "Dismissed via UI")
+        elif strategy == "keep_both":
+            engine.keep_both(edge_id, reason or "Kept both via UI")
+        elif strategy == "supersede":
+            engine.supersede(edge_id, winner_id)
+        else:
+            return HTMLResponse(
+                '<div class="glass" style="padding: 12px; color: hsl(var(--danger)); font-size: 12px;">'
+                f"Unsupported strategy: {strategy}</div>"
+            )
+    except Exception as exc:
+        return HTMLResponse(
+            '<div class="glass" style="padding: 12px; color: hsl(var(--danger)); font-size: 12px;">'
+            f"Resolution failed: {exc}</div>"
+        )
 
     return HTMLResponse(
-        f'<div class="glass" style="padding: 16px;">'
-        f'<strong style="color: hsl(var(--success));">Expertise index rebuilt.</strong> '
-        f"Indexed {len(records)} active records."
-        f"</div>"
+        '<div class="contradiction-item glass" style="padding: 12px 16px; text-align: center;">'
+        f'<span style="color: hsl(var(--success)); font-size: 13px;">'
+        f'Resolved ({strategy})</span></div>'
     )
