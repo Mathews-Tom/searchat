@@ -22,7 +22,7 @@ def semantic_components_ready():
     readiness.snapshot.return_value = Mock(
         components={"metadata": "ready", "faiss": "ready", "embedder": "ready"}
     )
-    with patch("searchat.api.routers.chat.get_readiness", return_value=readiness):
+    with patch("searchat.api.readiness.get_readiness", return_value=readiness):
         yield
 
 
@@ -136,8 +136,8 @@ def test_chat_rag_warming_until_ready(client, monkeypatch):
     )
     warmup = Mock()
 
-    monkeypatch.setattr("searchat.api.routers.chat.trigger_search_engine_warmup", warmup)
-    with patch("searchat.api.routers.chat.get_readiness", return_value=readiness):
+    monkeypatch.setattr("searchat.api.dependencies.trigger_search_engine_warmup", warmup)
+    with patch("searchat.api.readiness.get_readiness", return_value=readiness):
         resp = client.post("/api/chat-rag", json={"query": "x", "model_provider": "ollama"})
 
     assert resp.status_code == 503
@@ -149,7 +149,7 @@ def test_chat_rag_error_payload_when_component_error(client):
     readiness.snapshot.return_value = Mock(
         components={"metadata": "error", "faiss": "ready", "embedder": "ready"}
     )
-    with patch("searchat.api.routers.chat.get_readiness", return_value=readiness):
+    with patch("searchat.api.readiness.get_readiness", return_value=readiness):
         resp = client.post("/api/chat-rag", json={"query": "x", "model_provider": "ollama"})
 
     assert resp.status_code == 500

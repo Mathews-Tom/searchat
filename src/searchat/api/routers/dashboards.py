@@ -5,7 +5,7 @@ import json
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from searchat.config.constants import VALID_TOOL_NAMES
@@ -13,12 +13,14 @@ import searchat.api.dependencies as deps
 from searchat.api.dependencies import (
     get_or_create_search_engine,
     get_search_engine,
-    trigger_search_engine_warmup,
 )
-from searchat.api.models import SearchResultResponse
-from searchat.api.readiness import error_payload, get_readiness, warming_payload
-from searchat.api.utils import detect_source_from_path, detect_tool_from_path, parse_date_filter
-from searchat.models import SearchFilters, SearchMode, SearchResult
+from searchat.api.utils import (
+    parse_date_filter,
+    check_semantic_readiness,
+    sort_results,
+    search_result_to_response,
+)
+from searchat.models import SearchFilters, SearchMode
 
 
 router = APIRouter()
@@ -202,13 +204,9 @@ async def render_dashboard(dashboard_id: str):
             widget_requests.append({"widget": widget, "query": query, "mode": mode})
 
         if needs_semantic:
-            readiness = get_readiness().snapshot()
-            for key in ("metadata", "faiss", "embedder"):
-                if readiness.components.get(key) == "error":
-                    return JSONResponse(status_code=500, content=error_payload())
-            if any(readiness.components.get(key) != "ready" for key in ("metadata", "faiss", "embedder")):
-                trigger_search_engine_warmup()
-                return JSONResponse(status_code=503, content=warming_payload())
+            not_ready = check_semantic_readiness()
+            if not_ready is not None:
+                return not_ready
             search_engine = get_search_engine()
         else:
             search_engine = get_or_create_search_engine()
@@ -226,28 +224,11 @@ async def render_dashboard(dashboard_id: str):
             if isinstance(widget_sort, str) and widget_sort:
                 sort_by = widget_sort
 
-            sorted_results = _sort_results(results.results, sort_by)
-            limit = widget.get("limit") if isinstance(widget.get("limit"), int) else 5
-            trimmed = sorted_results[:limit]
+            sorted_list = sort_results(results.results, sort_by)
+            widget_limit = widget.get("limit") if isinstance(widget.get("limit"), int) else 5
+            trimmed = sorted_list[:widget_limit]
 
-            response_results = [
-                SearchResultResponse(
-                    conversation_id=r.conversation_id,
-                    project_id=r.project_id,
-                    title=r.title,
-                    created_at=r.created_at.isoformat(),
-                    updated_at=r.updated_at.isoformat(),
-                    message_count=r.message_count,
-                    file_path=r.file_path,
-                    snippet=r.snippet,
-                    score=r.score,
-                    message_start_index=r.message_start_index,
-                    message_end_index=r.message_end_index,
-                    source=detect_source_from_path(r.file_path),
-                    tool=detect_tool_from_path(r.file_path),
-                )
-                for r in trimmed
-            ]
+            response_results = [search_result_to_response(r) for r in trimmed]
 
             rendered_widgets.append(
                 {
@@ -325,12 +306,3 @@ def _normalize_sort_by(filters_value: Any) -> str:
     return "relevance"
 
 
-def _sort_results(results: list[SearchResult], sort_by: str) -> list[SearchResult]:
-    sorted_results = results.copy()
-    if sort_by == "date_newest":
-        sorted_results.sort(key=lambda r: r.updated_at, reverse=True)
-    elif sort_by == "date_oldest":
-        sorted_results.sort(key=lambda r: r.updated_at, reverse=False)
-    elif sort_by == "messages":
-        sorted_results.sort(key=lambda r: r.message_count, reverse=True)
-    return sorted_results

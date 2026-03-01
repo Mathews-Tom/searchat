@@ -2,12 +2,16 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 
 from searchat.api.models import ChatRequest, ChatRagRequest, ConversationSource, RAGResponse
-from searchat.api.utils import detect_source_from_path, detect_tool_from_path
-from searchat.api.dependencies import get_config, trigger_search_engine_warmup
-from searchat.api.readiness import get_readiness, warming_payload, error_payload
+from searchat.api.utils import (
+    detect_source_from_path,
+    detect_tool_from_path,
+    validate_provider,
+    check_semantic_readiness,
+)
+from searchat.api.dependencies import get_config
 from searchat.services.chat_service import generate_answer_stream, generate_rag_response
 from searchat.services.llm_service import LLMServiceError
 
@@ -22,22 +26,12 @@ async def chat(
 ):
     if snapshot is not None:
         raise HTTPException(status_code=403, detail="Chat is disabled in snapshot mode")
-    provider = request.model_provider.lower()
-    if provider not in ("openai", "ollama", "embedded"):
-        raise HTTPException(status_code=400, detail="model_provider must be 'openai', 'ollama', or 'embedded'.")
+    provider = validate_provider(request.model_provider)
 
-    readiness = get_readiness().snapshot()
-    required = ["metadata", "faiss", "embedder"]
-    if provider == "embedded":
-        required.append("embedded_model")
-
-    for key in required:
-        if readiness.components.get(key) == "error":
-            return JSONResponse(status_code=500, content=error_payload())
-
-    if any(readiness.components.get(key) != "ready" for key in required):
-        trigger_search_engine_warmup()
-        return JSONResponse(status_code=503, content=warming_payload())
+    extra = ["embedded_model"] if provider == "embedded" else None
+    not_ready = check_semantic_readiness(extra)
+    if not_ready is not None:
+        return not_ready
 
     config = get_config()
     try:
@@ -69,22 +63,12 @@ async def chat_rag(
 ):
     if snapshot is not None:
         raise HTTPException(status_code=403, detail="Chat is disabled in snapshot mode")
-    provider = request.model_provider.lower()
-    if provider not in ("openai", "ollama", "embedded"):
-        raise HTTPException(status_code=400, detail="model_provider must be 'openai', 'ollama', or 'embedded'.")
+    provider = validate_provider(request.model_provider)
 
-    readiness = get_readiness().snapshot()
-    required = ["metadata", "faiss", "embedder"]
-    if provider == "embedded":
-        required.append("embedded_model")
-
-    for key in required:
-        if readiness.components.get(key) == "error":
-            return JSONResponse(status_code=500, content=error_payload())
-
-    if any(readiness.components.get(key) != "ready" for key in required):
-        trigger_search_engine_warmup()
-        return JSONResponse(status_code=503, content=warming_payload())
+    extra = ["embedded_model"] if provider == "embedded" else None
+    not_ready = check_semantic_readiness(extra)
+    if not_ready is not None:
+        return not_ready
 
     config = get_config()
     if not config.chat.enable_rag:

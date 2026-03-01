@@ -5,7 +5,12 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from searchat.api.models import CodeSearchResponse, CodeSearchResultResponse
+from searchat.api.models import CodeSearchResponse
+from searchat.api.utils import (
+    resolve_dataset,
+    ensure_code_index_has_symbol_columns,
+    rows_to_code_results,
+)
 import searchat.api.dependencies as deps
 
 
@@ -88,13 +93,7 @@ async def get_conversation_code_symbols(
     """Return aggregated code symbols for a conversation from the code index."""
 
     try:
-        try:
-            search_dir, _snapshot_name = deps.resolve_dataset_search_dir(snapshot)
-        except ValueError as exc:
-            msg = str(exc)
-            if msg == "Snapshot not found":
-                raise HTTPException(status_code=404, detail="Snapshot not found") from exc
-            raise HTTPException(status_code=400, detail=msg) from exc
+        search_dir, _snapshot_name = resolve_dataset(snapshot)
 
         code_dir = search_dir / "data" / "code"
         if not code_dir.exists() or not any(code_dir.glob("*.parquet")):
@@ -106,7 +105,7 @@ async def get_conversation_code_symbols(
         parquet_glob = str(code_dir / "*.parquet")
         conn = deps.get_duckdb_store_for(search_dir)._connect()
         try:
-            _ensure_code_index_has_symbol_columns(conn, parquet_glob)
+            ensure_code_index_has_symbol_columns(conn, parquet_glob)
 
             functions_rows = conn.execute(
                 "SELECT DISTINCT unnest(functions) AS v FROM parquet_scan(?) WHERE conversation_id = ?",
@@ -191,13 +190,7 @@ async def _search_code_symbol(
     snapshot: str | None,
 ) -> CodeSearchResponse:
     try:
-        try:
-            search_dir, _snapshot_name = deps.resolve_dataset_search_dir(snapshot)
-        except ValueError as exc:
-            msg = str(exc)
-            if msg == "Snapshot not found":
-                raise HTTPException(status_code=404, detail="Snapshot not found") from exc
-            raise HTTPException(status_code=400, detail=msg) from exc
+        search_dir, _snapshot_name = resolve_dataset(snapshot)
 
         code_dir = search_dir / "data" / "code"
         if not code_dir.exists() or not any(code_dir.glob("*.parquet")):
@@ -209,7 +202,7 @@ async def _search_code_symbol(
         parquet_glob = str(code_dir / "*.parquet")
         conn = deps.get_duckdb_store_for(search_dir)._connect()
         try:
-            _ensure_code_index_has_symbol_columns(conn, parquet_glob)
+            ensure_code_index_has_symbol_columns(conn, parquet_glob)
 
             filters: list[str] = [f"list_contains({column}, ?)"]
             params: list[object] = [value]
@@ -227,22 +220,10 @@ async def _search_code_symbol(
 
             query_sql = f"""
                 SELECT
-                    conversation_id,
-                    project_id,
-                    title,
-                    file_path,
-                    connector,
-                    message_index,
-                    block_index,
-                    role,
-                    language,
-                    language_source,
-                    fence_language,
-                    lines,
-                    code,
-                    code_hash,
-                    conversation_updated_at,
-                    count(*) OVER() AS total_count
+                    conversation_id, project_id, title, file_path, connector,
+                    message_index, block_index, role, language, language_source,
+                    fence_language, lines, code, code_hash,
+                    conversation_updated_at, count(*) OVER() AS total_count
                 FROM parquet_scan(?)
                 {where_sql}
                 ORDER BY conversation_updated_at DESC, message_timestamp DESC
@@ -253,55 +234,7 @@ async def _search_code_symbol(
         finally:
             conn.close()
 
-        total = int(rows[0][-1]) if rows else 0
-        results: list[CodeSearchResultResponse] = []
-        for (
-            conversation_id,
-            project_id,
-            title,
-            file_path,
-            connector,
-            message_index,
-            block_index,
-            role,
-            language_value,
-            language_source,
-            fence_language,
-            lines,
-            code,
-            code_hash,
-            conversation_updated_at,
-            _total_count,
-        ) in rows:
-            code_text = code or ""
-            max_chars = 4000
-            if len(code_text) > max_chars:
-                code_text = code_text[:max_chars]
-
-            updated_at_str = (
-                conversation_updated_at
-                if isinstance(conversation_updated_at, str)
-                else conversation_updated_at.isoformat()
-            )
-            results.append(
-                CodeSearchResultResponse(
-                    conversation_id=conversation_id,
-                    project_id=project_id,
-                    title=title,
-                    file_path=file_path,
-                    tool=connector,
-                    message_index=int(message_index),
-                    block_index=int(block_index),
-                    role=role,
-                    language=language_value,
-                    language_source=language_source,
-                    fence_language=fence_language,
-                    lines=int(lines),
-                    code=code_text,
-                    code_hash=code_hash,
-                    conversation_updated_at=updated_at_str,
-                )
-            )
+        total, results = rows_to_code_results(rows)
 
         return CodeSearchResponse(
             results=results,
@@ -314,22 +247,3 @@ async def _search_code_symbol(
         raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-
-def _ensure_code_index_has_symbol_columns(conn, parquet_glob: str) -> None:
-    try:
-        cursor = conn.execute("SELECT * FROM parquet_scan(?) LIMIT 0", [parquet_glob])
-    except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"Failed to read code index schema: {exc}") from exc
-
-    columns: set[str] = set()
-    for desc in getattr(cursor, "description", []) or []:
-        if desc and isinstance(desc[0], str):
-            columns.add(desc[0])
-
-    required = {"functions", "classes", "imports"}
-    if not required.issubset(columns):
-        raise HTTPException(
-            status_code=503,
-            detail="Code index does not include symbol metadata. Rebuild the index to enable symbol endpoints.",
-        )

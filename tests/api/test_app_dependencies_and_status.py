@@ -505,7 +505,7 @@ def test_chat_returns_warming_until_ready(monkeypatch: pytest.MonkeyPatch) -> No
     readiness.set_component("embedder", "idle")
 
     warmup = MagicMock()
-    monkeypatch.setattr("searchat.api.routers.chat.trigger_search_engine_warmup", warmup)
+    monkeypatch.setattr("searchat.api.dependencies.trigger_search_engine_warmup", warmup)
 
     client = TestClient(app)
     response = client.post(

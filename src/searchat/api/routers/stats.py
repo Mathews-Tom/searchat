@@ -17,13 +17,9 @@ router = APIRouter()
 @router.get("/statistics")
 async def get_statistics(snapshot: str | None = Query(None, description="Backup snapshot name (read-only)")):
     """Get search index statistics."""
-    try:
-        search_dir, snapshot_name = deps.resolve_dataset_search_dir(snapshot)
-    except ValueError as exc:
-        msg = str(exc)
-        if msg == "Snapshot not found":
-            raise HTTPException(status_code=404, detail="Snapshot not found") from exc
-        raise HTTPException(status_code=400, detail=msg) from exc
+    from searchat.api.utils import resolve_dataset
+
+    search_dir, snapshot_name = resolve_dataset(snapshot)
     store = deps.get_duckdb_store_for(search_dir)
 
     if snapshot_name is not None:

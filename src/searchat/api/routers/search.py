@@ -1,23 +1,40 @@
 """Search endpoints - main search and projects list."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Query, HTTPException
-from fastapi.responses import JSONResponse
+from functools import lru_cache
 
-from searchat.config.constants import VALID_TOOL_NAMES
+from fastapi import APIRouter, Query, HTTPException
+
 from searchat.models import SearchMode, SearchFilters
-from searchat.api.models import SearchResultResponse, CodeSearchResultResponse
 from searchat.services.highlight_service import extract_highlight_terms
 from searchat.services.llm_service import LLMServiceError
-from searchat.api.utils import detect_tool_from_path, detect_source_from_path, parse_date_filter
+from searchat.api.utils import (
+    parse_date_filter,
+    resolve_dataset,
+    validate_tool,
+    check_semantic_readiness,
+    sort_results,
+    search_result_to_response,
+    ensure_code_index_has_symbol_columns,
+    rows_to_code_results,
+)
 import searchat.api.dependencies as deps
 
 from searchat.api.dependencies import get_analytics_service
-from searchat.api.readiness import get_readiness, warming_payload, error_payload
 
 
 router = APIRouter()
-_highlight_cache: dict[tuple[str, str, str, str | None], list[str]] = {}
+
+
+@lru_cache(maxsize=128)
+def _cached_highlight(
+    dataset_key: str, query: str, provider: str, model: str | None,
+) -> list[str]:
+    """LRU-cached highlight term extraction."""
+    config = deps.get_config()
+    return extract_highlight_terms(
+        query=query, provider=provider, model_name=model, config=config,
+    )
 
 
 @router.get("/search/code")
@@ -38,13 +55,7 @@ async def search_code(
 ):
     """Search fenced code blocks extracted during indexing."""
     try:
-        try:
-            search_dir, _snapshot_name = deps.resolve_dataset_search_dir(snapshot)
-        except ValueError as exc:
-            msg = str(exc)
-            if msg == "Snapshot not found":
-                raise HTTPException(status_code=404, detail="Snapshot not found") from exc
-            raise HTTPException(status_code=400, detail=msg) from exc
+        search_dir, _snapshot_name = resolve_dataset(snapshot)
 
         code_dir = search_dir / "data" / "code"
         if not code_dir.exists() or not any(code_dir.glob("*.parquet")):
@@ -71,45 +82,14 @@ async def search_code(
             filters.append("project_id = ?")
             params.append(project)
         if tool:
-            tool_value = tool.lower()
-            if tool_value not in VALID_TOOL_NAMES:
-                raise HTTPException(status_code=400, detail="Invalid tool filter")
             filters.append("lower(connector) = lower(?)")
-            params.append(tool_value)
-
-        where_sql = ""
-        if filters:
-            where_sql = "WHERE " + " AND ".join(filters)
-
-        query_sql = f"""
-            SELECT
-                conversation_id,
-                project_id,
-                title,
-                file_path,
-                connector,
-                message_index,
-                block_index,
-                role,
-                language,
-                language_source,
-                fence_language,
-                lines,
-                code,
-                code_hash,
-                conversation_updated_at,
-                count(*) OVER() AS total_count
-            FROM parquet_scan(?)
-            {where_sql}
-            ORDER BY conversation_updated_at DESC, message_timestamp DESC
-            LIMIT ? OFFSET ?
-        """
+            params.append(validate_tool(tool))
 
         parquet_glob = str(code_dir / "*.parquet")
         conn = deps.get_duckdb_store_for(search_dir)._connect()
         try:
             if function or class_name or import_name:
-                _ensure_code_index_has_symbol_columns(conn, parquet_glob)
+                ensure_code_index_has_symbol_columns(conn, parquet_glob)
 
             if function:
                 filters.append("list_contains(functions, ?)")
@@ -121,28 +101,14 @@ async def search_code(
                 filters.append("list_contains(imports, ?)")
                 params.append(import_name)
 
-            where_sql = ""
-            if filters:
-                where_sql = "WHERE " + " AND ".join(filters)
+            where_sql = "WHERE " + " AND ".join(filters) if filters else ""
 
             query_sql = f"""
                 SELECT
-                    conversation_id,
-                    project_id,
-                    title,
-                    file_path,
-                    connector,
-                    message_index,
-                    block_index,
-                    role,
-                    language,
-                    language_source,
-                    fence_language,
-                    lines,
-                    code,
-                    code_hash,
-                    conversation_updated_at,
-                    count(*) OVER() AS total_count
+                    conversation_id, project_id, title, file_path, connector,
+                    message_index, block_index, role, language, language_source,
+                    fence_language, lines, code, code_hash,
+                    conversation_updated_at, count(*) OVER() AS total_count
                 FROM parquet_scan(?)
                 {where_sql}
                 ORDER BY conversation_updated_at DESC, message_timestamp DESC
@@ -153,56 +119,7 @@ async def search_code(
         finally:
             conn.close()
 
-        total = int(rows[0][-1]) if rows else 0
-        results: list[CodeSearchResultResponse] = []
-        for (
-            conversation_id,
-            project_id,
-            title,
-            file_path,
-            connector,
-            message_index,
-            block_index,
-            role,
-            language_value,
-            language_source,
-            fence_language,
-            lines,
-            code,
-            code_hash,
-            conversation_updated_at,
-            _total_count,
-        ) in rows:
-            code_text = code or ""
-            # Hard cap to avoid huge payloads.
-            max_chars = 4000
-            if len(code_text) > max_chars:
-                code_text = code_text[:max_chars]
-
-            updated_at_str = (
-                conversation_updated_at
-                if isinstance(conversation_updated_at, str)
-                else conversation_updated_at.isoformat()
-            )
-            results.append(
-                CodeSearchResultResponse(
-                    conversation_id=conversation_id,
-                    project_id=project_id,
-                    title=title,
-                    file_path=file_path,
-                    tool=connector,
-                    message_index=int(message_index),
-                    block_index=int(block_index),
-                    role=role,
-                    language=language_value,
-                    language_source=language_source,
-                    fence_language=fence_language,
-                    lines=int(lines),
-                    code=code_text,
-                    code_hash=code_hash,
-                    conversation_updated_at=updated_at_str,
-                )
-            )
+        total, results = rows_to_code_results(rows)
 
         return {
             "results": results,
@@ -215,26 +132,6 @@ async def search_code(
         raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-
-def _ensure_code_index_has_symbol_columns(conn, parquet_glob: str) -> None:
-    """Fail fast if the code index doesn't include symbol metadata columns."""
-    try:
-        cursor = conn.execute("SELECT * FROM parquet_scan(?) LIMIT 0", [parquet_glob])
-    except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"Failed to read code index schema: {exc}") from exc
-
-    columns: set[str] = set()
-    for desc in getattr(cursor, "description", []) or []:
-        if desc and isinstance(desc[0], str):
-            columns.add(desc[0])
-
-    required = {"functions", "classes", "imports"}
-    if not required.issubset(columns):
-        raise HTTPException(
-            status_code=503,
-            detail="Code index does not include symbol metadata. Rebuild the index to enable symbol filters.",
-        )
 
 
 @router.get("/search")
@@ -256,90 +153,55 @@ async def search(
 ):
     """Search conversations with filters and sorting."""
     try:
-        try:
-            search_dir, snapshot_name = deps.resolve_dataset_search_dir(snapshot)
-        except ValueError as exc:
-            msg = str(exc)
-            if msg == "Snapshot not found":
-                raise HTTPException(status_code=404, detail="Snapshot not found") from exc
-            raise HTTPException(status_code=400, detail=msg) from exc
+        search_dir, snapshot_name = resolve_dataset(snapshot)
 
         # Convert mode string to SearchMode enum
         mode_map = {
             "hybrid": SearchMode.HYBRID,
             "semantic": SearchMode.SEMANTIC,
-            "keyword": SearchMode.KEYWORD
+            "keyword": SearchMode.KEYWORD,
         }
         if mode not in mode_map:
             raise HTTPException(status_code=400, detail="Invalid search mode")
         search_mode = mode_map[mode]
 
-        # Treat wildcard as keyword-only browsing.
         if q.strip() == "*":
             search_mode = SearchMode.KEYWORD
 
         # Snapshot requests must not mutate readiness/warmup globals.
         if snapshot_name is not None:
             search_engine = deps.get_or_create_search_engine_for(search_dir)
+        elif search_mode == SearchMode.KEYWORD:
+            search_engine = deps.get_or_create_search_engine()
         else:
-            # Keyword search should work without semantic warmup.
-            if search_mode == SearchMode.KEYWORD:
-                search_engine = deps.get_or_create_search_engine()
-            else:
-                readiness = get_readiness().snapshot()
-                for key in ("metadata", "faiss", "embedder"):
-                    if readiness.components.get(key) == "error":
-                        return JSONResponse(status_code=500, content=error_payload())
-                if any(readiness.components.get(key) != "ready" for key in ("metadata", "faiss", "embedder")):
-                    deps.trigger_search_engine_warmup()
-                    return JSONResponse(status_code=503, content=warming_payload())
-
-                search_engine = deps.get_search_engine()
+            not_ready = check_semantic_readiness()
+            if not_ready is not None:
+                return not_ready
+            search_engine = deps.get_search_engine()
 
         # Build filters
         filters = SearchFilters()
         if project:
             filters.project_ids = [project]
-
         if tool:
-            tool_value = tool.lower()
-            if tool_value not in VALID_TOOL_NAMES:
-                raise HTTPException(status_code=400, detail="Invalid tool filter")
-            filters.tool = tool_value
-
-        # Handle date filtering
+            filters.tool = validate_tool(tool)
         filters.date_from, filters.date_to = parse_date_filter(date, date_from, date_to)
 
-        # Execute search
         results = search_engine.search(q, mode=search_mode, filters=filters)
 
         highlight_terms = None
         if highlight and len(q.strip()) >= 4 and mode != "keyword":
-            config = deps.get_config()
             if highlight_provider is None:
                 raise HTTPException(status_code=400, detail="Highlight provider is required")
             provider = highlight_provider.lower()
             if provider not in ("openai", "ollama"):
                 raise HTTPException(status_code=400, detail="Invalid highlight provider")
-
-            dataset_cache_key = str(search_dir)
-            cache_key = (dataset_cache_key, q, provider, highlight_model)
-            if cache_key in _highlight_cache:
-                highlight_terms = _highlight_cache[cache_key]
-            else:
-                try:
-                    highlight_terms = extract_highlight_terms(
-                        query=q,
-                        provider=provider,
-                        model_name=highlight_model,
-                        config=config,
-                    )
-                except LLMServiceError as exc:
-                    raise HTTPException(status_code=503, detail=str(exc)) from exc
-                except ValueError as exc:
-                    raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-                _highlight_cache[cache_key] = highlight_terms
+            try:
+                highlight_terms = _cached_highlight(str(search_dir), q, provider, highlight_model)
+            except LLMServiceError as exc:
+                raise HTTPException(status_code=503, detail=str(exc)) from exc
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         # Log search analytics (opt-in; active dataset only)
         config = deps.get_config()
@@ -354,41 +216,13 @@ async def search(
                     tool_filter=tool,
                 )
             except Exception:
-                # Don't fail the search if analytics logging fails
                 pass
 
-        # Sort results based on sort_by parameter
-        sorted_results = results.results.copy()
-        if sort_by == "date_newest":
-            sorted_results.sort(key=lambda r: r.updated_at, reverse=True)
-        elif sort_by == "date_oldest":
-            sorted_results.sort(key=lambda r: r.updated_at, reverse=False)
-        elif sort_by == "messages":
-            sorted_results.sort(key=lambda r: r.message_count, reverse=True)
-        # else keep default relevance sorting (by score)
-
-        # Apply pagination
+        sorted_results = sort_results(results.results, sort_by)
         total_results = len(sorted_results)
         paginated_results = sorted_results[offset:offset + limit]
 
-        # Convert results to response format
-        response_results = []
-        for r in paginated_results:
-            response_results.append(SearchResultResponse(
-                conversation_id=r.conversation_id,
-                project_id=r.project_id,
-                title=r.title,
-                created_at=r.created_at.isoformat(),
-                updated_at=r.updated_at.isoformat(),
-                message_count=r.message_count,
-                file_path=r.file_path,
-                snippet=r.snippet,
-                score=r.score,
-                message_start_index=r.message_start_index,
-                message_end_index=r.message_end_index,
-                source=detect_source_from_path(r.file_path),
-                tool=detect_tool_from_path(r.file_path),
-            ))
+        response_results = [search_result_to_response(r) for r in paginated_results]
 
         return {
             "results": response_results,
@@ -409,13 +243,7 @@ async def search(
 @router.get("/projects")
 async def get_projects(snapshot: str | None = Query(None, description="Backup snapshot name (read-only)")):
     """Get list of all projects in the index."""
-    try:
-        search_dir, snapshot_name = deps.resolve_dataset_search_dir(snapshot)
-    except ValueError as exc:
-        msg = str(exc)
-        if msg == "Snapshot not found":
-            raise HTTPException(status_code=404, detail="Snapshot not found") from exc
-        raise HTTPException(status_code=400, detail=msg) from exc
+    search_dir, snapshot_name = resolve_dataset(snapshot)
     store = deps.get_duckdb_store_for(search_dir)
 
     if snapshot_name is not None:
@@ -429,13 +257,7 @@ async def get_projects(snapshot: str | None = Query(None, description="Backup sn
 @router.get("/projects/summary")
 async def get_projects_summary(snapshot: str | None = Query(None, description="Backup snapshot name (read-only)")):
     """Get summary stats for all projects in the index."""
-    try:
-        search_dir, snapshot_name = deps.resolve_dataset_search_dir(snapshot)
-    except ValueError as exc:
-        msg = str(exc)
-        if msg == "Snapshot not found":
-            raise HTTPException(status_code=404, detail="Snapshot not found") from exc
-        raise HTTPException(status_code=400, detail=msg) from exc
+    search_dir, snapshot_name = resolve_dataset(snapshot)
     store = deps.get_duckdb_store_for(search_dir)
 
     if snapshot_name is not None:
