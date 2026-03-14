@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from searchat.models import SearchResult, SearchResults, SearchMode
 from searchat.api.app import app
+from searchat.api import state as api_state
 
 
 @pytest.fixture
@@ -672,7 +673,7 @@ class TestProjectsEndpoint:
     def test_get_projects(self, client, mock_duckdb_store):
         """Test getting list of projects."""
         with patch('searchat.api.routers.search.deps.get_duckdb_store', return_value=mock_duckdb_store):
-            with patch('searchat.api.routers.search.deps.projects_cache', None):
+            with patch('searchat.api.routers.search.api_state.projects_cache', None):
                 response = client.get("/api/projects")
 
                 assert response.status_code == 200
@@ -686,7 +687,7 @@ class TestProjectsEndpoint:
     def test_get_projects_uses_cache(self, client, mock_duckdb_store):
         """Test that projects endpoint uses cache."""
         with patch('searchat.api.routers.search.deps.get_duckdb_store', return_value=mock_duckdb_store):
-            with patch('searchat.api.routers.search.deps.projects_cache', ["cached-project"]):
+            with patch('searchat.api.routers.search.api_state.projects_cache', ["cached-project"]):
                 response = client.get("/api/projects")
 
                 assert response.status_code == 200
@@ -707,7 +708,7 @@ class TestProjectsEndpoint:
             }
         ]
         with patch('searchat.api.routers.search.deps.get_duckdb_store', return_value=mock_duckdb_store):
-            with patch('searchat.api.routers.search.deps.projects_summary_cache', None):
+            with patch('searchat.api.routers.search.api_state.projects_summary_cache', None):
                 response = client.get("/api/projects/summary")
 
                 assert response.status_code == 200
