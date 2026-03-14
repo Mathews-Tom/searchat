@@ -6,9 +6,9 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
 
+from searchat.api.warmup import invalidate_search_index
 from searchat.api.dependencies import (
     get_backup_manager,
-    invalidate_search_index,
 )
 
 

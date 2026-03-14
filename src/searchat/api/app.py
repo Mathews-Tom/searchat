@@ -26,7 +26,6 @@ from searchat.core.logging_config import setup_logging, get_logger
 from searchat.core.progress import LoggingProgressAdapter
 from searchat.api.dependencies import (
     initialize_services,
-    start_background_warmup,
     get_config,
     get_indexer,
     get_watcher,
@@ -35,6 +34,7 @@ from searchat.api.dependencies import (
 import searchat.api.dependencies as deps
 from searchat.api import state as api_state
 from searchat.api.readiness import get_readiness
+from searchat.api.warmup import invalidate_search_index, start_background_warmup
 from searchat.api.templates import templates
 from searchat.api.routers import (
     search_router,
@@ -222,7 +222,7 @@ def on_new_conversations(file_paths: list[str]) -> None:
 
         updated_conversations = getattr(stats, "updated_conversations", 0)
         if stats.new_conversations > 0 or updated_conversations > 0:
-            deps.invalidate_search_index()
+            invalidate_search_index()
 
             api_state.watcher_stats["indexed_count"] += stats.new_conversations + updated_conversations
             api_state.watcher_stats["last_update"] = datetime.now().isoformat()

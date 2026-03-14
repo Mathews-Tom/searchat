@@ -13,11 +13,11 @@ from searchat.core.progress import LoggingProgressAdapter
 from searchat.core.connectors import get_connectors
 import searchat.api.dependencies as deps
 from searchat.api import state as api_state
+from searchat.api.warmup import invalidate_search_index
 
 from searchat.api.dependencies import (
     get_config,
     get_indexer,
-    invalidate_search_index,
 )
 
 

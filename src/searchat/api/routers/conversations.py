@@ -22,6 +22,7 @@ from searchat.api.models import (
     ConversationResponse,
     ResumeRequest,
 )
+from searchat.api.warmup import invalidate_search_index
 from searchat.api.utils import detect_tool_from_path, detect_source_from_path, parse_date_filter
 import searchat.api.dependencies as deps
 
@@ -1173,6 +1174,6 @@ async def delete_conversations(request: DeleteConversationsRequest):
         delete_source_files=request.delete_source_files,
     )
 
-    deps.invalidate_search_index()
+    invalidate_search_index()
 
     return result

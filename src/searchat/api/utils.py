@@ -155,7 +155,7 @@ def check_semantic_readiness(
     Also triggers warmup if components are not yet ready.
     """
     from searchat.api import readiness as _readiness_mod
-    import searchat.api.dependencies as _deps
+    from searchat.api import warmup as _warmup
 
     readiness = _readiness_mod.get_readiness().snapshot()
     required = ["metadata", "faiss", "embedder"]
@@ -167,7 +167,7 @@ def check_semantic_readiness(
             return JSONResponse(status_code=500, content=_readiness_mod.error_payload())
 
     if any(readiness.components.get(key) != "ready" for key in required):
-        _deps.trigger_search_engine_warmup()
+        _warmup.trigger_search_engine_warmup()
         return JSONResponse(status_code=503, content=_readiness_mod.warming_payload())
 
     return None
