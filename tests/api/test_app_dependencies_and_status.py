@@ -862,7 +862,7 @@ def test_get_duckdb_store_for_caches_per_dataset(monkeypatch: pytest.MonkeyPatch
 
 def test_get_or_create_search_engine_for_caches_per_dataset(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     import searchat.api.dependencies as deps
-    import searchat.core.search_engine as se_mod
+    import searchat.services.retrieval_service as retrieval_mod
 
     base = tmp_path / "base"
     base.mkdir()
@@ -879,7 +879,7 @@ def test_get_or_create_search_engine_for_caches_per_dataset(monkeypatch: pytest.
         def __init__(self, search_dir, _config):
             created.append(search_dir)
 
-    monkeypatch.setattr(se_mod, "SearchEngine", FakeEngine)
+    monkeypatch.setattr(retrieval_mod, "build_retrieval_service", lambda search_dir, *, config: FakeEngine(search_dir, config))
 
     assert deps.get_or_create_search_engine_for(base) is deps._search_engine
 
@@ -892,7 +892,7 @@ def test_get_or_create_search_engine_for_caches_per_dataset(monkeypatch: pytest.
 def test_ensure_search_engine_sets_readiness_error_on_failure(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     import searchat.api.dependencies as deps
     from searchat.api.readiness import get_readiness
-    import searchat.core.search_engine as se_mod
+    import searchat.services.retrieval_service as retrieval_mod
 
     deps._config = object()
     deps._search_dir = tmp_path
@@ -902,7 +902,7 @@ def test_ensure_search_engine_sets_readiness_error_on_failure(monkeypatch: pytes
         def __init__(self, *_a, **_k):
             raise RuntimeError("boom")
 
-    monkeypatch.setattr(se_mod, "SearchEngine", BoomEngine)
+    monkeypatch.setattr(retrieval_mod, "build_retrieval_service", lambda search_dir, *, config: BoomEngine(search_dir, config))
 
     with pytest.raises(RuntimeError):
         deps.get_or_create_search_engine()
