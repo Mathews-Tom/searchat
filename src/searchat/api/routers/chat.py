@@ -73,9 +73,9 @@ async def chat_rag(
         return not_ready
 
     config = get_config()
-    retrieval_service = get_search_engine()
     if not config.chat.enable_rag:
         raise HTTPException(status_code=404, detail="RAG chat endpoint is disabled.")
+    retrieval_service = get_search_engine()
     try:
         generation = generate_rag_response(
             query=request.query,

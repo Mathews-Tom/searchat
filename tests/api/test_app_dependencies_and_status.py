@@ -550,6 +550,7 @@ def test_chat_streams_response_when_ready(monkeypatch: pytest.MonkeyPatch) -> No
         yield " world"
 
     monkeypatch.setattr("searchat.api.routers.chat.get_config", lambda: object())
+    monkeypatch.setattr("searchat.api.routers.chat.get_search_engine", lambda: object())
     monkeypatch.setattr("searchat.api.routers.chat.generate_answer_stream", lambda **_kwargs: ("test-session-id", _fake_stream()))
 
     client = TestClient(app)
@@ -591,6 +592,7 @@ def test_chat_returns_400_on_generate_value_error(monkeypatch: pytest.MonkeyPatc
     readiness.set_component("embedder", "ready")
 
     monkeypatch.setattr("searchat.api.routers.chat.get_config", lambda: object())
+    monkeypatch.setattr("searchat.api.routers.chat.get_search_engine", lambda: object())
     monkeypatch.setattr(
         "searchat.api.routers.chat.generate_answer_stream",
         lambda **_kwargs: (_ for _ in ()).throw(ValueError("bad")),
@@ -613,6 +615,7 @@ def test_chat_returns_503_on_generate_llm_error(monkeypatch: pytest.MonkeyPatch)
     readiness.set_component("embedder", "ready")
 
     monkeypatch.setattr("searchat.api.routers.chat.get_config", lambda: object())
+    monkeypatch.setattr("searchat.api.routers.chat.get_search_engine", lambda: object())
     monkeypatch.setattr(
         "searchat.api.routers.chat.generate_answer_stream",
         lambda **_kwargs: (_ for _ in ()).throw(LLMServiceError("nope")),
@@ -634,6 +637,7 @@ def test_chat_returns_500_on_generate_unexpected_error(monkeypatch: pytest.Monke
     readiness.set_component("embedder", "ready")
 
     monkeypatch.setattr("searchat.api.routers.chat.get_config", lambda: object())
+    monkeypatch.setattr("searchat.api.routers.chat.get_search_engine", lambda: object())
     monkeypatch.setattr(
         "searchat.api.routers.chat.generate_answer_stream",
         lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("boom")),

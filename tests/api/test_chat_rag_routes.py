@@ -48,18 +48,19 @@ def test_chat_rag_returns_answer_and_sources(client):
     config = Mock()
     config.chat = Mock(enable_rag=True, enable_citations=True)
     with patch("searchat.api.routers.chat.get_config", return_value=config):
-        with patch("searchat.api.routers.chat.generate_rag_response", mock_generate):
-            resp = client.post(
-                "/api/chat-rag",
-                json={
-                    "query": "what is this?",
-                    "model_provider": "ollama",
-                    "model_name": "llama3",
-                    "temperature": 0.2,
-                    "max_tokens": 128,
-                    "system_prompt": "Be strict.",
-                },
-            )
+        with patch("searchat.api.routers.chat.get_search_engine", return_value=Mock()):
+            with patch("searchat.api.routers.chat.generate_rag_response", mock_generate):
+                resp = client.post(
+                    "/api/chat-rag",
+                    json={
+                        "query": "what is this?",
+                        "model_provider": "ollama",
+                        "model_name": "llama3",
+                        "temperature": 0.2,
+                        "max_tokens": 128,
+                        "system_prompt": "Be strict.",
+                    },
+                )
 
     assert resp.status_code == 200
     data = resp.json()
@@ -113,8 +114,9 @@ def test_chat_rag_citations_disabled_returns_no_sources(client):
     config.chat = Mock(enable_rag=True, enable_citations=False)
 
     with patch("searchat.api.routers.chat.get_config", return_value=config):
-        with patch("searchat.api.routers.chat.generate_rag_response", return_value=generation):
-            resp = client.post("/api/chat-rag", json={"query": "x", "model_provider": "ollama"})
+        with patch("searchat.api.routers.chat.get_search_engine", return_value=Mock()):
+            with patch("searchat.api.routers.chat.generate_rag_response", return_value=generation):
+                resp = client.post("/api/chat-rag", json={"query": "x", "model_provider": "ollama"})
     assert resp.status_code == 200
     data = resp.json()
     assert data["sources"] == []
@@ -162,8 +164,9 @@ def test_chat_rag_value_error_returns_400(client):
     config = Mock()
     config.chat = Mock(enable_rag=True, enable_citations=True)
     with patch("searchat.api.routers.chat.get_config", return_value=config):
-        with patch("searchat.api.routers.chat.generate_rag_response", side_effect=ValueError("bad")):
-            resp = client.post("/api/chat-rag", json={"query": "x", "model_provider": "ollama"})
+        with patch("searchat.api.routers.chat.get_search_engine", return_value=Mock()):
+            with patch("searchat.api.routers.chat.generate_rag_response", side_effect=ValueError("bad")):
+                resp = client.post("/api/chat-rag", json={"query": "x", "model_provider": "ollama"})
 
     assert resp.status_code == 400
     assert resp.json()["detail"] == "bad"
@@ -175,11 +178,12 @@ def test_chat_rag_llm_error_returns_503(client):
     config = Mock()
     config.chat = Mock(enable_rag=True, enable_citations=True)
     with patch("searchat.api.routers.chat.get_config", return_value=config):
-        with patch(
-            "searchat.api.routers.chat.generate_rag_response",
-            side_effect=LLMServiceError("nope"),
-        ):
-            resp = client.post("/api/chat-rag", json={"query": "x", "model_provider": "ollama"})
+        with patch("searchat.api.routers.chat.get_search_engine", return_value=Mock()):
+            with patch(
+                "searchat.api.routers.chat.generate_rag_response",
+                side_effect=LLMServiceError("nope"),
+            ):
+                resp = client.post("/api/chat-rag", json={"query": "x", "model_provider": "ollama"})
 
     assert resp.status_code == 503
     assert resp.json()["detail"] == "nope"
@@ -189,11 +193,12 @@ def test_chat_rag_unexpected_error_returns_500(client):
     config = Mock()
     config.chat = Mock(enable_rag=True, enable_citations=True)
     with patch("searchat.api.routers.chat.get_config", return_value=config):
-        with patch(
-            "searchat.api.routers.chat.generate_rag_response",
-            side_effect=RuntimeError("boom"),
-        ):
-            resp = client.post("/api/chat-rag", json={"query": "x", "model_provider": "ollama"})
+        with patch("searchat.api.routers.chat.get_search_engine", return_value=Mock()):
+            with patch(
+                "searchat.api.routers.chat.generate_rag_response",
+                side_effect=RuntimeError("boom"),
+            ):
+                resp = client.post("/api/chat-rag", json={"query": "x", "model_provider": "ollama"})
 
     assert resp.status_code == 500
     assert resp.json()["detail"] == "boom"
