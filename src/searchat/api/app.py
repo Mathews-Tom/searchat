@@ -31,10 +31,9 @@ from searchat.api.dependencies import (
     get_indexer,
     get_watcher,
     set_watcher,
-    watcher_stats,
-    indexing_state,
 )
 import searchat.api.dependencies as deps
+from searchat.api import state as api_state
 from searchat.api.readiness import get_readiness
 from searchat.api.templates import templates
 from searchat.api.routers import (
@@ -189,8 +188,6 @@ app.include_router(fragments_router)
 
 def on_new_conversations(file_paths: list[str]) -> None:
     """Callback when watcher detects new conversation files."""
-    global projects_cache, watcher_stats, indexing_state
-
     logger = get_logger(__name__)
     logger.info(f"Auto-indexing {len(file_paths)} new conversations")
 
@@ -199,11 +196,11 @@ def on_new_conversations(file_paths: list[str]) -> None:
         deps.get_or_create_search_engine()  # ensure engine exists before indexing
 
         # Mark indexing in progress
-        indexing_state["in_progress"] = True
-        indexing_state["operation"] = "watcher"
-        indexing_state["started_at"] = datetime.now().isoformat()
-        indexing_state["files_total"] = len(file_paths)
-        indexing_state["files_processed"] = 0
+        api_state.indexing_state["in_progress"] = True
+        api_state.indexing_state["operation"] = "watcher"
+        api_state.indexing_state["started_at"] = datetime.now().isoformat()
+        api_state.indexing_state["files_total"] = len(file_paths)
+        api_state.indexing_state["files_processed"] = 0
 
         # Use logging-based progress for background task
         progress = LoggingProgressAdapter()
@@ -227,8 +224,8 @@ def on_new_conversations(file_paths: list[str]) -> None:
         if stats.new_conversations > 0 or updated_conversations > 0:
             deps.invalidate_search_index()
 
-            watcher_stats["indexed_count"] += stats.new_conversations + updated_conversations
-            watcher_stats["last_update"] = datetime.now().isoformat()
+            api_state.watcher_stats["indexed_count"] += stats.new_conversations + updated_conversations
+            api_state.watcher_stats["last_update"] = datetime.now().isoformat()
 
             logger.info(
                 f"Indexed {stats.new_conversations} new conversations and "
@@ -239,8 +236,8 @@ def on_new_conversations(file_paths: list[str]) -> None:
         logger.error(f"Failed to index new conversations: {e}")
     finally:
         # Mark indexing complete
-        indexing_state["in_progress"] = False
-        indexing_state["operation"] = None
+        api_state.indexing_state["in_progress"] = False
+        api_state.indexing_state["operation"] = None
 
 
 

@@ -10,6 +10,8 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
+from searchat.api import state as api_state
+
 
 def _reset_readiness() -> None:
     from searchat.api.readiness import get_readiness
@@ -46,20 +48,7 @@ def _reset_dependencies_singletons(monkeypatch: pytest.MonkeyPatch) -> None:
     deps._duckdb_store = None
     deps._duckdb_store_by_dir.clear()
     deps._search_engine_by_dir.clear()
-    deps._warmup_task = None
-    deps.projects_cache = None
-    deps.stats_cache = None
-    deps.watcher_stats["indexed_count"] = 0
-    deps.watcher_stats["last_update"] = None
-    deps.indexing_state.update(
-        {
-            "in_progress": False,
-            "operation": None,
-            "started_at": None,
-            "files_total": 0,
-            "files_processed": 0,
-        }
-    )
+    api_state.reset_runtime_state()
     _reset_readiness()
 
 
@@ -282,7 +271,7 @@ def test_on_new_conversations_indexes_and_invalidates(monkeypatch: pytest.Monkey
 
     api_app.on_new_conversations(["a.jsonl", "b.jsonl"])
 
-    assert api_app.indexing_state["in_progress"] is False
+    assert api_state.indexing_state["in_progress"] is False
     invalidate.assert_called_once()
 
 
@@ -351,7 +340,7 @@ def test_on_new_conversations_handles_indexer_failure(monkeypatch: pytest.Monkey
     monkeypatch.setattr(deps, "get_or_create_search_engine", lambda: object())
 
     api_app.on_new_conversations(["a.jsonl"])
-    assert api_app.indexing_state["in_progress"] is False
+    assert api_state.indexing_state["in_progress"] is False
 
 
 @pytest.mark.asyncio
@@ -767,7 +756,7 @@ async def test_start_background_warmup_schedules_once(monkeypatch: pytest.Monkey
 
     deps._config = object()
     deps._search_dir = tmp_path
-    deps._warmup_task = None
+    api_state.warmup_task = None
 
     started = {"count": 0}
     block = asyncio.Event()
@@ -780,12 +769,12 @@ async def test_start_background_warmup_schedules_once(monkeypatch: pytest.Monkey
 
     deps.start_background_warmup()
     await asyncio.sleep(0)
-    assert deps._warmup_task is not None
-    task1: asyncio.Task[None] = deps._warmup_task  # type: ignore[assignment]
+    assert api_state.warmup_task is not None
+    task1: asyncio.Task[None] = api_state.warmup_task  # type: ignore[assignment]
     assert task1.done() is False
 
     deps.start_background_warmup()
-    assert deps._warmup_task is task1
+    assert api_state.warmup_task is task1
 
     assert started["count"] == 1
     task1.cancel()

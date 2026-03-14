@@ -12,11 +12,11 @@ from searchat.core.logging_config import get_logger
 from searchat.core.progress import LoggingProgressAdapter
 from searchat.core.connectors import get_connectors
 import searchat.api.dependencies as deps
+from searchat.api import state as api_state
 
 from searchat.api.dependencies import (
     get_config,
     get_indexer,
-    indexing_state,
     invalidate_search_index,
 )
 
@@ -55,8 +55,6 @@ async def index_missing(snapshot: str | None = Query(None, description="Backup s
     """Index conversations that aren't already indexed (append-only, safe)."""
     if snapshot is not None:
         raise HTTPException(status_code=403, detail="Indexing is disabled in snapshot mode")
-    global projects_cache, indexing_state
-
     try:
         start_time = time.time()
         config = get_config()
@@ -91,14 +89,14 @@ async def index_missing(snapshot: str | None = Query(None, description="Backup s
             }
 
         # Mark indexing in progress
-        indexing_state["in_progress"] = True
-        indexing_state["operation"] = "manual_index"
-        indexing_state["started_at"] = datetime.now().isoformat()
-        indexing_state["files_total"] = len(new_files)
-        indexing_state["files_processed"] = 0
+        api_state.indexing_state["in_progress"] = True
+        api_state.indexing_state["operation"] = "manual_index"
+        api_state.indexing_state["started_at"] = datetime.now().isoformat()
+        api_state.indexing_state["files_total"] = len(new_files)
+        api_state.indexing_state["files_processed"] = 0
 
         # Create progress adapter that updates state
-        progress = StateTrackingProgressAdapter(indexing_state)
+        progress = StateTrackingProgressAdapter(api_state.indexing_state)
 
         # Index new files (run in thread pool to avoid blocking)
         logger.info(f"Indexing {len(new_files)} missing conversations")
@@ -144,5 +142,5 @@ async def index_missing(snapshot: str | None = Query(None, description="Backup s
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         # Mark indexing complete
-        indexing_state["in_progress"] = False
-        indexing_state["operation"] = None
+        api_state.indexing_state["in_progress"] = False
+        api_state.indexing_state["operation"] = None

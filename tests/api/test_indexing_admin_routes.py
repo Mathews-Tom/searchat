@@ -10,6 +10,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from searchat.api.app import app
+from searchat.api import state as api_state
 
 
 @pytest.fixture
@@ -117,7 +118,7 @@ class TestIndexMissingEndpoint:
                         ),
                     ]
                     with patch('searchat.api.routers.indexing.get_connectors', return_value=connectors):
-                        with patch('searchat.api.routers.indexing.indexing_state', {"in_progress": False}):
+                        with patch('searchat.api.routers.indexing.api_state.indexing_state', {"in_progress": False}):
                             response = client.post("/api/index_missing")
 
                                 
@@ -169,7 +170,7 @@ class TestIndexMissingEndpoint:
             with patch('searchat.api.routers.indexing.get_indexer', return_value=mock_indexer):
                 connectors = [self._FakeConnector("claude", paths=[claude_dir / "conv1.jsonl"])]
                 with patch('searchat.api.routers.indexing.get_connectors', return_value=connectors):
-                    with patch('searchat.api.routers.indexing.indexing_state', indexing_state):
+                    with patch('searchat.api.routers.indexing.api_state.indexing_state', indexing_state):
                         response = client.post("/api/index_missing")
 
         # State should be reset after completion
@@ -189,7 +190,7 @@ class TestIndexMissingEndpoint:
             with patch('searchat.api.routers.indexing.get_indexer', return_value=mock_indexer):
                 connectors = [self._FakeConnector("claude", paths=[test_file])]
                 with patch('searchat.api.routers.indexing.get_connectors', return_value=connectors):
-                    with patch('searchat.api.routers.indexing.indexing_state', {"in_progress": False}):
+                    with patch('searchat.api.routers.indexing.api_state.indexing_state', {"in_progress": False}):
                         response = client.post("/api/index_missing")
 
         assert response.status_code == 500
@@ -212,7 +213,7 @@ class TestIndexMissingEndpoint:
                     self._FakeConnector("vibe", raises=RuntimeError("nope")),
                 ]
                 with patch('searchat.api.routers.indexing.get_connectors', return_value=connectors):
-                    with patch('searchat.api.routers.indexing.indexing_state', {"in_progress": False}):
+                    with patch('searchat.api.routers.indexing.api_state.indexing_state', {"in_progress": False}):
                         resp = client.post('/api/index_missing')
 
         assert resp.status_code == 200
@@ -231,7 +232,7 @@ class TestIndexMissingEndpoint:
                 with patch('searchat.api.routers.indexing.invalidate_search_index'):
                     connectors = [self._FakeConnector("opencode", paths=[session_dir / "s1.json"])]
                     with patch('searchat.api.routers.indexing.get_connectors', return_value=connectors):
-                        with patch('searchat.api.routers.indexing.indexing_state', {"in_progress": False}):
+                        with patch('searchat.api.routers.indexing.api_state.indexing_state', {"in_progress": False}):
                             resp = client.post('/api/index_missing')
 
         assert resp.status_code == 200
@@ -251,7 +252,7 @@ class TestIndexMissingEndpoint:
                 with patch('searchat.api.routers.indexing.invalidate_search_index'):
                     connectors = [self._FakeConnector("claude", paths=[claude_dir / "conv1.jsonl"])]
                     with patch('searchat.api.routers.indexing.get_connectors', return_value=connectors):
-                        with patch('searchat.api.routers.indexing.indexing_state', {"in_progress": False}):
+                        with patch('searchat.api.routers.indexing.api_state.indexing_state', {"in_progress": False}):
                             resp = client.post('/api/index_missing')
 
         assert resp.status_code == 200
@@ -271,7 +272,7 @@ class TestWatcherStatusEndpoint:
         watcher_stats = {"indexed_count": 5, "last_update": "2025-01-20T10:00:00"}
 
         with patch('searchat.api.routers.admin.get_watcher', return_value=mock_watcher):
-            with patch('searchat.api.routers.admin.watcher_stats', watcher_stats):
+            with patch('searchat.api.routers.admin.api_state.watcher_stats', watcher_stats):
                 response = client.get("/api/watcher/status")
 
                 assert response.status_code == 200
@@ -287,7 +288,7 @@ class TestWatcherStatusEndpoint:
         watcher_stats = {"indexed_count": 0, "last_update": None}
 
         with patch('searchat.api.routers.admin.get_watcher', return_value=None):
-            with patch('searchat.api.routers.admin.watcher_stats', watcher_stats):
+            with patch('searchat.api.routers.admin.api_state.watcher_stats', watcher_stats):
                 response = client.get("/api/watcher/status")
 
                 assert response.status_code == 200
@@ -306,7 +307,7 @@ class TestShutdownEndpoint:
         indexing_state = {"in_progress": False}
 
         with patch('searchat.api.routers.admin.get_watcher', return_value=mock_watcher):
-            with patch('searchat.api.routers.admin.indexing_state', indexing_state):
+            with patch('searchat.api.routers.admin.api_state.indexing_state', indexing_state):
                 with patch('searchat.api.routers.admin.os.kill'):
                     response = client.post("/api/shutdown")
 
@@ -326,7 +327,7 @@ class TestShutdownEndpoint:
             "files_total": 100
         }
 
-        with patch('searchat.api.routers.admin.indexing_state', indexing_state):
+        with patch('searchat.api.routers.admin.api_state.indexing_state', indexing_state):
             response = client.post("/api/shutdown")
 
             assert response.status_code == 200
@@ -347,7 +348,7 @@ class TestShutdownEndpoint:
         }
 
         with patch('searchat.api.routers.admin.get_watcher', return_value=mock_watcher):
-            with patch('searchat.api.routers.admin.indexing_state', indexing_state):
+            with patch('searchat.api.routers.admin.api_state.indexing_state', indexing_state):
                 with patch('searchat.api.routers.admin.os.kill'):
                     response = client.post("/api/shutdown?force=true")
 
@@ -363,7 +364,7 @@ class TestShutdownEndpoint:
         indexing_state = {"in_progress": False}
 
         with patch('searchat.api.routers.admin.get_watcher', return_value=mock_watcher):
-            with patch('searchat.api.routers.admin.indexing_state', indexing_state):
+            with patch('searchat.api.routers.admin.api_state.indexing_state', indexing_state):
                 # Just check the request is successful
                 # The actual shutdown happens in background task
                 with patch('searchat.api.routers.admin.os.kill'):
