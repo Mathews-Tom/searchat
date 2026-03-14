@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pyarrow as pa
@@ -60,11 +61,8 @@ def test_search_code_returns_results(client: TestClient, tmp_path: Path) -> None
     store = DuckDBStore(search_dir)
 
     with patch(
-        "searchat.api.routers.search.deps.resolve_dataset_search_dir",
-        return_value=(search_dir, None),
-    ), patch(
-        "searchat.api.routers.search.deps.get_duckdb_store_for",
-        return_value=store,
+        "searchat.api.routers.search.get_dataset_store",
+        return_value=SimpleNamespace(search_dir=search_dir, snapshot_name=None, store=store),
     ):
         resp = client.get("/api/search/code?q=print")
 
@@ -83,11 +81,8 @@ def test_search_code_filters_by_function_name(client: TestClient, tmp_path: Path
     store = DuckDBStore(search_dir)
 
     with patch(
-        "searchat.api.routers.search.deps.resolve_dataset_search_dir",
-        return_value=(search_dir, None),
-    ), patch(
-        "searchat.api.routers.search.deps.get_duckdb_store_for",
-        return_value=store,
+        "searchat.api.routers.search.get_dataset_store",
+        return_value=SimpleNamespace(search_dir=search_dir, snapshot_name=None, store=store),
     ):
         resp = client.get("/api/search/code?function=greet")
 
@@ -103,11 +98,8 @@ def test_search_code_returns_503_when_no_code_index(client: TestClient, tmp_path
     store = DuckDBStore(search_dir)
 
     with patch(
-        "searchat.api.routers.search.deps.resolve_dataset_search_dir",
-        return_value=(search_dir, None),
-    ), patch(
-        "searchat.api.routers.search.deps.get_duckdb_store_for",
-        return_value=store,
+        "searchat.api.routers.search.get_dataset_store",
+        return_value=SimpleNamespace(search_dir=search_dir, snapshot_name=None, store=store),
     ):
         resp = client.get("/api/search/code?q=print")
 
