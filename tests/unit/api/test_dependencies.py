@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 import searchat.api.dependencies as deps
+from searchat.api import state as api_state
 
 
 class FakeReadiness:
@@ -47,11 +48,10 @@ def reset_dependency_singletons(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(deps, "_duckdb_store", None)
     monkeypatch.setattr(deps, "_duckdb_store_by_dir", {})
     monkeypatch.setattr(deps, "_search_engine_by_dir", {})
-    monkeypatch.setattr(deps, "_warmup_task", None)
-
-    monkeypatch.setattr(deps, "projects_cache", "x")
-    monkeypatch.setattr(deps, "projects_summary_cache", "x")
-    monkeypatch.setattr(deps, "stats_cache", "x")
+    monkeypatch.setattr(api_state, "warmup_task", None)
+    monkeypatch.setattr(api_state, "projects_cache", "x")
+    monkeypatch.setattr(api_state, "projects_summary_cache", "x")
+    monkeypatch.setattr(api_state, "stats_cache", "x")
 
 
 def test_initialize_services_sets_components_ready(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -175,7 +175,7 @@ def test_start_background_warmup_is_idempotent(monkeypatch: pytest.MonkeyPatch, 
 
     loop = _Loop()
     monkeypatch.setattr(asyncio, "get_running_loop", lambda: loop)
-    monkeypatch.setattr(deps, "_warmup_task", _Task())
+    monkeypatch.setattr(api_state, "warmup_task", _Task())
 
     deps.start_background_warmup()
 
@@ -277,9 +277,9 @@ def test_invalidate_search_index_clears_caches_and_marks_idle(monkeypatch: pytes
 
     deps.invalidate_search_index()
 
-    assert deps.projects_cache is None
-    assert deps.projects_summary_cache is None
-    assert deps.stats_cache is None
+    assert api_state.projects_cache is None
+    assert api_state.projects_summary_cache is None
+    assert api_state.stats_cache is None
     assert called["refresh"] == 1
     assert readiness.components["metadata"] == "idle"
     assert readiness.components["faiss"] == "idle"

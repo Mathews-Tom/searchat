@@ -2,6 +2,8 @@ import pytest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+from searchat.api import state as api_state
+
 
 @pytest.mark.unit
 def test_readiness_state_transitions():
@@ -34,8 +36,8 @@ def test_invalidate_search_index_marks_semantic_stale():
     engine = Mock()
     with patch.object(deps, "start_background_warmup") as start_warmup:
         deps._search_engine = engine
-        deps.projects_cache = ["x"]
-        deps.stats_cache = {"y": 1}
+        api_state.projects_cache = ["x"]
+        api_state.stats_cache = {"y": 1}
 
         # Pretend semantic components were ready
         readiness = deps.get_readiness()
@@ -45,8 +47,8 @@ def test_invalidate_search_index_marks_semantic_stale():
 
         deps.invalidate_search_index()
 
-        assert deps.projects_cache is None
-        assert deps.stats_cache is None
+        assert api_state.projects_cache is None
+        assert api_state.stats_cache is None
         engine.refresh_index.assert_called_once()
         start_warmup.assert_called_once()
 
