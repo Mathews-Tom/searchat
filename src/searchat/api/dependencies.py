@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 if TYPE_CHECKING:
-    from searchat.core.search_engine import SearchEngine
+    from searchat.services.retrieval_service import SemanticRetrievalService
     from searchat.services.storage_service import StorageService
 
 
@@ -40,7 +40,7 @@ _knowledge_graph_store = None
 
 # Snapshot-scoped caches (keyed by dataset root, i.e. backup directory path).
 _duckdb_store_by_dir: dict[str, "StorageService"] = {}
-_search_engine_by_dir: dict[str, "SearchEngine"] = {}
+_search_engine_by_dir: dict[str, "SemanticRetrievalService"] = {}
 
 _service_lock = Lock()
 
@@ -213,7 +213,7 @@ def get_duckdb_store_for(search_dir: Path) -> "StorageService":
     return store
 
 
-def get_or_create_search_engine_for(search_dir: Path) -> "SearchEngine":
+def get_or_create_search_engine_for(search_dir: Path) -> "SemanticRetrievalService":
     """Get (or create) a SearchEngine for a specific dataset root.
 
     Snapshot engines must not mutate readiness/warmup globals.
@@ -226,9 +226,9 @@ def get_or_create_search_engine_for(search_dir: Path) -> "SearchEngine":
     if engine is not None:
         return engine
 
-    from searchat.core.search_engine import SearchEngine
+    from searchat.services.retrieval_service import build_retrieval_service
 
-    engine = SearchEngine(search_dir, get_config())
+    engine = build_retrieval_service(search_dir, config=get_config())
     _search_engine_by_dir[key] = engine
     return engine
 
@@ -335,9 +335,9 @@ def _ensure_search_engine():
 
         readiness.set_component("search_engine", "loading")
         try:
-            from searchat.core.search_engine import SearchEngine
+            from searchat.services.retrieval_service import build_retrieval_service
 
-            _search_engine = SearchEngine(_search_dir, _config)
+            _search_engine = build_retrieval_service(_search_dir, config=_config)
             readiness.set_component("search_engine", "ready")
         except Exception as e:
             readiness.set_component("search_engine", "error", error=str(e))
