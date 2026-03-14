@@ -143,7 +143,7 @@ class TestGetDuckdbStoreFor:
             def __init__(self, path, *, memory_limit_mb):
                 self.path = path
 
-        monkeypatch.setitem(sys.modules, "searchat.api.duckdb_store", types.SimpleNamespace(DuckDBStore=_FakeStore))
+        monkeypatch.setitem(sys.modules, "searchat.services.duckdb_storage", types.SimpleNamespace(DuckDBStore=_FakeStore))
 
         store = deps.get_duckdb_store_for(other)
         assert store.path == other
@@ -288,7 +288,7 @@ class TestInitializeWithExpertise:
             def __init__(self, path):
                 self.path = path
 
-        monkeypatch.setitem(sys.modules, "searchat.api.duckdb_store", types.SimpleNamespace(DuckDBStore=_DuckDBStore))
+        monkeypatch.setitem(sys.modules, "searchat.services.duckdb_storage", types.SimpleNamespace(DuckDBStore=_DuckDBStore))
         monkeypatch.setitem(sys.modules, "searchat.services.bookmarks", types.SimpleNamespace(BookmarksService=lambda _: object()))
         monkeypatch.setitem(sys.modules, "searchat.services.saved_queries", types.SimpleNamespace(SavedQueriesService=lambda _: object()))
         monkeypatch.setitem(sys.modules, "searchat.services.dashboards", types.SimpleNamespace(DashboardsService=lambda _: object()))
@@ -324,7 +324,7 @@ class TestInitializeWithExpertise:
             def __init__(self, path):
                 self.path = path
 
-        monkeypatch.setitem(sys.modules, "searchat.api.duckdb_store", types.SimpleNamespace(DuckDBStore=_DuckDBStore))
+        monkeypatch.setitem(sys.modules, "searchat.services.duckdb_storage", types.SimpleNamespace(DuckDBStore=_DuckDBStore))
         monkeypatch.setitem(sys.modules, "searchat.services.bookmarks", types.SimpleNamespace(BookmarksService=lambda _: object()))
         monkeypatch.setitem(sys.modules, "searchat.services.saved_queries", types.SimpleNamespace(SavedQueriesService=lambda _: object()))
         monkeypatch.setitem(sys.modules, "searchat.services.dashboards", types.SimpleNamespace(DashboardsService=lambda _: object()))

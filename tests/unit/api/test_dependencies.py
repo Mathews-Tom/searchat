@@ -95,7 +95,7 @@ def test_initialize_services_sets_components_ready(monkeypatch: pytest.MonkeyPat
         def __init__(self, _cfg):
             self.cfg = _cfg
 
-    monkeypatch.setitem(sys.modules, "searchat.api.duckdb_store", types.SimpleNamespace(DuckDBStore=_DuckDBStore))
+    monkeypatch.setitem(sys.modules, "searchat.services.duckdb_storage", types.SimpleNamespace(DuckDBStore=_DuckDBStore))
     monkeypatch.setitem(sys.modules, "searchat.services.bookmarks", types.SimpleNamespace(BookmarksService=_BookmarksService))
     monkeypatch.setitem(sys.modules, "searchat.services.saved_queries", types.SimpleNamespace(SavedQueriesService=_SavedQueriesService))
     monkeypatch.setitem(sys.modules, "searchat.services.dashboards", types.SimpleNamespace(DashboardsService=_DashboardsService))
