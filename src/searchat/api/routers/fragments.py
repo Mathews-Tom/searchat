@@ -10,6 +10,7 @@ from starlette.responses import StreamingResponse
 
 from searchat.api.templates import templates
 import searchat.api.dependencies as deps
+from searchat.api import state as api_state
 from searchat.expertise.models import ExpertiseQuery, ExpertiseType, ExpertiseSeverity
 from searchat.models.domain import SearchFilters
 from searchat.models.enums import SearchMode
@@ -181,9 +182,9 @@ def _list_projects() -> list[str]:
     try:
         search_dir, _snapshot_name = deps.resolve_dataset_search_dir(None)
         store = deps.get_duckdb_store_for(search_dir)
-        if deps.projects_cache is None:
-            deps.projects_cache = store.list_projects()
-        return deps.projects_cache
+        if api_state.projects_cache is None:
+            api_state.projects_cache = store.list_projects()
+        return api_state.projects_cache
     except (ValueError, RuntimeError):
         return []
 

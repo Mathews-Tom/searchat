@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from searchat.api.app import app
+from searchat.api import state as api_state
 
 
 @pytest.fixture
@@ -76,7 +77,7 @@ class TestStatisticsEndpoint:
     def test_get_statistics_success(self, client, mock_duckdb_store_stats):
         """Test getting index statistics."""
         with patch('searchat.api.routers.stats.deps.get_duckdb_store', return_value=mock_duckdb_store_stats):
-            with patch('searchat.api.routers.stats.deps.stats_cache', None):
+            with patch('searchat.api.routers.stats.api_state.stats_cache', None):
                 response = client.get("/api/statistics")
 
             assert response.status_code == 200
@@ -113,7 +114,7 @@ class TestStatisticsEndpoint:
         )
 
         with patch('searchat.api.routers.stats.deps.get_duckdb_store', return_value=mock_store):
-            with patch('searchat.api.routers.stats.deps.stats_cache', None):
+            with patch('searchat.api.routers.stats.api_state.stats_cache', None):
                 response = client.get("/api/statistics")
 
             assert response.status_code == 200
@@ -139,7 +140,7 @@ class TestStatisticsEndpoint:
         )
 
         with patch('searchat.api.routers.stats.deps.get_duckdb_store', return_value=mock_store):
-            with patch('searchat.api.routers.stats.deps.stats_cache', None):
+            with patch('searchat.api.routers.stats.api_state.stats_cache', None):
                 first = client.get("/api/statistics")
                 second = client.get("/api/statistics")
 

@@ -6,6 +6,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Query
 
 import searchat.api.dependencies as deps
+from searchat.api import state as api_state
 
 
 logger = logging.getLogger(__name__)
@@ -33,9 +34,9 @@ async def get_statistics(snapshot: str | None = Query(None, description="Backup 
             "latest_date": stats.latest_date,
         }
 
-    if deps.stats_cache is None:
+    if api_state.stats_cache is None:
         stats = store.get_statistics()
-        deps.stats_cache = {
+        api_state.stats_cache = {
             "total_conversations": stats.total_conversations,
             "total_messages": stats.total_messages,
             "avg_messages": stats.avg_messages,
@@ -43,7 +44,7 @@ async def get_statistics(snapshot: str | None = Query(None, description="Backup 
             "earliest_date": stats.earliest_date,
             "latest_date": stats.latest_date,
         }
-    return deps.stats_cache
+    return api_state.stats_cache
 
 
 @router.get("/stats/analytics/summary")

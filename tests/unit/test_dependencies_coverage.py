@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import searchat.api.dependencies as deps
+from searchat.api import state as api_state
 
 
 @pytest.fixture(autouse=True)
@@ -30,10 +31,10 @@ def _reset_singletons(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(deps, "_knowledge_graph_store", None)
     monkeypatch.setattr(deps, "_duckdb_store_by_dir", {})
     monkeypatch.setattr(deps, "_search_engine_by_dir", {})
-    monkeypatch.setattr(deps, "_warmup_task", None)
-    monkeypatch.setattr(deps, "projects_cache", "x")
-    monkeypatch.setattr(deps, "projects_summary_cache", "x")
-    monkeypatch.setattr(deps, "stats_cache", "x")
+    monkeypatch.setattr(api_state, "warmup_task", None)
+    monkeypatch.setattr(api_state, "projects_cache", "x")
+    monkeypatch.setattr(api_state, "projects_summary_cache", "x")
+    monkeypatch.setattr(api_state, "stats_cache", "x")
 
 
 class FakeReadiness:

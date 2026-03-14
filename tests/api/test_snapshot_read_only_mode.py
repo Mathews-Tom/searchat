@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 import searchat.api.dependencies as deps
+from searchat.api import state as api_state
 from searchat.api.duckdb_store import DuckDBStore
 from searchat.api.routers import backup as backup_router
 from searchat.api.routers import conversations as conversations_router
@@ -48,9 +49,9 @@ def _init_deps_for_search_dir(search_dir: Path) -> None:
     deps._duckdb_store = DuckDBStore(search_dir, memory_limit_mb=cfg.performance.memory_limit_mb)
 
     # Clear caches
-    deps.projects_cache = None
-    deps.projects_summary_cache = None
-    deps.stats_cache = None
+    api_state.projects_cache = None
+    api_state.projects_summary_cache = None
+    api_state.stats_cache = None
     deps._duckdb_store_by_dir = {}
     deps._search_engine_by_dir = {}
 

@@ -8,11 +8,8 @@ from datetime import datetime
 
 from fastapi import APIRouter, BackgroundTasks
 
-from searchat.api.dependencies import (
-    get_watcher,
-    watcher_stats,
-    indexing_state,
-)
+from searchat.api.dependencies import get_watcher
+from searchat.api import state as api_state
 
 
 router = APIRouter()
@@ -27,30 +24,28 @@ async def get_watcher_status():
     return {
         "running": watcher.is_running if watcher else False,
         "watched_directories": [str(d) for d in watcher.get_watched_directories()] if watcher else [],
-        "indexed_since_start": watcher_stats["indexed_count"],
-        "last_update": watcher_stats["last_update"],
+        "indexed_since_start": api_state.watcher_stats["indexed_count"],
+        "last_update": api_state.watcher_stats["last_update"],
     }
 
 
 @router.post("/shutdown")
 async def shutdown_server(background_tasks: BackgroundTasks, force: bool = False):
     """Gracefully shutdown the server with safety checks."""
-    global indexing_state
-
     # Check if indexing is in progress
-    if indexing_state["in_progress"] and not force:
+    if api_state.indexing_state["in_progress"] and not force:
         # Calculate elapsed time
-        started = datetime.fromisoformat(indexing_state["started_at"])
+        started = datetime.fromisoformat(api_state.indexing_state["started_at"])
         elapsed = (datetime.now() - started).total_seconds()
 
         return {
             "success": False,
             "indexing_in_progress": True,
-            "operation": indexing_state["operation"],
-            "files_total": indexing_state["files_total"],
+            "operation": api_state.indexing_state["operation"],
+            "files_total": api_state.indexing_state["files_total"],
             "elapsed_seconds": round(elapsed, 1),
-            "message": f"Indexing in progress ({indexing_state['operation']}). "
-                      f"Processing {indexing_state['files_total']} files. "
+            "message": f"Indexing in progress ({api_state.indexing_state['operation']}). "
+                      f"Processing {api_state.indexing_state['files_total']} files. "
                       f"Use force=true to shutdown anyway (may corrupt data)."
         }
 
@@ -59,8 +54,8 @@ async def shutdown_server(background_tasks: BackgroundTasks, force: bool = False
         import time
         time.sleep(0.5)  # Give time for response to be sent
 
-        if force and indexing_state["in_progress"]:
-            logger.warning(f"FORCED shutdown during indexing operation: {indexing_state['operation']}")
+        if force and api_state.indexing_state["in_progress"]:
+            logger.warning(f"FORCED shutdown during indexing operation: {api_state.indexing_state['operation']}")
         else:
             logger.info("Server shutdown requested via API")
 
@@ -75,7 +70,7 @@ async def shutdown_server(background_tasks: BackgroundTasks, force: bool = False
 
     background_tasks.add_task(shutdown)
 
-    if force and indexing_state["in_progress"]:
+    if force and api_state.indexing_state["in_progress"]:
         return {
             "success": True,
             "forced": True,

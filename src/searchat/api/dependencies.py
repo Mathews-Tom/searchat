@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 from searchat.services import BackupManager, PlatformManager
 from searchat.config import Config, PathResolver
 from searchat.api.readiness import get_readiness
+from searchat.api import state as api_state
 
 
 logger = logging.getLogger(__name__)
@@ -48,21 +49,6 @@ _duckdb_store_by_dir: dict[str, "StorageService"] = {}
 _search_engine_by_dir: dict[str, "SearchEngine"] = {}
 
 _service_lock = Lock()
-_warmup_task: asyncio.Task[None] | None = None
-
-
-# Shared state
-projects_cache = None
-projects_summary_cache = None
-stats_cache = None
-watcher_stats = {"indexed_count": 0, "last_update": None}
-indexing_state = {
-    "in_progress": False,
-    "operation": None,  # "manual_index" or "watcher"
-    "started_at": None,
-    "files_total": 0,
-    "files_processed": 0
-}
 
 
 def initialize_services():
@@ -103,8 +89,6 @@ def initialize_services():
 
 def start_background_warmup() -> None:
     """Kick off background warmup (non-blocking, idempotent)."""
-    global _warmup_task
-
     if _config is None or _search_dir is None:
         return
 
@@ -117,10 +101,10 @@ def start_background_warmup() -> None:
         # Not in an event loop; cannot schedule async task.
         return
 
-    if _warmup_task is not None and not _warmup_task.done():
+    if api_state.warmup_task is not None and not api_state.warmup_task.done():
         return
 
-    _warmup_task = loop.create_task(_warmup_all())
+    api_state.warmup_task = loop.create_task(_warmup_all())
 
 
 async def _warmup_all() -> None:
@@ -299,11 +283,7 @@ def get_or_create_search_engine():
 
 def invalidate_search_index() -> None:
     """Clear caches and mark semantic components stale after indexing."""
-    global projects_cache, projects_summary_cache, stats_cache
-
-    projects_cache = None
-    projects_summary_cache = None
-    stats_cache = None
+    api_state.clear_query_caches()
 
     engine = _search_engine
     if engine is not None:

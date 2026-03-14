@@ -19,6 +19,7 @@ from searchat.api.utils import (
     rows_to_code_results,
 )
 import searchat.api.dependencies as deps
+from searchat.api import state as api_state
 
 from searchat.api.dependencies import get_analytics_service
 
@@ -249,9 +250,9 @@ async def get_projects(snapshot: str | None = Query(None, description="Backup sn
     if snapshot_name is not None:
         return store.list_projects()
 
-    if deps.projects_cache is None:
-        deps.projects_cache = store.list_projects()
-    return deps.projects_cache
+    if api_state.projects_cache is None:
+        api_state.projects_cache = store.list_projects()
+    return api_state.projects_cache
 
 
 @router.get("/projects/summary")
@@ -263,9 +264,9 @@ async def get_projects_summary(snapshot: str | None = Query(None, description="B
     if snapshot_name is not None:
         return store.list_project_summaries()
 
-    if deps.projects_summary_cache is None:
-        deps.projects_summary_cache = store.list_project_summaries()
-    return deps.projects_summary_cache
+    if api_state.projects_summary_cache is None:
+        api_state.projects_summary_cache = store.list_project_summaries()
+    return api_state.projects_summary_cache
 
 
 @router.get("/search/suggestions")
