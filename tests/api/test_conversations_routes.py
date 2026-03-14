@@ -4,6 +4,7 @@ import json
 from datetime import datetime
 from unittest.mock import Mock, patch, mock_open
 from pathlib import Path
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 from fastapi import HTTPException
@@ -15,6 +16,19 @@ from searchat.api.app import app
 def client():
     """FastAPI test client."""
     return TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def active_dataset_store(monkeypatch: pytest.MonkeyPatch):
+    """Route tests in this module target the active dataset unless stated otherwise."""
+    from searchat.api.routers import conversations as conv_router
+
+    def _get_dataset_store(snapshot):
+        if snapshot not in (None, ""):
+            raise AssertionError("Snapshot dataset access should be patched explicitly in this test")
+        return SimpleNamespace(snapshot_name=None, store=conv_router.deps.get_duckdb_store())
+
+    monkeypatch.setattr(conv_router, "get_dataset_store", _get_dataset_store)
 
 
 @pytest.fixture
@@ -360,7 +374,10 @@ def mock_platform_manager():
 
 def test_conversation_diff_requires_search_engine(client):
     """Test diff endpoint returns 503 when search engine not ready."""
-    with patch('searchat.api.routers.conversations.deps.get_search_engine', side_effect=RuntimeError("Search engine not ready")):
+    with patch(
+        'searchat.api.routers.conversations.get_dataset_semantic_retrieval',
+        side_effect=RuntimeError("Search engine not ready"),
+    ):
         response = client.get("/api/conversation/conv-1/diff")
 
         assert response.status_code == 503
