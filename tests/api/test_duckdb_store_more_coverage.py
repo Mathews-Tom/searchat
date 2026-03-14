@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 
 def test_duckdb_store_returns_empty_when_no_parquets(tmp_path: Path) -> None:
-    from searchat.api.duckdb_store import DuckDBStore
+    from searchat.services.duckdb_storage import DuckDBStore
 
     store = DuckDBStore(tmp_path)
     assert store.list_projects() == []
@@ -20,7 +20,7 @@ def test_duckdb_store_returns_empty_when_no_parquets(tmp_path: Path) -> None:
 
 
 def test_duckdb_store_list_conversations_builds_where_and_params(tmp_path: Path) -> None:
-    from searchat.api.duckdb_store import DuckDBStore
+    from searchat.services.duckdb_storage import DuckDBStore
 
     store = DuckDBStore(tmp_path)
 
@@ -68,7 +68,7 @@ def test_duckdb_store_list_conversations_builds_where_and_params(tmp_path: Path)
 
 
 def test_duckdb_store_list_conversations_tool_filters(tmp_path: Path) -> None:
-    from searchat.api.duckdb_store import DuckDBStore
+    from searchat.services.duckdb_storage import DuckDBStore
 
     store = DuckDBStore(tmp_path)
     store._conversation_parquets = MagicMock(return_value=[tmp_path / "data" / "conversations" / "a.parquet"])  # type: ignore[method-assign]
@@ -93,7 +93,7 @@ def test_duckdb_store_list_conversations_tool_filters(tmp_path: Path) -> None:
 
 
 def test_duckdb_store_get_statistics_handles_none_row(tmp_path: Path) -> None:
-    from searchat.api.duckdb_store import DuckDBStore
+    from searchat.services.duckdb_storage import DuckDBStore
 
     store = DuckDBStore(tmp_path)
     store._conversation_parquets = MagicMock(return_value=[tmp_path / "data" / "conversations" / "a.parquet"])  # type: ignore[method-assign]
@@ -110,7 +110,7 @@ def test_duckdb_store_get_statistics_handles_none_row(tmp_path: Path) -> None:
 
 
 def test_duckdb_store_validate_parquet_scan_runs_select(tmp_path: Path) -> None:
-    from searchat.api.duckdb_store import DuckDBStore
+    from searchat.services.duckdb_storage import DuckDBStore
 
     store = DuckDBStore(tmp_path)
 
@@ -125,7 +125,7 @@ def test_duckdb_store_validate_parquet_scan_runs_select(tmp_path: Path) -> None:
 
 
 def test_duckdb_store_validate_parquet_scan_scans_when_parquets_exist(tmp_path: Path) -> None:
-    from searchat.api.duckdb_store import DuckDBStore
+    from searchat.services.duckdb_storage import DuckDBStore
 
     store = DuckDBStore(tmp_path)
 
@@ -142,7 +142,7 @@ def test_duckdb_store_validate_parquet_scan_scans_when_parquets_exist(tmp_path: 
 
 
 def test_duckdb_store_list_projects_returns_rows(tmp_path: Path) -> None:
-    from searchat.api.duckdb_store import DuckDBStore
+    from searchat.services.duckdb_storage import DuckDBStore
 
     store = DuckDBStore(tmp_path)
     store._conversation_parquets = MagicMock(return_value=[tmp_path / "data" / "conversations" / "a.parquet"])  # type: ignore[method-assign]
@@ -156,7 +156,7 @@ def test_duckdb_store_list_projects_returns_rows(tmp_path: Path) -> None:
 
 
 def test_duckdb_store_count_conversations_filters(tmp_path: Path) -> None:
-    from searchat.api.duckdb_store import DuckDBStore
+    from searchat.services.duckdb_storage import DuckDBStore
 
     store = DuckDBStore(tmp_path)
     store._conversation_parquets = MagicMock(return_value=[tmp_path / "data" / "conversations" / "a.parquet"])  # type: ignore[method-assign]
@@ -175,7 +175,7 @@ def test_duckdb_store_count_conversations_filters(tmp_path: Path) -> None:
 
 
 def test_duckdb_store_count_conversations_handles_none_row(tmp_path: Path) -> None:
-    from searchat.api.duckdb_store import DuckDBStore
+    from searchat.services.duckdb_storage import DuckDBStore
 
     store = DuckDBStore(tmp_path)
     store._conversation_parquets = MagicMock(return_value=[tmp_path / "data" / "conversations" / "a.parquet"])  # type: ignore[method-assign]
@@ -189,7 +189,7 @@ def test_duckdb_store_count_conversations_handles_none_row(tmp_path: Path) -> No
 
 
 def test_duckdb_store_count_conversations_tool_and_date_filters(tmp_path: Path) -> None:
-    from searchat.api.duckdb_store import DuckDBStore
+    from searchat.services.duckdb_storage import DuckDBStore
 
     store = DuckDBStore(tmp_path)
     store._conversation_parquets = MagicMock(return_value=[tmp_path / "data" / "conversations" / "a.parquet"])  # type: ignore[method-assign]
@@ -215,7 +215,7 @@ def test_duckdb_store_count_conversations_tool_and_date_filters(tmp_path: Path) 
 
 
 def test_duckdb_store_get_conversation_meta_returns_dict(tmp_path: Path) -> None:
-    from searchat.api.duckdb_store import DuckDBStore
+    from searchat.services.duckdb_storage import DuckDBStore
 
     store = DuckDBStore(tmp_path)
     store._conversation_parquets = MagicMock(return_value=[tmp_path / "data" / "conversations" / "a.parquet"])  # type: ignore[method-assign]
@@ -240,7 +240,7 @@ def test_duckdb_store_get_conversation_meta_returns_dict(tmp_path: Path) -> None
 
 
 def test_duckdb_store_get_conversation_meta_returns_none_when_missing(tmp_path: Path) -> None:
-    from searchat.api.duckdb_store import DuckDBStore
+    from searchat.services.duckdb_storage import DuckDBStore
 
     store = DuckDBStore(tmp_path)
     store._conversation_parquets = MagicMock(return_value=[tmp_path / "data" / "conversations" / "a.parquet"])  # type: ignore[method-assign]
@@ -254,7 +254,7 @@ def test_duckdb_store_get_conversation_meta_returns_none_when_missing(tmp_path: 
 
 
 def test_duckdb_store_get_conversation_record_returns_none_when_missing(tmp_path: Path) -> None:
-    from searchat.api.duckdb_store import DuckDBStore
+    from searchat.services.duckdb_storage import DuckDBStore
 
     store = DuckDBStore(tmp_path)
     store._conversation_parquets = MagicMock(return_value=[tmp_path / "data" / "conversations" / "a.parquet"])  # type: ignore[method-assign]
@@ -268,7 +268,7 @@ def test_duckdb_store_get_conversation_record_returns_none_when_missing(tmp_path
 
 
 def test_duckdb_store_get_statistics_converts_dates(tmp_path: Path) -> None:
-    from searchat.api.duckdb_store import DuckDBStore
+    from searchat.services.duckdb_storage import DuckDBStore
 
     store = DuckDBStore(tmp_path)
     store._conversation_parquets = MagicMock(return_value=[tmp_path / "data" / "conversations" / "a.parquet"])  # type: ignore[method-assign]
@@ -293,7 +293,7 @@ def test_duckdb_store_get_statistics_converts_dates(tmp_path: Path) -> None:
 
 
 def test_duckdb_store_get_statistics_handles_none_dates(tmp_path: Path) -> None:
-    from searchat.api.duckdb_store import DuckDBStore
+    from searchat.services.duckdb_storage import DuckDBStore
 
     store = DuckDBStore(tmp_path)
     store._conversation_parquets = MagicMock(return_value=[tmp_path / "data" / "conversations" / "a.parquet"])  # type: ignore[method-assign]

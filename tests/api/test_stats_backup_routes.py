@@ -19,7 +19,7 @@ def client():
 @pytest.fixture
 def mock_duckdb_store_stats():
     """Mock DuckDBStore for stats endpoint."""
-    from searchat.api.duckdb_store import IndexStatistics
+    from searchat.services.duckdb_storage import IndexStatistics
 
     mock = Mock()
     mock.get_statistics.return_value = IndexStatistics(
@@ -100,7 +100,7 @@ class TestStatisticsEndpoint:
 
     def test_get_statistics_single_conversation(self, client):
         """Test statistics with single conversation."""
-        from searchat.api.duckdb_store import IndexStatistics
+        from searchat.services.duckdb_storage import IndexStatistics
 
         mock_store = Mock()
         now = datetime.now().isoformat()
@@ -127,7 +127,7 @@ class TestStatisticsEndpoint:
 
     def test_get_statistics_uses_cache(self, client):
         """Second call should return cached payload for active dataset."""
-        from searchat.api.duckdb_store import IndexStatistics
+        from searchat.services.duckdb_storage import IndexStatistics
 
         mock_store = Mock()
         mock_store.get_statistics.return_value = IndexStatistics(

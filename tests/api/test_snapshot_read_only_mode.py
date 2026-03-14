@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 import searchat.api.dependencies as deps
 from searchat.api import state as api_state
-from searchat.api.duckdb_store import DuckDBStore
+from searchat.services.duckdb_storage import DuckDBStore
 from searchat.api.routers import backup as backup_router
 from searchat.api.routers import conversations as conversations_router
 from searchat.api.routers import indexing as indexing_router
