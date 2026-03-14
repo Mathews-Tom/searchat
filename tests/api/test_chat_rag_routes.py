@@ -138,7 +138,7 @@ def test_chat_rag_warming_until_ready(client, monkeypatch):
     )
     warmup = Mock()
 
-    monkeypatch.setattr("searchat.api.dependencies.trigger_search_engine_warmup", warmup)
+    monkeypatch.setattr("searchat.api.warmup.trigger_search_engine_warmup", warmup)
     with patch("searchat.api.readiness.get_readiness", return_value=readiness):
         resp = client.post("/api/chat-rag", json={"query": "x", "model_provider": "ollama"})
 

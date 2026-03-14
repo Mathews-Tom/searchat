@@ -32,9 +32,10 @@ def test_readiness_state_transitions():
 @pytest.mark.unit
 def test_invalidate_search_index_marks_semantic_stale():
     import searchat.api.dependencies as deps
+    import searchat.api.warmup as api_warmup
 
     engine = Mock()
-    with patch.object(deps, "start_background_warmup") as start_warmup:
+    with patch.object(api_warmup, "start_background_warmup") as start_warmup:
         deps._search_engine = engine
         api_state.projects_cache = ["x"]
         api_state.stats_cache = {"y": 1}
@@ -61,6 +62,7 @@ def test_invalidate_search_index_marks_semantic_stale():
 @pytest.mark.unit
 def test_warmup_semantic_components_sets_readiness_ready(tmp_path: Path):
     import searchat.api.dependencies as deps
+    import searchat.api.warmup as api_warmup
 
     # Ensure services look initialized for the warmup guard.
     deps._config = Mock()
@@ -77,7 +79,7 @@ def test_warmup_semantic_components_sets_readiness_ready(tmp_path: Path):
         readiness.set_component("metadata", "idle")
         readiness.set_component("embedder", "idle")
 
-        deps._warmup_semantic_components()
+        api_warmup._warmup_semantic_components()
 
         engine.ensure_metadata_ready.assert_called_once()
         engine.ensure_faiss_loaded.assert_called_once()
