@@ -5,11 +5,28 @@ from types import SimpleNamespace
 from datetime import datetime, timedelta
 from unittest.mock import Mock, patch
 
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from searchat.models import SearchResult, SearchResults, SearchMode
 from searchat.api.app import app
 from searchat.api import state as api_state
+
+
+def make_retrieval_context(search_engine, *, snapshot_name=None, search_dir=Path("/tmp")):
+    return SimpleNamespace(
+        search_dir=search_dir,
+        snapshot_name=snapshot_name,
+        retrieval_service=search_engine,
+    )
+
+
+def make_store_context(store, *, snapshot_name=None, search_dir=Path("/tmp")):
+    return SimpleNamespace(
+        search_dir=search_dir,
+        snapshot_name=snapshot_name,
+        store=store,
+    )
 
 
 @pytest.fixture
@@ -26,6 +43,14 @@ def semantic_components_ready():
         components={"metadata": "ready", "faiss": "ready", "embedder": "ready"}
     )
     with patch('searchat.api.readiness.get_readiness', return_value=readiness):
+        yield
+
+
+@pytest.fixture(autouse=True)
+def search_route_config():
+    """Provide minimal config for route tests that reach analytics/highlight wiring."""
+    config = SimpleNamespace(analytics=SimpleNamespace(enabled=False))
+    with patch('searchat.api.routers.search.deps.get_config', return_value=config):
         yield
 
 
@@ -73,7 +98,10 @@ class TestSearchEndpoint:
 
     def test_basic_search(self, client, mock_search_engine):
         """Test basic search with query."""
-        with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
+        with patch(
+            'searchat.api.routers.search.get_dataset_retrieval',
+            return_value=make_retrieval_context(mock_search_engine),
+        ):
             response = client.get("/api/search?q=test")
 
             assert response.status_code == 200
@@ -95,7 +123,10 @@ class TestSearchEndpoint:
 
     def test_search_mode_hybrid(self, client, mock_search_engine):
         """Test search with hybrid mode - combines keyword and semantic."""
-        with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
+        with patch(
+            'searchat.api.routers.search.get_dataset_retrieval',
+            return_value=make_retrieval_context(mock_search_engine),
+        ):
             response = client.get("/api/search?q=implement binary search tree&mode=hybrid")
 
             assert response.status_code == 200
@@ -108,7 +139,10 @@ class TestSearchEndpoint:
 
     def test_search_mode_semantic(self, client, mock_search_engine):
         """Test search with semantic mode - meaning-based search."""
-        with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
+        with patch(
+            'searchat.api.routers.search.get_dataset_retrieval',
+            return_value=make_retrieval_context(mock_search_engine),
+        ):
             # Semantic mode should handle conceptual queries well
             response = client.get("/api/search?q=how to sort data structures&mode=semantic")
 
@@ -120,7 +154,10 @@ class TestSearchEndpoint:
 
     def test_search_mode_keyword(self, client, mock_search_engine):
         """Test search with keyword mode - exact text matching."""
-        with patch('searchat.api.routers.search.deps.get_or_create_search_engine', return_value=mock_search_engine):
+        with patch(
+            'searchat.api.routers.search.get_dataset_retrieval',
+            return_value=make_retrieval_context(mock_search_engine),
+        ):
             # Keyword mode should handle specific terms
             response = client.get("/api/search?q=def binary_search&mode=keyword")
 
@@ -132,7 +169,10 @@ class TestSearchEndpoint:
 
     def test_search_mode_default_is_hybrid(self, client, mock_search_engine):
         """Test that default search mode is hybrid when not specified."""
-        with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
+        with patch(
+            'searchat.api.routers.search.get_dataset_retrieval',
+            return_value=make_retrieval_context(mock_search_engine),
+        ):
             response = client.get("/api/search?q=test")  # No mode specified
 
             assert response.status_code == 200
@@ -142,7 +182,10 @@ class TestSearchEndpoint:
 
     def test_search_mode_invalid_returns_400(self, client, mock_search_engine):
         """Test that invalid mode is rejected."""
-        with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
+        with patch(
+            'searchat.api.routers.search.get_dataset_retrieval',
+            return_value=make_retrieval_context(mock_search_engine),
+        ):
             response = client.get("/api/search?q=test&mode=invalid")
 
             assert response.status_code == 400
@@ -150,7 +193,10 @@ class TestSearchEndpoint:
 
     def test_search_highlight_requires_provider(self, client, mock_search_engine):
         """Test that highlight requests require explicit provider."""
-        with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
+        with patch(
+            'searchat.api.routers.search.get_dataset_retrieval',
+            return_value=make_retrieval_context(mock_search_engine),
+        ):
             response = client.get("/api/search?q=test&highlight=true")
 
             assert response.status_code == 400
@@ -158,7 +204,10 @@ class TestSearchEndpoint:
 
     def test_search_with_project_filter(self, client, mock_search_engine):
         """Test search with project filter."""
-        with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
+        with patch(
+            'searchat.api.routers.search.get_dataset_retrieval',
+            return_value=make_retrieval_context(mock_search_engine),
+        ):
             response = client.get("/api/search?q=test&project=test-project")
 
             assert response.status_code == 200
@@ -168,7 +217,10 @@ class TestSearchEndpoint:
 
     def test_search_with_date_filter_today(self, client, mock_search_engine):
         """Test search with 'today' date filter."""
-        with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
+        with patch(
+            'searchat.api.routers.search.get_dataset_retrieval',
+            return_value=make_retrieval_context(mock_search_engine),
+        ):
             response = client.get("/api/search?q=test&date=today")
 
             assert response.status_code == 200
@@ -183,7 +235,10 @@ class TestSearchEndpoint:
 
     def test_search_with_date_filter_week(self, client, mock_search_engine):
         """Test search with 'week' date filter."""
-        with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
+        with patch(
+            'searchat.api.routers.search.get_dataset_retrieval',
+            return_value=make_retrieval_context(mock_search_engine),
+        ):
             response = client.get("/api/search?q=test&date=week")
 
             assert response.status_code == 200
@@ -198,7 +253,10 @@ class TestSearchEndpoint:
 
     def test_search_with_date_filter_month(self, client, mock_search_engine):
         """Test search with 'month' date filter."""
-        with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
+        with patch(
+            'searchat.api.routers.search.get_dataset_retrieval',
+            return_value=make_retrieval_context(mock_search_engine),
+        ):
             response = client.get("/api/search?q=test&date=month")
 
             assert response.status_code == 200
@@ -213,7 +271,10 @@ class TestSearchEndpoint:
 
     def test_search_with_custom_date_range(self, client, mock_search_engine):
         """Test search with custom date range."""
-        with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
+        with patch(
+            'searchat.api.routers.search.get_dataset_retrieval',
+            return_value=make_retrieval_context(mock_search_engine),
+        ):
             response = client.get(
                 "/api/search?q=test&date=custom&date_from=2025-01-01&date_to=2025-01-31"
             )
@@ -254,7 +315,10 @@ class TestSearchEndpoint:
             mode_used="hybrid"
         )
 
-        with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
+        with patch(
+            'searchat.api.routers.search.get_dataset_retrieval',
+            return_value=make_retrieval_context(mock_search_engine),
+        ):
             response = client.get("/api/search?q=test&sort_by=date_newest")
 
             assert response.status_code == 200
@@ -292,7 +356,10 @@ class TestSearchEndpoint:
             mode_used="hybrid"
         )
 
-        with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
+        with patch(
+            'searchat.api.routers.search.get_dataset_retrieval',
+            return_value=make_retrieval_context(mock_search_engine),
+        ):
             response = client.get("/api/search?q=test&sort_by=date_oldest")
 
             assert response.status_code == 200
@@ -330,7 +397,10 @@ class TestSearchEndpoint:
             mode_used="hybrid"
         )
 
-        with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
+        with patch(
+            'searchat.api.routers.search.get_dataset_retrieval',
+            return_value=make_retrieval_context(mock_search_engine),
+        ):
             response = client.get("/api/search?q=test&sort_by=messages")
 
             assert response.status_code == 200
@@ -368,7 +438,10 @@ class TestSearchEndpoint:
             mode_used="hybrid"
         )
 
-        with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
+        with patch(
+            'searchat.api.routers.search.get_dataset_retrieval',
+            return_value=make_retrieval_context(mock_search_engine),
+        ):
             response = client.get("/api/search?q=test&limit=3")
 
             assert response.status_code == 200
@@ -403,7 +476,10 @@ class TestSearchEndpoint:
             mode_used="hybrid"
         )
 
-        with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
+        with patch(
+            'searchat.api.routers.search.get_dataset_retrieval',
+            return_value=make_retrieval_context(mock_search_engine),
+        ):
             response = client.get("/api/search?q=test")
 
             assert response.status_code == 200
@@ -434,7 +510,10 @@ class TestSearchEndpoint:
             mode_used="hybrid"
         )
 
-        with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
+        with patch(
+            'searchat.api.routers.search.get_dataset_retrieval',
+            return_value=make_retrieval_context(mock_search_engine),
+        ):
             response = client.get("/api/search?q=test")
 
             assert response.status_code == 200
@@ -477,7 +556,10 @@ class TestSearchEndpoint:
             mode_used="keyword"
         )
 
-        with patch('searchat.api.routers.search.deps.get_or_create_search_engine', return_value=mock_search_engine):
+        with patch(
+            'searchat.api.routers.search.get_dataset_retrieval',
+            return_value=make_retrieval_context(mock_search_engine),
+        ):
             # Search with partial word "apologiz" (missing 'e' or 'ing')
             response = client.get("/api/search?q=apologiz&mode=keyword")
 
@@ -511,7 +593,10 @@ class TestSearchEndpoint:
             mode_used="hybrid"
         )
 
-        with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
+        with patch(
+            'searchat.api.routers.search.get_dataset_retrieval',
+            return_value=make_retrieval_context(mock_search_engine),
+        ):
             # Search with partial word "optimi" (matches "optimize", "optimizing", "optimization")
             response = client.get("/api/search?q=optimi&mode=hybrid")
 
@@ -536,7 +621,10 @@ class TestSearchEndpoint:
             mode_used="semantic"
         )
 
-        with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
+        with patch(
+            'searchat.api.routers.search.get_dataset_retrieval',
+            return_value=make_retrieval_context(mock_search_engine),
+        ):
             # Partial word may not match well in semantic mode
             response = client.get("/api/search?q=refactor&mode=semantic")
 
@@ -569,7 +657,10 @@ class TestSearchEndpoint:
             mode_used="keyword"
         )
 
-        with patch('searchat.api.routers.search.deps.get_or_create_search_engine', return_value=mock_search_engine):
+        with patch(
+            'searchat.api.routers.search.get_dataset_retrieval',
+            return_value=make_retrieval_context(mock_search_engine),
+        ):
             # Search with lowercase partial word should match uppercase full word
             response = client.get("/api/search?q=datab&mode=keyword")
 
@@ -584,22 +675,28 @@ class TestSearchEndpoint:
         """Test that search errors are handled properly."""
         mock_search_engine.search.side_effect = Exception("Search failed")
 
-        with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
+        with patch(
+            'searchat.api.routers.search.get_dataset_retrieval',
+            return_value=make_retrieval_context(mock_search_engine),
+        ):
             response = client.get("/api/search?q=test")
 
             assert response.status_code == 500
             assert "Search failed" in response.json()["detail"]
 
     def test_search_rejects_invalid_tool_filter(self, client, mock_search_engine):
-        with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
+        with patch(
+            'searchat.api.routers.search.get_dataset_retrieval',
+            return_value=make_retrieval_context(mock_search_engine),
+        ):
             resp = client.get("/api/search?q=test&tool=bad")
         assert resp.status_code == 400
         assert resp.json()["detail"] == "Invalid tool filter"
 
     def test_search_snapshot_not_found_returns_404(self, client):
         with patch(
-            'searchat.api.routers.search.deps.resolve_dataset_search_dir',
-            side_effect=ValueError("Snapshot not found"),
+            'searchat.api.routers.search.get_dataset_retrieval',
+            side_effect=HTTPException(status_code=404, detail="Snapshot not found"),
         ):
             resp = client.get("/api/search?q=test&snapshot=missing")
         assert resp.status_code == 404
@@ -607,16 +704,18 @@ class TestSearchEndpoint:
 
     def test_search_snapshot_invalid_name_returns_400(self, client):
         with patch(
-            'searchat.api.routers.search.deps.resolve_dataset_search_dir',
-            side_effect=ValueError("Invalid snapshot name"),
+            'searchat.api.routers.search.get_dataset_retrieval',
+            side_effect=HTTPException(status_code=400, detail="Invalid snapshot name"),
         ):
             resp = client.get("/api/search?q=test&snapshot=../nope")
         assert resp.status_code == 400
         assert resp.json()["detail"] == "Invalid snapshot name"
 
     def test_search_highlight_invalid_provider_returns_400(self, client, mock_search_engine):
-        with patch('searchat.api.routers.search.deps.resolve_dataset_search_dir', return_value=(Path("/tmp"), None)):
-            with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
+        with patch(
+            'searchat.api.routers.search.get_dataset_retrieval',
+            return_value=make_retrieval_context(mock_search_engine),
+        ):
                 resp = client.get(
                     "/api/search?q=python&highlight=true&highlight_provider=bad"
                 )
@@ -629,10 +728,12 @@ class TestSearchEndpoint:
         search_router._cached_highlight.cache_clear()
 
         config = SimpleNamespace(analytics=SimpleNamespace(enabled=False))
-        with patch('searchat.api.routers.search.deps.resolve_dataset_search_dir', return_value=(Path("/tmp"), None)):
+        with patch(
+            'searchat.api.routers.search.get_dataset_retrieval',
+            return_value=make_retrieval_context(mock_search_engine),
+        ):
             with patch('searchat.api.routers.search.deps.get_config', return_value=config):
-                with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
-                    with patch('searchat.api.routers.search.extract_highlight_terms', return_value=["foo"]) as extract:
+                with patch('searchat.api.routers.search.extract_highlight_terms', return_value=["foo"]) as extract:
                         first = client.get(
                             "/api/search?q=python&highlight=true&highlight_provider=openai"
                         )
@@ -652,13 +753,15 @@ class TestSearchEndpoint:
         search_router._cached_highlight.cache_clear()
 
         config = SimpleNamespace(analytics=SimpleNamespace(enabled=False))
-        with patch('searchat.api.routers.search.deps.resolve_dataset_search_dir', return_value=(Path("/tmp"), None)):
+        with patch(
+            'searchat.api.routers.search.get_dataset_retrieval',
+            return_value=make_retrieval_context(mock_search_engine),
+        ):
             with patch('searchat.api.routers.search.deps.get_config', return_value=config):
-                with patch('searchat.api.routers.search.deps.get_search_engine', return_value=mock_search_engine):
-                    with patch(
-                        'searchat.api.routers.search.extract_highlight_terms',
-                        side_effect=search_router.LLMServiceError("nope"),
-                    ):
+                with patch(
+                    'searchat.api.routers.search.extract_highlight_terms',
+                    side_effect=search_router.LLMServiceError("nope"),
+                ):
                         resp = client.get(
                             "/api/search?q=python&highlight=true&highlight_provider=openai"
                         )
@@ -672,7 +775,10 @@ class TestProjectsEndpoint:
 
     def test_get_projects(self, client, mock_duckdb_store):
         """Test getting list of projects."""
-        with patch('searchat.api.routers.search.deps.get_duckdb_store', return_value=mock_duckdb_store):
+        with patch(
+            'searchat.api.routers.search.get_dataset_store',
+            return_value=make_store_context(mock_duckdb_store),
+        ):
             with patch('searchat.api.routers.search.api_state.projects_cache', None):
                 response = client.get("/api/projects")
 
@@ -686,7 +792,10 @@ class TestProjectsEndpoint:
 
     def test_get_projects_uses_cache(self, client, mock_duckdb_store):
         """Test that projects endpoint uses cache."""
-        with patch('searchat.api.routers.search.deps.get_duckdb_store', return_value=mock_duckdb_store):
+        with patch(
+            'searchat.api.routers.search.get_dataset_store',
+            return_value=make_store_context(mock_duckdb_store),
+        ):
             with patch('searchat.api.routers.search.api_state.projects_cache', ["cached-project"]):
                 response = client.get("/api/projects")
 
@@ -707,7 +816,10 @@ class TestProjectsEndpoint:
                 "updated_at": "2025-01-01T00:00:00",
             }
         ]
-        with patch('searchat.api.routers.search.deps.get_duckdb_store', return_value=mock_duckdb_store):
+        with patch(
+            'searchat.api.routers.search.get_dataset_store',
+            return_value=make_store_context(mock_duckdb_store),
+        ):
             with patch('searchat.api.routers.search.api_state.projects_summary_cache', None):
                 response = client.get("/api/projects/summary")
 

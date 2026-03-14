@@ -4,9 +4,14 @@ from __future__ import annotations
 import pytest
 from datetime import datetime
 from unittest.mock import Mock, patch
+from types import SimpleNamespace
 from fastapi.testclient import TestClient
 
 from searchat.api.app import app
+
+
+def make_store_context(store):
+    return SimpleNamespace(snapshot_name=None, store=store)
 
 
 @pytest.fixture
@@ -96,7 +101,7 @@ def mock_duckdb_store():
 def test_get_bookmarks_empty(client, mock_bookmarks_service, mock_duckdb_store):
     """Test GET /api/bookmarks with no bookmarks."""
     with patch("searchat.api.routers.bookmarks.deps.get_bookmarks_service", return_value=mock_bookmarks_service), \
-         patch("searchat.api.routers.bookmarks.deps.get_duckdb_store", return_value=mock_duckdb_store):
+         patch("searchat.api.routers.bookmarks.get_dataset_store", return_value=make_store_context(mock_duckdb_store)):
 
         response = client.get("/api/bookmarks")
 
@@ -108,7 +113,7 @@ def test_get_bookmarks_empty(client, mock_bookmarks_service, mock_duckdb_store):
 def test_add_bookmark(client, mock_bookmarks_service, mock_duckdb_store):
     """Test POST /api/bookmarks to add a bookmark."""
     with patch("searchat.api.routers.bookmarks.deps.get_bookmarks_service", return_value=mock_bookmarks_service), \
-         patch("searchat.api.routers.bookmarks.deps.get_duckdb_store", return_value=mock_duckdb_store):
+         patch("searchat.api.routers.bookmarks.get_dataset_store", return_value=make_store_context(mock_duckdb_store)):
 
         response = client.post(
             "/api/bookmarks",
@@ -126,7 +131,7 @@ def test_add_bookmark(client, mock_bookmarks_service, mock_duckdb_store):
 def test_add_bookmark_without_notes(client, mock_bookmarks_service, mock_duckdb_store):
     """Test POST /api/bookmarks without notes field."""
     with patch("searchat.api.routers.bookmarks.deps.get_bookmarks_service", return_value=mock_bookmarks_service), \
-         patch("searchat.api.routers.bookmarks.deps.get_duckdb_store", return_value=mock_duckdb_store):
+         patch("searchat.api.routers.bookmarks.get_dataset_store", return_value=make_store_context(mock_duckdb_store)):
 
         response = client.post(
             "/api/bookmarks",
@@ -142,7 +147,7 @@ def test_add_bookmark_without_notes(client, mock_bookmarks_service, mock_duckdb_
 
 def test_add_bookmark_returns_404_when_conversation_missing(client, mock_bookmarks_service, mock_duckdb_store):
     with patch("searchat.api.routers.bookmarks.deps.get_bookmarks_service", return_value=mock_bookmarks_service), \
-         patch("searchat.api.routers.bookmarks.deps.get_duckdb_store", return_value=mock_duckdb_store):
+         patch("searchat.api.routers.bookmarks.get_dataset_store", return_value=make_store_context(mock_duckdb_store)):
 
         response = client.post(
             "/api/bookmarks",
@@ -223,7 +228,7 @@ def test_get_bookmarks_returns_500_on_exception(client, mock_bookmarks_service, 
     mock_duckdb_store.get_conversation_meta.side_effect = RuntimeError("boom")
 
     with patch("searchat.api.routers.bookmarks.deps.get_bookmarks_service", return_value=mock_bookmarks_service), \
-         patch("searchat.api.routers.bookmarks.deps.get_duckdb_store", return_value=mock_duckdb_store):
+         patch("searchat.api.routers.bookmarks.get_dataset_store", return_value=make_store_context(mock_duckdb_store)):
 
         resp = client.get("/api/bookmarks")
 
@@ -234,7 +239,7 @@ def test_get_bookmarks_returns_500_on_exception(client, mock_bookmarks_service, 
 def test_add_bookmark_returns_500_on_service_exception(client, mock_bookmarks_service, mock_duckdb_store):
     mock_bookmarks_service.add_bookmark.side_effect = RuntimeError("boom")
     with patch("searchat.api.routers.bookmarks.deps.get_bookmarks_service", return_value=mock_bookmarks_service), \
-         patch("searchat.api.routers.bookmarks.deps.get_duckdb_store", return_value=mock_duckdb_store):
+         patch("searchat.api.routers.bookmarks.get_dataset_store", return_value=make_store_context(mock_duckdb_store)):
 
         resp = client.post("/api/bookmarks", json={"conversation_id": "conv-1", "notes": "x"})
 
@@ -273,7 +278,7 @@ def test_get_bookmarks_with_metadata(client, mock_bookmarks_service, mock_duckdb
     mock_bookmarks_service.add_bookmark("conv-2", "Note 2")
 
     with patch("searchat.api.routers.bookmarks.deps.get_bookmarks_service", return_value=mock_bookmarks_service), \
-         patch("searchat.api.routers.bookmarks.deps.get_duckdb_store", return_value=mock_duckdb_store):
+         patch("searchat.api.routers.bookmarks.get_dataset_store", return_value=make_store_context(mock_duckdb_store)):
 
         response = client.get("/api/bookmarks")
 
@@ -296,7 +301,7 @@ def test_get_bookmarks_missing_metadata(client, mock_bookmarks_service, mock_duc
     mock_bookmarks_service.add_bookmark("conv-missing", "Note")
 
     with patch("searchat.api.routers.bookmarks.deps.get_bookmarks_service", return_value=mock_bookmarks_service), \
-         patch("searchat.api.routers.bookmarks.deps.get_duckdb_store", return_value=mock_duckdb_store):
+         patch("searchat.api.routers.bookmarks.get_dataset_store", return_value=make_store_context(mock_duckdb_store)):
 
         response = client.get("/api/bookmarks")
 
@@ -326,7 +331,7 @@ def test_bookmark_validation(client, mock_bookmarks_service):
 def test_multiple_bookmarks_operations(client, mock_bookmarks_service, mock_duckdb_store):
     """Test multiple bookmark operations in sequence."""
     with patch("searchat.api.routers.bookmarks.deps.get_bookmarks_service", return_value=mock_bookmarks_service), \
-         patch("searchat.api.routers.bookmarks.deps.get_duckdb_store", return_value=mock_duckdb_store):
+         patch("searchat.api.routers.bookmarks.get_dataset_store", return_value=make_store_context(mock_duckdb_store)):
 
         # Add first bookmark
         response = client.post("/api/bookmarks", json={"conversation_id": "conv-1", "notes": "First"})
