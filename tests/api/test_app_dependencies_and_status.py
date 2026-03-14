@@ -833,7 +833,7 @@ def test_warmup_semantic_components_sets_error_only_for_not_ready(monkeypatch: p
 
 def test_get_duckdb_store_for_caches_per_dataset(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     import searchat.api.dependencies as deps
-    import searchat.api.duckdb_store as store_mod
+    import searchat.services.duckdb_storage as store_mod
 
     base = tmp_path / "base"
     base.mkdir()

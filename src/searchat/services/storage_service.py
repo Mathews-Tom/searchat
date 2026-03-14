@@ -47,6 +47,6 @@ class StorageService(Protocol):
 
 def build_storage_service(search_dir: Path, *, config: Config) -> StorageService:
     """Create the storage service for a dataset root."""
-    from searchat.api.duckdb_store import DuckDBStore
+    from searchat.services.duckdb_storage import DuckDBStore
 
     return DuckDBStore(search_dir, memory_limit_mb=config.performance.memory_limit_mb)
