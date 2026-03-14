@@ -95,7 +95,6 @@ def test_rag_internal_overhead_under_200ms(tmp_path: Path, monkeypatch: pytest.M
 
     import searchat.services.chat_service as chat_service
 
-    monkeypatch.setattr(chat_service, "get_search_engine", lambda: mock_engine)
     monkeypatch.setattr(chat_service.LLMService, "completion", lambda _self, **_kwargs: "ok")
 
     start = time.perf_counter()
@@ -104,6 +103,7 @@ def test_rag_internal_overhead_under_200ms(tmp_path: Path, monkeypatch: pytest.M
         provider="ollama",
         model_name=None,
         config=config,
+        retrieval_service=mock_engine,
     )
     elapsed_ms = (time.perf_counter() - start) * 1000.0
 

@@ -1,14 +1,10 @@
 from __future__ import annotations
 
-import sys
 import time
 from datetime import datetime, timedelta
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
 import pytest
-
-# Mock the circular import before importing chat_service
-sys.modules["searchat.api.dependencies"] = MagicMock()
 
 from searchat.models import SearchResult, SearchResults
 from searchat.services import chat_service
@@ -194,20 +190,20 @@ class TestGenerateAnswerStreamWithSessions:
         config = Mock()
         config.llm = object()
 
-        with patch("searchat.services.chat_service.get_search_engine", return_value=mock_engine):
-            with patch("searchat.services.chat_service.LLMService.stream_completion") as mock_stream:
-                mock_stream.return_value = iter(["Hello", " ", "world"])
+        with patch("searchat.services.chat_service.LLMService.stream_completion") as mock_stream:
+            mock_stream.return_value = iter(["Hello", " ", "world"])
 
-                session_id, stream = generate_answer_stream(
-                    query="test query",
-                    provider="ollama",
-                    model_name=None,
-                    config=config,
-                    session_id=None,
-                )
+            session_id, stream = generate_answer_stream(
+                query="test query",
+                provider="ollama",
+                model_name=None,
+                config=config,
+                retrieval_service=mock_engine,
+                session_id=None,
+            )
 
-                # Consume stream
-                list(stream)
+            # Consume stream
+            list(stream)
 
         assert session_id is not None
         assert session_id in chat_service._sessions
@@ -229,20 +225,20 @@ class TestGenerateAnswerStreamWithSessions:
         config = Mock()
         config.llm = object()
 
-        with patch("searchat.services.chat_service.get_search_engine", return_value=mock_engine):
-            with patch("searchat.services.chat_service.LLMService.stream_completion") as mock_stream:
-                mock_stream.return_value = iter(["new", " ", "response"])
+        with patch("searchat.services.chat_service.LLMService.stream_completion") as mock_stream:
+            mock_stream.return_value = iter(["new", " ", "response"])
 
-                session_id, stream = generate_answer_stream(
-                    query="new query",
-                    provider="ollama",
-                    model_name=None,
-                    config=config,
-                    session_id=existing_id,
-                )
+            session_id, stream = generate_answer_stream(
+                query="new query",
+                provider="ollama",
+                model_name=None,
+                config=config,
+                retrieval_service=mock_engine,
+                session_id=existing_id,
+            )
 
-                # Consume stream
-                list(stream)
+            # Consume stream
+            list(stream)
 
         assert session_id == existing_id
         session = chat_service._sessions[existing_id]
@@ -260,19 +256,19 @@ class TestGenerateAnswerStreamWithSessions:
         config = Mock()
         config.llm = object()
 
-        with patch("searchat.services.chat_service.get_search_engine", return_value=mock_engine):
-            with patch("searchat.services.chat_service.LLMService.stream_completion") as mock_stream:
-                mock_stream.return_value = iter(["Test", " ", "answer"])
+        with patch("searchat.services.chat_service.LLMService.stream_completion") as mock_stream:
+            mock_stream.return_value = iter(["Test", " ", "answer"])
 
-                session_id, stream = generate_answer_stream(
-                    query="What is the answer?",
-                    provider="ollama",
-                    model_name=None,
-                    config=config,
-                )
+            session_id, stream = generate_answer_stream(
+                query="What is the answer?",
+                provider="ollama",
+                model_name=None,
+                config=config,
+                retrieval_service=mock_engine,
+            )
 
-                # Consume stream
-                list(stream)
+            # Consume stream
+            list(stream)
 
         session = chat_service._sessions[session_id]
         assert len(session.messages) == 2
@@ -291,15 +287,15 @@ class TestGenerateAnswerStreamWithSessions:
         config = Mock()
         config.llm = object()
 
-        with patch("searchat.services.chat_service.get_search_engine", return_value=mock_engine):
-            session_id, stream = generate_answer_stream(
-                query="unknown query",
-                provider="ollama",
-                model_name=None,
-                config=config,
-            )
+        session_id, stream = generate_answer_stream(
+            query="unknown query",
+            provider="ollama",
+            model_name=None,
+            config=config,
+            retrieval_service=mock_engine,
+        )
 
-            response = "".join(stream)
+        response = "".join(stream)
 
         assert response == "I cannot find the information in the archives."
         session = chat_service._sessions[session_id]
@@ -326,30 +322,30 @@ class TestGenerateAnswerStreamWithSessions:
         config = Mock()
         config.llm = object()
 
-        with patch("searchat.services.chat_service.get_search_engine", return_value=mock_engine):
-            with patch("searchat.services.chat_service.LLMService.stream_completion") as mock_stream:
-                mock_stream.return_value = iter(["ok"])
+        with patch("searchat.services.chat_service.LLMService.stream_completion") as mock_stream:
+            mock_stream.return_value = iter(["ok"])
 
-                _, stream = generate_answer_stream(
-                    query="test",
-                    provider="ollama",
-                    model_name=None,
-                    config=config,
-                    session_id=session_id,
-                )
+            _, stream = generate_answer_stream(
+                query="test",
+                provider="ollama",
+                model_name=None,
+                config=config,
+                retrieval_service=mock_engine,
+                session_id=session_id,
+            )
 
-                list(stream)
+            list(stream)
 
-                # Check that LLM was called with limited history
-                call_args = mock_stream.call_args
-                messages = call_args[1]["messages"]
+            # Check that LLM was called with limited history
+            call_args = mock_stream.call_args
+            messages = call_args[1]["messages"]
 
-                # Should have: system + history (max MAX_TURNS*2) + current user message
-                # History should be last MAX_TURNS*2 messages
-                history_messages = [m for m in messages if m["role"] != "system"]
-                # Remove the last user message (current query)
-                history_without_current = history_messages[:-1]
-                assert len(history_without_current) <= chat_service._MAX_TURNS * 2
+            # Should have: system + history (max MAX_TURNS*2) + current user message
+            # History should be last MAX_TURNS*2 messages
+            history_messages = [m for m in messages if m["role"] != "system"]
+            # Remove the last user message (current query)
+            history_without_current = history_messages[:-1]
+            assert len(history_without_current) <= chat_service._MAX_TURNS * 2
 
 
 class TestGenerateRAGResponseWithSessions:
@@ -367,14 +363,14 @@ class TestGenerateRAGResponseWithSessions:
         config = Mock()
         config.llm = object()
 
-        with patch("searchat.services.chat_service.get_search_engine", return_value=mock_engine):
-            with patch("searchat.services.chat_service.LLMService.completion", return_value="Answer text"):
-                result = generate_rag_response(
-                    query="test query",
-                    provider="ollama",
-                    model_name=None,
-                    config=config,
-                )
+        with patch("searchat.services.chat_service.LLMService.completion", return_value="Answer text"):
+            result = generate_rag_response(
+                query="test query",
+                provider="ollama",
+                model_name=None,
+                config=config,
+                retrieval_service=mock_engine,
+            )
 
         assert result.session_id is not None
         assert result.session_id in chat_service._sessions
@@ -396,15 +392,15 @@ class TestGenerateRAGResponseWithSessions:
         config = Mock()
         config.llm = object()
 
-        with patch("searchat.services.chat_service.get_search_engine", return_value=mock_engine):
-            with patch("searchat.services.chat_service.LLMService.completion", return_value="New answer"):
-                result = generate_rag_response(
-                    query="new query",
-                    provider="ollama",
-                    model_name=None,
-                    config=config,
-                    session_id=existing_id,
-                )
+        with patch("searchat.services.chat_service.LLMService.completion", return_value="New answer"):
+            result = generate_rag_response(
+                query="new query",
+                provider="ollama",
+                model_name=None,
+                config=config,
+                retrieval_service=mock_engine,
+                session_id=existing_id,
+            )
 
         assert result.session_id == existing_id
         session = chat_service._sessions[existing_id]
@@ -422,14 +418,14 @@ class TestGenerateRAGResponseWithSessions:
         config = Mock()
         config.llm = object()
 
-        with patch("searchat.services.chat_service.get_search_engine", return_value=mock_engine):
-            with patch("searchat.services.chat_service.LLMService.completion", return_value="Complete answer"):
-                result = generate_rag_response(
-                    query="What is the question?",
-                    provider="ollama",
-                    model_name=None,
-                    config=config,
-                )
+        with patch("searchat.services.chat_service.LLMService.completion", return_value="Complete answer"):
+            result = generate_rag_response(
+                query="What is the question?",
+                provider="ollama",
+                model_name=None,
+                config=config,
+                retrieval_service=mock_engine,
+            )
 
         session = chat_service._sessions[result.session_id]
         assert len(session.messages) == 2
@@ -448,13 +444,13 @@ class TestGenerateRAGResponseWithSessions:
         config = Mock()
         config.llm = object()
 
-        with patch("searchat.services.chat_service.get_search_engine", return_value=mock_engine):
-            result = generate_rag_response(
-                query="unknown query",
-                provider="ollama",
-                model_name=None,
-                config=config,
-            )
+        result = generate_rag_response(
+            query="unknown query",
+            provider="ollama",
+            model_name=None,
+            config=config,
+            retrieval_service=mock_engine,
+        )
 
         assert result.answer == "I cannot find the information in the archives."
         assert result.context_used == 0
@@ -482,23 +478,23 @@ class TestGenerateRAGResponseWithSessions:
         config = Mock()
         config.llm = object()
 
-        with patch("searchat.services.chat_service.get_search_engine", return_value=mock_engine):
-            with patch("searchat.services.chat_service.LLMService.completion", return_value="ok") as mock_completion:
-                generate_rag_response(
-                    query="test",
-                    provider="ollama",
-                    model_name=None,
-                    config=config,
-                    session_id=session_id,
-                )
+        with patch("searchat.services.chat_service.LLMService.completion", return_value="ok") as mock_completion:
+            generate_rag_response(
+                query="test",
+                provider="ollama",
+                model_name=None,
+                config=config,
+                retrieval_service=mock_engine,
+                session_id=session_id,
+            )
 
-                call_args = mock_completion.call_args
-                messages = call_args[1]["messages"]
+            call_args = mock_completion.call_args
+            messages = call_args[1]["messages"]
 
-                # Should have: system + history (max MAX_TURNS*2) + current user message
-                history_messages = [m for m in messages if m["role"] != "system"]
-                history_without_current = history_messages[:-1]
-                assert len(history_without_current) <= chat_service._MAX_TURNS * 2
+            # Should have: system + history (max MAX_TURNS*2) + current user message
+            history_messages = [m for m in messages if m["role"] != "system"]
+            history_without_current = history_messages[:-1]
+            assert len(history_without_current) <= chat_service._MAX_TURNS * 2
 
     def test_multiple_turns_in_same_session(self):
         """Test multiple query/response turns in same session."""
@@ -515,19 +511,19 @@ class TestGenerateRAGResponseWithSessions:
         session_id = None
         queries = ["First question", "Second question", "Third question"]
 
-        with patch("searchat.services.chat_service.get_search_engine", return_value=mock_engine):
-            with patch("searchat.services.chat_service.LLMService.completion") as mock_completion:
-                mock_completion.side_effect = ["Answer 1", "Answer 2", "Answer 3"]
+        with patch("searchat.services.chat_service.LLMService.completion") as mock_completion:
+            mock_completion.side_effect = ["Answer 1", "Answer 2", "Answer 3"]
 
-                for query in queries:
-                    result = generate_rag_response(
-                        query=query,
-                        provider="ollama",
-                        model_name=None,
-                        config=config,
-                        session_id=session_id,
-                    )
-                    session_id = result.session_id
+            for query in queries:
+                result = generate_rag_response(
+                    query=query,
+                    provider="ollama",
+                    model_name=None,
+                    config=config,
+                    retrieval_service=mock_engine,
+                    session_id=session_id,
+                )
+                session_id = result.session_id
 
         session = chat_service._sessions[session_id]
         assert len(session.messages) == 6  # 3 turns * 2 messages
