@@ -25,6 +25,7 @@ def run_validate(argv: list[str]) -> int:
     from searchat.expertise.models import ExpertiseQuery
     from searchat.expertise.store import ExpertiseStore
     from searchat.expertise.staleness import compute_staleness
+    from searchat.services.storage_service import build_storage_service
 
     config = Config.load()
     if not config.expertise.enabled:
@@ -79,11 +80,9 @@ def run_validate(argv: list[str]) -> int:
     # ------------------------------------------------------------------
     # 2. Orphan detection — records referencing missing conversations
     # ------------------------------------------------------------------
-    from searchat.api.duckdb_store import DuckDBStore
-
     orphans: list[str] = []
     try:
-        duckdb_store = DuckDBStore(search_dir, memory_limit_mb=config.performance.memory_limit_mb)
+        duckdb_store = build_storage_service(search_dir, config=config)
         all_conv_ids: set[str] = {
             row["conversation_id"]
             for row in duckdb_store.list_conversations(limit=None) or []

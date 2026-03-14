@@ -27,6 +27,7 @@ def run_extract(argv: list[str]) -> int:
 
     from searchat.config import Config, PathResolver
     from searchat.expertise.pipeline import create_pipeline
+    from searchat.services.storage_service import build_storage_service
 
     config = Config.load()
     if not config.expertise.enabled:
@@ -38,9 +39,7 @@ def run_extract(argv: list[str]) -> int:
 
     console.print(f"[bold]Extracting expertise[/bold] (mode={args.mode})")
 
-    from searchat.api.duckdb_store import DuckDBStore
-
-    duckdb_store = DuckDBStore(search_dir, memory_limit_mb=config.performance.memory_limit_mb)
+    duckdb_store = build_storage_service(search_dir, config=config)
     conversations = duckdb_store.list_conversations(
         project_id=args.project,
         limit=args.limit if args.limit > 0 else None,
