@@ -92,7 +92,7 @@ def test_warmup_semantic_components_sets_readiness_ready(tmp_path: Path):
 
 @pytest.mark.unit
 def test_duckdb_store_queries_use_parameterized_parquet_scan(tmp_path: Path):
-    from searchat.api.duckdb_store import DuckDBStore
+    from searchat.services.duckdb_storage import DuckDBStore
 
     search_dir = tmp_path / ".searchat"
     conversations_dir = search_dir / "data" / "conversations"
@@ -116,7 +116,7 @@ def test_duckdb_store_queries_use_parameterized_parquet_scan(tmp_path: Path):
 
 @pytest.mark.unit
 def test_duckdb_store_get_statistics_and_meta(tmp_path: Path):
-    from searchat.api.duckdb_store import DuckDBStore
+    from searchat.services.duckdb_storage import DuckDBStore
 
     search_dir = tmp_path / ".searchat"
     conversations_dir = search_dir / "data" / "conversations"

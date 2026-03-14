@@ -10,7 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from searchat.api.app import app
-from searchat.api.duckdb_store import DuckDBStore
+from searchat.services.duckdb_storage import DuckDBStore
 from searchat.models.schemas import CODE_BLOCK_SCHEMA
 
 
