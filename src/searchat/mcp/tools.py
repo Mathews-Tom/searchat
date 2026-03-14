@@ -4,13 +4,13 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from searchat.api.duckdb_store import DuckDBStore
 from searchat.api.utils import detect_tool_from_path
 from searchat.config import Config, PathResolver
 from searchat.config.constants import VALID_TOOL_NAMES, RAG_SYSTEM_PROMPT
 from searchat.core.search_engine import SearchEngine
 from searchat.models import SearchFilters, SearchMode
 from searchat.services.llm_service import LLMService
+from searchat.services.storage_service import StorageService, build_storage_service
 
 from typing import cast, Any
 
@@ -36,10 +36,10 @@ def resolve_dataset(search_dir: str | None) -> Path:
     return resolved
 
 
-def build_services(search_dir: Path) -> tuple[Config, SearchEngine, DuckDBStore]:
+def build_services(search_dir: Path) -> tuple[Config, SearchEngine, StorageService]:
     config = Config.load()
     engine = SearchEngine(search_dir, config)
-    store = DuckDBStore(search_dir, memory_limit_mb=config.performance.memory_limit_mb)
+    store = build_storage_service(search_dir, config=config)
     return config, engine, store
 
 

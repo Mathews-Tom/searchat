@@ -23,8 +23,8 @@ logger = logging.getLogger(__name__)
 
 
 if TYPE_CHECKING:
-    from searchat.api.duckdb_store import DuckDBStore
     from searchat.core.search_engine import SearchEngine
+    from searchat.services.storage_service import StorageService
 
 
 # Global singletons (initialized on startup)
@@ -44,7 +44,7 @@ _expertise_store = None
 _knowledge_graph_store = None
 
 # Snapshot-scoped caches (keyed by dataset root, i.e. backup directory path).
-_duckdb_store_by_dir: dict[str, "DuckDBStore"] = {}
+_duckdb_store_by_dir: dict[str, "StorageService"] = {}
 _search_engine_by_dir: dict[str, "SearchEngine"] = {}
 
 _service_lock = Lock()
@@ -77,13 +77,13 @@ def initialize_services():
         _backup_manager = BackupManager(_search_dir)
         _platform_manager = PlatformManager()
 
-        from searchat.api.duckdb_store import DuckDBStore
         from searchat.services.bookmarks import BookmarksService
         from searchat.services.saved_queries import SavedQueriesService
         from searchat.services.dashboards import DashboardsService
         from searchat.services.analytics import SearchAnalyticsService
+        from searchat.services.storage_service import build_storage_service
 
-        _duckdb_store = DuckDBStore(_search_dir, memory_limit_mb=_config.performance.memory_limit_mb)
+        _duckdb_store = build_storage_service(_search_dir, config=_config)
 
         if _config.expertise.enabled:
             from searchat.expertise.store import ExpertiseStore
@@ -387,8 +387,8 @@ def resolve_dataset_search_dir(snapshot: str | None) -> tuple[Path, str | None]:
     return snapshot_dir, snapshot
 
 
-def get_duckdb_store_for(search_dir: Path) -> "DuckDBStore":
-    """Get a DuckDBStore for a specific dataset root."""
+def get_duckdb_store_for(search_dir: Path) -> "StorageService":
+    """Get a storage service for a specific dataset root."""
     if search_dir == get_search_dir():
         return get_duckdb_store()
 
@@ -398,9 +398,9 @@ def get_duckdb_store_for(search_dir: Path) -> "DuckDBStore":
         return store
 
     config = get_config()
-    from searchat.api.duckdb_store import DuckDBStore
+    from searchat.services.storage_service import build_storage_service
 
-    store = DuckDBStore(search_dir, memory_limit_mb=config.performance.memory_limit_mb)
+    store = build_storage_service(search_dir, config=config)
     _duckdb_store_by_dir[key] = store
     return store
 

@@ -6,11 +6,11 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from uuid import uuid4
 
-from searchat.api.dependencies import get_search_engine
 from searchat.config import Config
 from searchat.config.constants import RAG_SYSTEM_PROMPT
 from searchat.models import SearchMode, SearchFilters, SearchResult
 from searchat.services.llm_service import LLMService
+from searchat.services.retrieval_service import RetrievalService
 
 
 @dataclass
@@ -59,13 +59,13 @@ def generate_answer_stream(
     model_name: str | None,
     *,
     config: Config,
+    retrieval_service: RetrievalService,
     top_k: int = 8,
     session_id: str | None = None,
 ) -> tuple[str, Iterator[str]]:
     """Generate streaming RAG answer. Returns (session_id, token_iterator)."""
     session = get_or_create_session(session_id)
-    search_engine = get_search_engine()
-    results = search_engine.search(query, mode=SearchMode.HYBRID, filters=SearchFilters())
+    results = retrieval_service.search(query, mode=SearchMode.HYBRID, filters=SearchFilters())
     top_results = results.results[:top_k]
 
     if not top_results:
@@ -120,6 +120,7 @@ def generate_rag_response(
     model_name: str | None,
     *,
     config: Config,
+    retrieval_service: RetrievalService,
     temperature: float | None = None,
     max_tokens: int | None = None,
     system_prompt: str | None = None,
@@ -127,8 +128,7 @@ def generate_rag_response(
 ) -> RAGGeneration:
     """Generate a grounded answer with structured sources (non-streaming)."""
     session = get_or_create_session(session_id)
-    search_engine = get_search_engine()
-    results = search_engine.search(query, mode=SearchMode.HYBRID, filters=SearchFilters())
+    results = retrieval_service.search(query, mode=SearchMode.HYBRID, filters=SearchFilters())
 
     top_k = _select_top_k(query)
     top_results = results.results[:top_k]

@@ -119,7 +119,7 @@ class TestBuildServices:
         with (
             patch("searchat.mcp.tools.Config.load", return_value=cfg),
             patch("searchat.mcp.tools.SearchEngine", return_value=fake_engine),
-            patch("searchat.mcp.tools.DuckDBStore", return_value=fake_store),
+            patch("searchat.mcp.tools.build_storage_service", return_value=fake_store),
         ):
             config, engine, store = build_services(tmp_path)
 

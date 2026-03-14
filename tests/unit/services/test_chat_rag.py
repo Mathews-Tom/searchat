@@ -41,20 +41,21 @@ def test_generate_rag_response_selects_more_context_for_complex_query():
     config = Mock()
     config.llm = object()
 
-    with patch("searchat.services.chat_service.get_search_engine", return_value=mock_engine):
-        with patch("searchat.services.chat_service.LLMService.completion", return_value="ok"):
-            simple = generate_rag_response(
-                query="error parsing json",
-                provider="ollama",
-                model_name=None,
-                config=config,
-            )
-            complex_ = generate_rag_response(
-                query="Summarize and compare the approaches we discussed across sessions. Include tradeoffs and steps.",
-                provider="ollama",
-                model_name=None,
-                config=config,
-            )
+    with patch("searchat.services.chat_service.LLMService.completion", return_value="ok"):
+        simple = generate_rag_response(
+            query="error parsing json",
+            provider="ollama",
+            model_name=None,
+            config=config,
+            retrieval_service=mock_engine,
+        )
+        complex_ = generate_rag_response(
+            query="Summarize and compare the approaches we discussed across sessions. Include tradeoffs and steps.",
+            provider="ollama",
+            model_name=None,
+            config=config,
+            retrieval_service=mock_engine,
+        )
 
     assert simple.context_used < complex_.context_used
     assert simple.context_used in (6, 8)

@@ -11,7 +11,7 @@ from searchat.api.utils import (
     validate_provider,
     check_semantic_readiness,
 )
-from searchat.api.dependencies import get_config
+from searchat.api.dependencies import get_config, get_search_engine
 from searchat.services.chat_service import generate_answer_stream, generate_rag_response
 from searchat.services.llm_service import LLMServiceError
 
@@ -34,12 +34,14 @@ async def chat(
         return not_ready
 
     config = get_config()
+    retrieval_service = get_search_engine()
     try:
         session_id, stream = generate_answer_stream(
             query=request.query,
             provider=provider,
             model_name=request.model_name,
             config=config,
+            retrieval_service=retrieval_service,
             session_id=request.session_id,
         )
     except ValueError as exc:
@@ -73,12 +75,14 @@ async def chat_rag(
     config = get_config()
     if not config.chat.enable_rag:
         raise HTTPException(status_code=404, detail="RAG chat endpoint is disabled.")
+    retrieval_service = get_search_engine()
     try:
         generation = generate_rag_response(
             query=request.query,
             provider=provider,
             model_name=request.model_name,
             config=config,
+            retrieval_service=retrieval_service,
             temperature=request.temperature,
             max_tokens=request.max_tokens,
             system_prompt=request.system_prompt,
