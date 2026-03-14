@@ -180,7 +180,11 @@ class TestGetOrCreateSearchEngineFor:
             def __init__(self, sd, cfg):
                 pass
 
-        monkeypatch.setitem(sys.modules, "searchat.core.search_engine", types.SimpleNamespace(SearchEngine=_SE))
+        monkeypatch.setitem(
+            sys.modules,
+            "searchat.services.retrieval_service",
+            types.SimpleNamespace(build_retrieval_service=lambda search_dir, *, config: _SE(search_dir, config)),
+        )
         monkeypatch.setattr(deps, "_search_engine", fake_engine)
 
         result = deps.get_or_create_search_engine_for(tmp_path)
@@ -198,7 +202,11 @@ class TestGetOrCreateSearchEngineFor:
             def __init__(self, sd, config):
                 self.sd = sd
 
-        monkeypatch.setitem(sys.modules, "searchat.core.search_engine", types.SimpleNamespace(SearchEngine=_SE))
+        monkeypatch.setitem(
+            sys.modules,
+            "searchat.services.retrieval_service",
+            types.SimpleNamespace(build_retrieval_service=lambda search_dir, *, config: _SE(search_dir, config)),
+        )
 
         engine = deps.get_or_create_search_engine_for(other)
         assert engine.sd == other

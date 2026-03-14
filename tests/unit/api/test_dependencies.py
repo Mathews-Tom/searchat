@@ -338,7 +338,11 @@ def test_ensure_search_engine_creates_instance(monkeypatch: pytest.MonkeyPatch, 
             self.search_dir = search_dir
             self.config = config
 
-    monkeypatch.setitem(sys.modules, "searchat.core.search_engine", types.SimpleNamespace(SearchEngine=_SearchEngine))
+    monkeypatch.setitem(
+        sys.modules,
+        "searchat.services.retrieval_service",
+        types.SimpleNamespace(build_retrieval_service=lambda search_dir, *, config: _SearchEngine(search_dir, config)),
+    )
 
     engine = deps._ensure_search_engine()
     assert engine.search_dir == tmp_path
@@ -357,7 +361,11 @@ def test_ensure_search_engine_sets_error_on_failure(monkeypatch: pytest.MonkeyPa
         def __init__(self, _search_dir: Path, _config):
             raise RuntimeError("init failed")
 
-    monkeypatch.setitem(sys.modules, "searchat.core.search_engine", types.SimpleNamespace(SearchEngine=_SearchEngine))
+    monkeypatch.setitem(
+        sys.modules,
+        "searchat.services.retrieval_service",
+        types.SimpleNamespace(build_retrieval_service=lambda search_dir, *, config: _SearchEngine(search_dir, config)),
+    )
 
     with pytest.raises(RuntimeError, match="init failed"):
         deps._ensure_search_engine()
