@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 import searchat.api.dependencies as deps
+from searchat.api.dataset_access import get_dataset_store
 
 
 router = APIRouter()
@@ -32,7 +33,7 @@ async def get_bookmarks():
         bookmarks = bookmarks_service.list_bookmarks()
 
         # Enrich bookmarks with conversation metadata
-        store = deps.get_duckdb_store()
+        store = get_dataset_store(None).store
         enriched_bookmarks = []
 
         for bookmark in bookmarks:
@@ -68,7 +69,7 @@ async def add_bookmark(request: BookmarkRequest):
         bookmarks_service = deps.get_bookmarks_service()
 
         # Verify conversation exists
-        store = deps.get_duckdb_store()
+        store = get_dataset_store(None).store
         conv_meta = store.get_conversation_meta(request.conversation_id)
 
         if not conv_meta:

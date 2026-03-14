@@ -22,6 +22,7 @@ from searchat.api.models import (
     ConversationResponse,
     ResumeRequest,
 )
+from searchat.api.dataset_access import get_dataset_semantic_retrieval, get_dataset_store
 from searchat.api.warmup import invalidate_search_index
 from searchat.api.utils import detect_tool_from_path, detect_source_from_path, parse_date_filter
 import searchat.api.dependencies as deps
@@ -369,11 +370,7 @@ async def get_all_conversations(
     """Get all conversations with sorting and filtering."""
     started = time.perf_counter()
     try:
-        if snapshot is None:
-            store = deps.get_duckdb_store()
-        else:
-            search_dir, _snapshot_name = _resolve_dataset(snapshot)
-            store = deps.get_duckdb_store_for(search_dir)
+        store = get_dataset_store(snapshot).store
 
         # Handle date filtering
         date_from_dt, date_to_dt = parse_date_filter(date, date_from, date_to)
@@ -448,12 +445,9 @@ async def get_conversation(
 ):
     """Get a specific conversation with all messages."""
     try:
-        if snapshot is None:
-            store = deps.get_duckdb_store()
-            snapshot_name = None
-        else:
-            search_dir, snapshot_name = _resolve_dataset(snapshot)
-            store = deps.get_duckdb_store_for(search_dir)
+        dataset = get_dataset_store(snapshot)
+        store = dataset.store
+        snapshot_name = dataset.snapshot_name
         conv = store.get_conversation_meta(conversation_id)
         if conv is None:
             logger.warning(f"Conversation not found in index: {conversation_id}")
@@ -763,17 +757,11 @@ async def get_similar_conversations(
 ):
     """Get conversations similar to the specified conversation using FAISS embeddings."""
     try:
-        if snapshot is None:
-            try:
-                search_engine = deps.get_search_engine()
-            except RuntimeError as exc:
-                raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-            store = deps.get_duckdb_store()
-        else:
-            search_dir, _snapshot_name = _resolve_dataset(snapshot)
-            store = deps.get_duckdb_store_for(search_dir)
-            search_engine = deps.get_or_create_search_engine_for(search_dir)
+        try:
+            dataset, search_engine = get_dataset_semantic_retrieval(snapshot)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        store = dataset.store
 
         # Verify conversation exists
         conv_meta = store.get_conversation_meta(conversation_id)

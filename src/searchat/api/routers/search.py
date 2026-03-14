@@ -8,11 +8,10 @@ from fastapi import APIRouter, Query, HTTPException
 from searchat.models import SearchMode, SearchFilters
 from searchat.services.highlight_service import extract_highlight_terms
 from searchat.services.llm_service import LLMServiceError
+from searchat.api.dataset_access import _DatasetNotReady, get_dataset_retrieval, get_dataset_store
 from searchat.api.utils import (
     parse_date_filter,
-    resolve_dataset,
     validate_tool,
-    check_semantic_readiness,
     sort_results,
     search_result_to_response,
     ensure_code_index_has_symbol_columns,
@@ -56,7 +55,8 @@ async def search_code(
 ):
     """Search fenced code blocks extracted during indexing."""
     try:
-        search_dir, _snapshot_name = resolve_dataset(snapshot)
+        dataset = get_dataset_store(snapshot)
+        search_dir = dataset.search_dir
 
         code_dir = search_dir / "data" / "code"
         if not code_dir.exists() or not any(code_dir.glob("*.parquet")):
@@ -87,7 +87,7 @@ async def search_code(
             params.append(validate_tool(tool))
 
         parquet_glob = str(code_dir / "*.parquet")
-        conn = deps.get_duckdb_store_for(search_dir)._connect()
+        conn = dataset.store._connect()
         try:
             if function or class_name or import_name:
                 ensure_code_index_has_symbol_columns(conn, parquet_glob)
@@ -154,8 +154,6 @@ async def search(
 ):
     """Search conversations with filters and sorting."""
     try:
-        search_dir, snapshot_name = resolve_dataset(snapshot)
-
         # Convert mode string to SearchMode enum
         mode_map = {
             "hybrid": SearchMode.HYBRID,
@@ -169,16 +167,14 @@ async def search(
         if q.strip() == "*":
             search_mode = SearchMode.KEYWORD
 
-        # Snapshot requests must not mutate readiness/warmup globals.
-        if snapshot_name is not None:
-            search_engine = deps.get_or_create_search_engine_for(search_dir)
-        elif search_mode == SearchMode.KEYWORD:
-            search_engine = deps.get_or_create_search_engine()
-        else:
-            not_ready = check_semantic_readiness()
-            if not_ready is not None:
-                return not_ready
-            search_engine = deps.get_search_engine()
+        try:
+            dataset = get_dataset_retrieval(snapshot, search_mode=search_mode)
+        except _DatasetNotReady as exc:
+            return exc.response
+
+        search_dir = dataset.search_dir
+        snapshot_name = dataset.snapshot_name
+        search_engine = dataset.retrieval_service
 
         # Build filters
         filters = SearchFilters()
@@ -244,8 +240,9 @@ async def search(
 @router.get("/projects")
 async def get_projects(snapshot: str | None = Query(None, description="Backup snapshot name (read-only)")):
     """Get list of all projects in the index."""
-    search_dir, snapshot_name = resolve_dataset(snapshot)
-    store = deps.get_duckdb_store_for(search_dir)
+    dataset = get_dataset_store(snapshot)
+    snapshot_name = dataset.snapshot_name
+    store = dataset.store
 
     if snapshot_name is not None:
         return store.list_projects()
@@ -258,8 +255,9 @@ async def get_projects(snapshot: str | None = Query(None, description="Backup sn
 @router.get("/projects/summary")
 async def get_projects_summary(snapshot: str | None = Query(None, description="Backup snapshot name (read-only)")):
     """Get summary stats for all projects in the index."""
-    search_dir, snapshot_name = resolve_dataset(snapshot)
-    store = deps.get_duckdb_store_for(search_dir)
+    dataset = get_dataset_store(snapshot)
+    snapshot_name = dataset.snapshot_name
+    store = dataset.store
 
     if snapshot_name is not None:
         return store.list_project_summaries()

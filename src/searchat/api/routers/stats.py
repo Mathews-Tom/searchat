@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 import searchat.api.dependencies as deps
 from searchat.api import state as api_state
+from searchat.api.dataset_access import get_dataset_store
 
 
 logger = logging.getLogger(__name__)
@@ -18,10 +19,9 @@ router = APIRouter()
 @router.get("/statistics")
 async def get_statistics(snapshot: str | None = Query(None, description="Backup snapshot name (read-only)")):
     """Get search index statistics."""
-    from searchat.api.utils import resolve_dataset
-
-    search_dir, snapshot_name = resolve_dataset(snapshot)
-    store = deps.get_duckdb_store_for(search_dir)
+    dataset = get_dataset_store(snapshot)
+    snapshot_name = dataset.snapshot_name
+    store = dataset.store
 
     if snapshot_name is not None:
         stats = store.get_statistics()
