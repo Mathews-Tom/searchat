@@ -267,7 +267,7 @@ def test_on_new_conversations_indexes_and_invalidates(monkeypatch: pytest.Monkey
     monkeypatch.setattr(api_app, "get_indexer", lambda: indexer)
     monkeypatch.setattr(deps, "get_or_create_search_engine", lambda: object())
     invalidate = MagicMock()
-    monkeypatch.setattr(deps, "invalidate_search_index", invalidate)
+    monkeypatch.setattr(api_app, "invalidate_search_index", invalidate)
 
     api_app.on_new_conversations(["a.jsonl", "b.jsonl"])
 
@@ -296,7 +296,7 @@ def test_on_new_conversations_uses_adaptive_when_enabled(monkeypatch: pytest.Mon
     monkeypatch.setattr(api_app, "get_indexer", lambda: indexer)
     monkeypatch.setattr(deps, "get_or_create_search_engine", lambda: object())
     invalidate = MagicMock()
-    monkeypatch.setattr(deps, "invalidate_search_index", invalidate)
+    monkeypatch.setattr(api_app, "invalidate_search_index", invalidate)
 
     api_app.on_new_conversations(["a.jsonl"])
 
@@ -324,7 +324,7 @@ def test_on_new_conversations_handles_config_error(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(api_app, "get_indexer", lambda: indexer)
     monkeypatch.setattr(deps, "get_or_create_search_engine", lambda: object())
     invalidate = MagicMock()
-    monkeypatch.setattr(deps, "invalidate_search_index", invalidate)
+    monkeypatch.setattr(api_app, "invalidate_search_index", invalidate)
 
     api_app.on_new_conversations(["a.jsonl"])
 
@@ -494,7 +494,7 @@ def test_chat_returns_warming_until_ready(monkeypatch: pytest.MonkeyPatch) -> No
     readiness.set_component("embedder", "idle")
 
     warmup = MagicMock()
-    monkeypatch.setattr("searchat.api.dependencies.trigger_search_engine_warmup", warmup)
+    monkeypatch.setattr("searchat.api.warmup.trigger_search_engine_warmup", warmup)
 
     client = TestClient(app)
     response = client.post(
@@ -753,6 +753,7 @@ def test_resolve_dataset_search_dir_returns_snapshot_dir(tmp_path) -> None:
 @pytest.mark.asyncio
 async def test_start_background_warmup_schedules_once(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     import searchat.api.dependencies as deps
+    import searchat.api.warmup as api_warmup
 
     deps._config = object()
     deps._search_dir = tmp_path
@@ -765,7 +766,7 @@ async def test_start_background_warmup_schedules_once(monkeypatch: pytest.Monkey
         started["count"] += 1
         await block.wait()
 
-    monkeypatch.setattr(deps, "_warmup_all", _fake_warmup_all)
+    monkeypatch.setattr(api_warmup, "_warmup_all", _fake_warmup_all)
 
     deps.start_background_warmup()
     await asyncio.sleep(0)
@@ -785,25 +786,25 @@ async def test_start_background_warmup_schedules_once(monkeypatch: pytest.Monkey
 
 
 def test_warmup_duckdb_parquet_sets_error(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
-    import searchat.api.dependencies as deps
+    import searchat.api.warmup as api_warmup
     from searchat.api.readiness import get_readiness
 
     class BoomStore:
         def validate_parquet_scan(self):
             raise RuntimeError("boom")
 
-    deps._duckdb_store = BoomStore()
-    deps._config = object()
-    deps._search_dir = tmp_path
+    monkeypatch.setattr("searchat.api.dependencies._duckdb_store", BoomStore())
+    monkeypatch.setattr("searchat.api.dependencies._config", object())
+    monkeypatch.setattr("searchat.api.dependencies._search_dir", tmp_path)
 
-    deps._warmup_duckdb_parquet()
+    api_warmup._warmup_duckdb_parquet()
     snap = get_readiness().snapshot()
     assert snap.components["duckdb"] == "error"
     assert snap.components["parquet"] == "error"
 
 
 def test_warmup_semantic_components_sets_error_only_for_not_ready(monkeypatch: pytest.MonkeyPatch) -> None:
-    import searchat.api.dependencies as deps
+    import searchat.api.warmup as api_warmup
     from searchat.api.readiness import get_readiness
 
     class FakeEngine:
@@ -816,14 +817,14 @@ def test_warmup_semantic_components_sets_error_only_for_not_ready(monkeypatch: p
         def ensure_embedder_loaded(self):
             raise AssertionError("should not be called")
 
-    monkeypatch.setattr(deps, "_ensure_search_engine", lambda: FakeEngine())
+    monkeypatch.setattr("searchat.api.dependencies._ensure_search_engine", lambda: FakeEngine())
 
     readiness = get_readiness()
     readiness.set_component("metadata", "idle")
     readiness.set_component("faiss", "ready")
     readiness.set_component("embedder", "idle")
 
-    deps._warmup_semantic_components()
+    api_warmup._warmup_semantic_components()
     snap = readiness.snapshot()
     assert snap.components["metadata"] == "error"
     assert snap.components["faiss"] == "ready"

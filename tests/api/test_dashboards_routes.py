@@ -328,7 +328,7 @@ def test_dashboards_render_returns_503_when_semantic_components_not_ready(client
     readiness = SimpleNamespace(snapshot=lambda: SimpleNamespace(components={"metadata": "idle", "faiss": "ready", "embedder": "ready"}))
     monkeypatch.setattr("searchat.api.readiness.get_readiness", lambda: readiness)
     warmup = MagicMock()
-    monkeypatch.setattr("searchat.api.dependencies.trigger_search_engine_warmup", warmup)
+    monkeypatch.setattr("searchat.api.warmup.trigger_search_engine_warmup", warmup)
 
     monkeypatch.setattr("searchat.api.routers.dashboards.deps.get_dashboards_service", lambda: dashboards_service)
     monkeypatch.setattr("searchat.api.routers.dashboards.deps.get_saved_queries_service", lambda: saved_queries_service)

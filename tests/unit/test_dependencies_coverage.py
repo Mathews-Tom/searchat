@@ -212,8 +212,10 @@ class TestGetOrCreateSearchEngineFor:
 
 class TestWarmupEmbeddedModel:
     def test_skips_when_provider_not_embedded(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+        import searchat.api.warmup as api_warmup
+
         readiness = FakeReadiness()
-        monkeypatch.setattr(deps, "get_readiness", lambda: readiness)
+        monkeypatch.setattr(api_warmup, "get_readiness", lambda: readiness)
         cfg = SimpleNamespace(
             llm=SimpleNamespace(default_provider="openai"),
         )
@@ -224,8 +226,10 @@ class TestWarmupEmbeddedModel:
         assert readiness.components["embedded_model"] == "idle"
 
     def test_ready_when_model_path_exists(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+        import searchat.api.warmup as api_warmup
+
         readiness = FakeReadiness()
-        monkeypatch.setattr(deps, "get_readiness", lambda: readiness)
+        monkeypatch.setattr(api_warmup, "get_readiness", lambda: readiness)
 
         model_file = tmp_path / "model.gguf"
         model_file.touch()
@@ -243,8 +247,10 @@ class TestWarmupEmbeddedModel:
         assert readiness.components["embedded_model"] == "ready"
 
     def test_returns_early_when_config_fails(self, monkeypatch: pytest.MonkeyPatch):
+        import searchat.api.warmup as api_warmup
+
         readiness = FakeReadiness()
-        monkeypatch.setattr(deps, "get_readiness", lambda: readiness)
+        monkeypatch.setattr(api_warmup, "get_readiness", lambda: readiness)
         monkeypatch.setattr(deps, "_config", None)
 
         deps._warmup_embedded_model()
@@ -336,8 +342,10 @@ class TestInitializeWithExpertise:
 
 class TestTriggerSearchEngineWarmup:
     def test_calls_start_background_warmup(self, monkeypatch: pytest.MonkeyPatch):
+        import searchat.api.warmup as api_warmup
+
         called = {"count": 0}
-        monkeypatch.setattr(deps, "start_background_warmup", lambda: called.__setitem__("count", called["count"] + 1))
+        monkeypatch.setattr(api_warmup, "start_background_warmup", lambda: called.__setitem__("count", called["count"] + 1))
 
         deps.trigger_search_engine_warmup()
         assert called["count"] == 1

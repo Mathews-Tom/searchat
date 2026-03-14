@@ -132,8 +132,10 @@ def test_initialize_services_sets_error_on_exception(monkeypatch: pytest.MonkeyP
 
 
 def test_start_background_warmup_returns_if_not_initialized(monkeypatch: pytest.MonkeyPatch) -> None:
+    import searchat.api.warmup as api_warmup
+
     readiness = FakeReadiness()
-    monkeypatch.setattr(deps, "get_readiness", lambda: readiness)
+    monkeypatch.setattr(api_warmup, "get_readiness", lambda: readiness)
 
     deps.start_background_warmup()
 
@@ -141,8 +143,10 @@ def test_start_background_warmup_returns_if_not_initialized(monkeypatch: pytest.
 
 
 def test_start_background_warmup_returns_without_event_loop(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    import searchat.api.warmup as api_warmup
+
     readiness = FakeReadiness()
-    monkeypatch.setattr(deps, "get_readiness", lambda: readiness)
+    monkeypatch.setattr(api_warmup, "get_readiness", lambda: readiness)
 
     monkeypatch.setattr(deps, "_config", object())
     monkeypatch.setattr(deps, "_search_dir", tmp_path)
@@ -155,8 +159,10 @@ def test_start_background_warmup_returns_without_event_loop(monkeypatch: pytest.
 
 
 def test_start_background_warmup_is_idempotent(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    import searchat.api.warmup as api_warmup
+
     readiness = FakeReadiness()
-    monkeypatch.setattr(deps, "get_readiness", lambda: readiness)
+    monkeypatch.setattr(api_warmup, "get_readiness", lambda: readiness)
 
     monkeypatch.setattr(deps, "_config", object())
     monkeypatch.setattr(deps, "_search_dir", tmp_path)
@@ -183,41 +189,47 @@ def test_start_background_warmup_is_idempotent(monkeypatch: pytest.MonkeyPatch, 
 
 
 def test_warmup_duckdb_parquet_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    import searchat.api.warmup as api_warmup
+
     readiness = FakeReadiness()
-    monkeypatch.setattr(deps, "get_readiness", lambda: readiness)
+    monkeypatch.setattr(api_warmup, "get_readiness", lambda: readiness)
 
     class _Store:
         def validate_parquet_scan(self) -> None:
             return None
 
-    monkeypatch.setattr(deps, "get_duckdb_store", lambda: _Store())
+    monkeypatch.setattr("searchat.api.dependencies.get_duckdb_store", lambda: _Store())
     monkeypatch.setenv("SEARCHAT_PROFILE_WARMUP", "1")
 
-    deps._warmup_duckdb_parquet()
+    api_warmup._warmup_duckdb_parquet()
 
     assert readiness.components["duckdb"] == "ready"
     assert readiness.components["parquet"] == "ready"
 
 
 def test_warmup_duckdb_parquet_failure_sets_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    import searchat.api.warmup as api_warmup
+
     readiness = FakeReadiness()
-    monkeypatch.setattr(deps, "get_readiness", lambda: readiness)
+    monkeypatch.setattr(api_warmup, "get_readiness", lambda: readiness)
 
     class _Store:
         def validate_parquet_scan(self) -> None:
             raise RuntimeError("bad parquet")
 
-    monkeypatch.setattr(deps, "get_duckdb_store", lambda: _Store())
+    monkeypatch.setattr("searchat.api.dependencies.get_duckdb_store", lambda: _Store())
 
-    deps._warmup_duckdb_parquet()
+    api_warmup._warmup_duckdb_parquet()
 
     assert readiness.components["duckdb"] == "error"
     assert readiness.components["parquet"] == "error"
 
 
 def test_warmup_semantic_components_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    import searchat.api.warmup as api_warmup
+
     readiness = FakeReadiness()
-    monkeypatch.setattr(deps, "get_readiness", lambda: readiness)
+    monkeypatch.setattr(api_warmup, "get_readiness", lambda: readiness)
 
     class _Engine:
         def ensure_metadata_ready(self) -> None:
@@ -229,10 +241,10 @@ def test_warmup_semantic_components_success(monkeypatch: pytest.MonkeyPatch) -> 
         def ensure_embedder_loaded(self) -> None:
             return None
 
-    monkeypatch.setattr(deps, "_ensure_search_engine", lambda: _Engine())
+    monkeypatch.setattr("searchat.api.dependencies._ensure_search_engine", lambda: _Engine())
     monkeypatch.setenv("SEARCHAT_PROFILE_WARMUP", "1")
 
-    deps._warmup_semantic_components()
+    api_warmup._warmup_semantic_components()
 
     assert readiness.components["metadata"] == "ready"
     assert readiness.components["faiss"] == "ready"
@@ -240,8 +252,10 @@ def test_warmup_semantic_components_success(monkeypatch: pytest.MonkeyPatch) -> 
 
 
 def test_warmup_semantic_components_failure_marks_unready_components_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    import searchat.api.warmup as api_warmup
+
     readiness = FakeReadiness()
-    monkeypatch.setattr(deps, "get_readiness", lambda: readiness)
+    monkeypatch.setattr(api_warmup, "get_readiness", lambda: readiness)
 
     class _Engine:
         def ensure_metadata_ready(self) -> None:
@@ -253,9 +267,9 @@ def test_warmup_semantic_components_failure_marks_unready_components_error(monke
         def ensure_embedder_loaded(self) -> None:
             return None
 
-    monkeypatch.setattr(deps, "_ensure_search_engine", lambda: _Engine())
+    monkeypatch.setattr("searchat.api.dependencies._ensure_search_engine", lambda: _Engine())
 
-    deps._warmup_semantic_components()
+    api_warmup._warmup_semantic_components()
 
     assert readiness.components["metadata"] == "ready"
     assert readiness.components["faiss"] == "error"
@@ -263,8 +277,10 @@ def test_warmup_semantic_components_failure_marks_unready_components_error(monke
 
 
 def test_invalidate_search_index_clears_caches_and_marks_idle(monkeypatch: pytest.MonkeyPatch) -> None:
+    import searchat.api.warmup as api_warmup
+
     readiness = FakeReadiness()
-    monkeypatch.setattr(deps, "get_readiness", lambda: readiness)
+    monkeypatch.setattr(api_warmup, "get_readiness", lambda: readiness)
 
     called = {"refresh": 0, "warmup": 0}
 
@@ -272,10 +288,10 @@ def test_invalidate_search_index_clears_caches_and_marks_idle(monkeypatch: pytes
         def refresh_index(self) -> None:
             called["refresh"] += 1
 
-    monkeypatch.setattr(deps, "_search_engine", _Engine())
-    monkeypatch.setattr(deps, "start_background_warmup", lambda: called.__setitem__("warmup", called["warmup"] + 1))
+    monkeypatch.setattr("searchat.api.dependencies._search_engine", _Engine())
+    monkeypatch.setattr(api_warmup, "start_background_warmup", lambda: called.__setitem__("warmup", called["warmup"] + 1))
 
-    deps.invalidate_search_index()
+    api_warmup.invalidate_search_index()
 
     assert api_state.projects_cache is None
     assert api_state.projects_summary_cache is None
