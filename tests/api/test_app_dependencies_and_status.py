@@ -750,6 +750,30 @@ def test_resolve_dataset_search_dir_returns_snapshot_dir(tmp_path) -> None:
     assert name == "snap"
 
 
+def test_resolve_dataset_search_dir_accepts_legacy_browsable_snapshot(tmp_path) -> None:
+    import searchat.api.dependencies as deps
+
+    backup_root = tmp_path / "backups"
+    backup_root.mkdir()
+    snapshot_dir = backup_root / "legacy"
+    snapshot_dir.mkdir()
+
+    deps._search_dir = tmp_path
+    deps._config = SimpleNamespace(snapshots=SimpleNamespace(enabled=True))
+    deps._backup_manager = SimpleNamespace(
+        backup_dir=backup_root,
+        validate_backup_artifact=lambda _name, verify_hashes=False: {
+            "snapshot_browsable": True,
+            "has_manifest": False,
+            "valid": True,
+        },
+    )
+
+    resolved, name = deps.resolve_dataset_search_dir("legacy")
+    assert resolved == snapshot_dir
+    assert name == "legacy"
+
+
 @pytest.mark.asyncio
 async def test_start_background_warmup_schedules_once(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     import searchat.api.dependencies as deps

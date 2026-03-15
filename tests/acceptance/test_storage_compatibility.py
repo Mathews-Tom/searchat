@@ -165,3 +165,39 @@ def test_storage_compatibility_repair_migrates_legacy_dataset_bundle(temp_search
     assert backup_payload["embedding_model"] == "all-MiniLM-L6-v2"
     assert backup_payload["next_vector_id"] == 4
     assert backup_meta["metadata_version"] == 1
+
+
+def test_storage_compatibility_legacy_full_backup_without_manifest_remains_browsable(temp_search_dir: Path) -> None:
+    manager = BackupManager(temp_search_dir)
+    live_file = temp_search_dir / "data" / "conversations" / "conv.parquet"
+    live_file.parent.mkdir(parents=True, exist_ok=True)
+    live_file.write_bytes(b"PAR1\n")
+
+    backup = manager.create_backup(backup_name="legacy-full")
+    (backup.backup_path / BACKUP_MANIFEST_FILE).unlink()
+
+    result = manager.validate_backup_artifact(backup.backup_path.name, verify_hashes=False)
+    assert result["valid"] is True
+    assert result["has_manifest"] is False
+    assert result["snapshot_browsable"] is True
+    assert result["chain_length"] == 1
+
+
+def test_storage_compatibility_invalid_chain_with_missing_parent_manifest_fails_closed(temp_search_dir: Path) -> None:
+    manager = BackupManager(temp_search_dir)
+    live_file = temp_search_dir / "data" / "conversations" / "conv.parquet"
+    settings = temp_search_dir / "config" / "settings.toml"
+    live_file.parent.mkdir(parents=True, exist_ok=True)
+    settings.parent.mkdir(parents=True, exist_ok=True)
+    live_file.write_bytes(b"PAR1\n")
+    settings.write_bytes(b"a = 1\n")
+
+    base = manager.create_backup(backup_name="base")
+    settings.write_bytes(b"a = 2\n")
+    child = manager.create_incremental_backup(parent_name=base.backup_path.name, backup_name="child")
+    (base.backup_path / BACKUP_MANIFEST_FILE).unlink()
+
+    result = manager.validate_backup_artifact(child.backup_path.name, verify_hashes=False)
+    assert result["valid"] is False
+    assert result["snapshot_browsable"] is False
+    assert any("Backup manifest missing" in error for error in result["errors"])
