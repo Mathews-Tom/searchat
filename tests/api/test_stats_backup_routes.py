@@ -4,6 +4,7 @@ from datetime import datetime
 from unittest.mock import Mock, patch
 from pathlib import Path
 from types import SimpleNamespace
+import shutil
 
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
@@ -54,6 +55,17 @@ def mock_backup_manager():
     mock.create_incremental_backup.return_value = mock_metadata
     mock.list_backups.return_value = [mock_metadata]
     mock.restore_from_backup.return_value = None
+    mock.get_backup_summary.return_value = {
+        "name": "backup_20250120_100000",
+        "backup_mode": "full",
+        "encrypted": False,
+        "parent_name": None,
+        "chain_length": 1,
+        "snapshot_browsable": True,
+        "has_manifest": True,
+        "valid": True,
+        "errors": [],
+    }
     mock.delete_backup.return_value = None
     mock.validate_backup_artifact.return_value = {
         "backup_name": "backup_20250120_100000",
@@ -271,6 +283,61 @@ class TestListBackupsEndpoint:
             assert "backup_directory" in data
             assert data["total"] == 1
             assert len(data["backups"]) == 1
+            assert data["backups"][0]["valid"] is True
+            assert data["backups"][0]["errors"] == []
+
+    def test_list_backups_includes_invalid_summary_state(self, client, mock_backup_manager):
+        mock_backup_manager.get_backup_summary.return_value = {
+            "name": "backup_20250120_100000",
+            "backup_mode": "incremental",
+            "encrypted": False,
+            "parent_name": "backup_20250120_090000",
+            "chain_length": 0,
+            "snapshot_browsable": False,
+            "has_manifest": True,
+            "valid": False,
+            "errors": ["Backup manifest missing: backup_20250120_090000"],
+        }
+
+        with patch('searchat.api.routers.backup.get_backup_manager', return_value=mock_backup_manager):
+            response = client.get("/api/backup/list")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["backups"][0]["valid"] is False
+        assert data["backups"][0]["snapshot_browsable"] is False
+        assert data["backups"][0]["backup_mode"] == "incremental"
+        assert data["backups"][0]["errors"] == ["Backup manifest missing: backup_20250120_090000"]
+
+    def test_list_backups_fixture_bundle_exposes_contract_health(self, client, tmp_path):
+        from searchat.services.backup import BackupManager
+
+        fixture = Path("tests/fixtures/storage/backup_contract_bundle")
+        shutil.copytree(fixture, tmp_path, dirs_exist_ok=True)
+        manager = BackupManager(tmp_path)
+
+        with patch("searchat.api.routers.backup.get_backup_manager", return_value=manager):
+            response = client.get("/api/backup/list")
+
+        assert response.status_code == 200
+        data = response.json()
+        entries = {entry["name"]: entry for entry in data["backups"]}
+
+        assert entries["legacy_plaintext_full"]["valid"] is True
+        assert entries["legacy_plaintext_full"]["has_manifest"] is False
+        assert entries["legacy_plaintext_full"]["snapshot_browsable"] is True
+
+        assert entries["invalid_manifest_full"]["valid"] is False
+        assert entries["invalid_manifest_full"]["backup_mode"] == "unknown"
+        assert any("manifest version mismatch" in error.lower() for error in entries["invalid_manifest_full"]["errors"])
+
+        assert entries["broken_chain_child"]["valid"] is False
+        assert entries["broken_chain_child"]["backup_mode"] == "incremental"
+        assert any("Backup manifest missing" in error for error in entries["broken_chain_child"]["errors"])
+
+        assert entries["mixed_version_metadata_full"]["valid"] is True
+        assert entries["mixed_version_metadata_full"]["backup_type"] == "unknown"
+        assert entries["mixed_version_metadata_full"]["snapshot_browsable"] is True
 
 
 @pytest.mark.unit
@@ -294,6 +361,13 @@ class TestGetBackupChainEndpoint:
     """Tests for GET /api/backup/chain/{backup_name} endpoint."""
 
     def test_get_backup_chain_success(self, client, mock_backup_manager):
+        mock_backup_manager.inspect_backup_chain.return_value = {
+            "backup_name": "backup_20250120_100000",
+            "chain": ["backup_20250120_090000", "backup_20250120_100000"],
+            "chain_length": 2,
+            "valid": True,
+            "errors": [],
+        }
         with patch('searchat.api.routers.backup.get_backup_manager', return_value=mock_backup_manager):
             resp = client.get("/api/backup/chain/backup_20250120_100000")
 
@@ -302,7 +376,33 @@ class TestGetBackupChainEndpoint:
         assert data["backup_name"] == "backup_20250120_100000"
         assert data["chain_length"] == 2
         assert data["chain"] == ["backup_20250120_090000", "backup_20250120_100000"]
-        mock_backup_manager.resolve_backup_chain.assert_called_once_with("backup_20250120_100000")
+        assert data["valid"] is True
+        assert data["errors"] == []
+        mock_backup_manager.inspect_backup_chain.assert_called_once_with("backup_20250120_100000")
+
+    def test_get_backup_chain_fixture_bundle_surfaces_invalid_state(self, client, tmp_path):
+        from searchat.services.backup import BackupManager
+
+        fixture = Path("tests/fixtures/storage/backup_contract_bundle")
+        shutil.copytree(fixture, tmp_path, dirs_exist_ok=True)
+        manager = BackupManager(tmp_path)
+
+        with patch("searchat.api.routers.backup.get_backup_manager", return_value=manager):
+            broken = client.get("/api/backup/chain/broken_chain_child")
+            invalid = client.get("/api/backup/chain/invalid_manifest_full")
+
+        assert broken.status_code == 200
+        broken_payload = broken.json()
+        assert broken_payload["chain"] == ["broken_chain_base", "broken_chain_child"]
+        assert broken_payload["valid"] is False
+        assert any("Backup manifest missing" in error for error in broken_payload["errors"])
+
+        assert invalid.status_code == 200
+        invalid_payload = invalid.json()
+        assert invalid_payload["chain"] == []
+        assert invalid_payload["chain_length"] == 0
+        assert invalid_payload["valid"] is False
+        assert any("manifest version mismatch" in error.lower() for error in invalid_payload["errors"])
 
     def test_list_backups_empty(self, client, mock_backup_manager):
         """Test listing when no backups exist."""

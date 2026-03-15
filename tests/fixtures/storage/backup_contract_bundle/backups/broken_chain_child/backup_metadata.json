@@ -1,0 +1,10 @@
+{
+  "metadata_version": 1,
+  "timestamp": "20260316_094500",
+  "backup_path": "/fixture/backups/broken_chain_child",
+  "source_path": "/fixture",
+  "file_count": 1,
+  "total_size_bytes": 8,
+  "total_size_mb": 0.0,
+  "backup_type": "manual"
+}

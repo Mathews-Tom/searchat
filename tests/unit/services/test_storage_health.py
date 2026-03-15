@@ -5,6 +5,7 @@ import shutil
 from pathlib import Path
 
 from searchat.services.backup import BackupManager
+from searchat.services.storage_contracts import BACKUP_MANIFEST_FILE
 from searchat.services.storage_health import inspect_storage_health, repair_storage_metadata
 
 
@@ -83,3 +84,53 @@ def test_repair_storage_metadata_migrates_legacy_dataset_bundle(temp_search_dir:
     assert backup_payload["embedding_model"] == "all-MiniLM-L6-v2"
     assert backup_payload["next_vector_id"] == 4
     assert backup_meta["metadata_version"] == 1
+
+
+def test_inspect_storage_health_flags_broken_backup_chain(temp_search_dir: Path) -> None:
+    manager = BackupManager(temp_search_dir)
+    live_file = temp_search_dir / "data" / "conversations" / "conv.parquet"
+    settings = temp_search_dir / "config" / "settings.toml"
+    live_file.parent.mkdir(parents=True, exist_ok=True)
+    settings.parent.mkdir(parents=True, exist_ok=True)
+    live_file.write_bytes(b"PAR1\n")
+    settings.write_bytes(b"a = 1\n")
+
+    base = manager.create_backup(backup_name="base")
+    settings.write_bytes(b"a = 2\n")
+    child = manager.create_incremental_backup(parent_name=base.backup_path.name, backup_name="child")
+    (base.backup_path / BACKUP_MANIFEST_FILE).unlink()
+
+    report = inspect_storage_health(temp_search_dir)
+
+    assert any(
+        issue.scope == "backup_chain"
+        and child.backup_path.name in issue.message
+        and issue.severity == "error"
+        for issue in report.issues
+    )
+
+
+def test_inspect_storage_health_flags_fixture_backup_contract_bundle(temp_search_dir: Path) -> None:
+    fixture = Path("tests/fixtures/storage/backup_contract_bundle")
+    shutil.copytree(fixture, temp_search_dir, dirs_exist_ok=True)
+
+    report = inspect_storage_health(temp_search_dir)
+
+    assert any(
+        issue.scope == "backup_manifest"
+        and issue.path.name == BACKUP_MANIFEST_FILE
+        and "version mismatch" in issue.message.lower()
+        for issue in report.issues
+    )
+    assert any(
+        issue.scope == "backup_chain"
+        and issue.path.name == "broken_chain_child"
+        and "validation failed" in issue.message.lower()
+        for issue in report.issues
+    )
+    assert any(
+        issue.scope == "backup_metadata"
+        and issue.path.parent.name == "mixed_version_metadata_full"
+        and "version mismatch" in issue.message.lower()
+        for issue in report.issues
+    )

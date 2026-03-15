@@ -1,0 +1,9 @@
+{
+  "manifest_version": 999,
+  "backup_mode": "full",
+  "encrypted": false,
+  "created_at": "2026-03-16T09:15:00",
+  "parent_name": null,
+  "files": {},
+  "deleted_files": []
+}

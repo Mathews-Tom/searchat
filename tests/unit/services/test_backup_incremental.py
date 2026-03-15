@@ -119,3 +119,145 @@ def test_validate_backup_artifact_detects_tamper(temp_search_dir: Path):
     res = mgr.validate_backup_artifact(name, verify_hashes=True)
     assert res["valid"] is False
     assert any("Hash mismatch" in e for e in res.get("errors", []))
+
+
+@pytest.mark.unit
+def test_validate_backup_artifact_legacy_full_backup_remains_snapshot_browsable(temp_search_dir: Path):
+    live = temp_search_dir
+    mgr = BackupManager(live)
+
+    parquet = live / "data" / "conversations" / "conv.parquet"
+    _write_bytes(parquet, b"PAR1\n")
+
+    meta = mgr.create_backup(backup_name="legacy")
+    backup_path = meta.backup_path
+    (backup_path / "backup_manifest.json").unlink()
+
+    res = mgr.validate_backup_artifact(backup_path.name, verify_hashes=False)
+    assert res["valid"] is True
+    assert res["has_manifest"] is False
+    assert res["snapshot_browsable"] is True
+    assert res["chain_length"] == 1
+
+
+@pytest.mark.unit
+def test_validate_backup_artifact_fails_closed_when_parent_manifest_is_missing(temp_search_dir: Path):
+    live = temp_search_dir
+    mgr = BackupManager(live)
+
+    parquet = live / "data" / "conversations" / "conv.parquet"
+    settings = live / "config" / "settings.toml"
+    _write_bytes(parquet, b"PAR1\n")
+    _write_bytes(settings, b"a = 1\n")
+
+    base_meta = mgr.create_backup(backup_name="base")
+    base_name = base_meta.backup_path.name
+
+    _write_bytes(settings, b"a = 2\n")
+    inc_meta = mgr.create_incremental_backup(parent_name=base_name, backup_name="inc")
+    (base_meta.backup_path / "backup_manifest.json").unlink()
+
+    res = mgr.validate_backup_artifact(inc_meta.backup_path.name, verify_hashes=False)
+    assert res["valid"] is False
+    assert res["snapshot_browsable"] is False
+    assert any("Backup manifest missing" in e for e in res.get("errors", []))
+
+
+@pytest.mark.unit
+def test_get_backup_summary_legacy_full_backup_reports_valid_and_browsable(temp_search_dir: Path):
+    live = temp_search_dir
+    mgr = BackupManager(live)
+
+    parquet = live / "data" / "conversations" / "conv.parquet"
+    _write_bytes(parquet, b"PAR1\n")
+
+    meta = mgr.create_backup(backup_name="legacy")
+    (meta.backup_path / "backup_manifest.json").unlink()
+
+    summary = mgr.get_backup_summary(meta.backup_path.name)
+    assert summary["has_manifest"] is False
+    assert summary["valid"] is True
+    assert summary["snapshot_browsable"] is True
+    assert summary["errors"] == []
+
+
+@pytest.mark.unit
+def test_get_backup_summary_invalid_manifest_fails_closed(temp_search_dir: Path):
+    live = temp_search_dir
+    mgr = BackupManager(live)
+
+    parquet = live / "data" / "conversations" / "conv.parquet"
+    _write_bytes(parquet, b"PAR1\n")
+
+    meta = mgr.create_backup(backup_name="broken")
+    manifest_path = meta.backup_path / "backup_manifest.json"
+    manifest_path.write_text('{"manifest_version": 999}', encoding="utf-8")
+
+    summary = mgr.get_backup_summary(meta.backup_path.name)
+    assert summary["has_manifest"] is True
+    assert summary["valid"] is False
+    assert summary["snapshot_browsable"] is False
+    assert summary["backup_mode"] == "unknown"
+    assert summary["errors"]
+
+
+@pytest.mark.unit
+def test_get_backup_summary_broken_chain_uses_artifact_validation(temp_search_dir: Path):
+    live = temp_search_dir
+    mgr = BackupManager(live)
+
+    parquet = live / "data" / "conversations" / "conv.parquet"
+    settings = live / "config" / "settings.toml"
+    _write_bytes(parquet, b"PAR1\n")
+    _write_bytes(settings, b"a = 1\n")
+
+    base = mgr.create_backup(backup_name="base")
+    _write_bytes(settings, b"a = 2\n")
+    child = mgr.create_incremental_backup(parent_name=base.backup_path.name, backup_name="child")
+    (base.backup_path / "backup_manifest.json").unlink()
+
+    summary = mgr.get_backup_summary(child.backup_path.name)
+    assert summary["has_manifest"] is True
+    assert summary["valid"] is False
+    assert summary["snapshot_browsable"] is False
+    assert summary["backup_mode"] == "incremental"
+    assert summary["chain_length"] == 2
+    assert any("Backup manifest missing" in error for error in summary["errors"])
+
+
+@pytest.mark.unit
+def test_inspect_backup_chain_broken_chain_preserves_topology(temp_search_dir: Path):
+    live = temp_search_dir
+    mgr = BackupManager(live)
+
+    parquet = live / "data" / "conversations" / "conv.parquet"
+    settings = live / "config" / "settings.toml"
+    _write_bytes(parquet, b"PAR1\n")
+    _write_bytes(settings, b"a = 1\n")
+
+    base = mgr.create_backup(backup_name="base")
+    _write_bytes(settings, b"a = 2\n")
+    child = mgr.create_incremental_backup(parent_name=base.backup_path.name, backup_name="child")
+    (base.backup_path / "backup_manifest.json").unlink()
+
+    inspection = mgr.inspect_backup_chain(child.backup_path.name)
+    assert inspection["chain"] == [base.backup_path.name, child.backup_path.name]
+    assert inspection["chain_length"] == 2
+    assert inspection["valid"] is False
+    assert any("Backup manifest missing" in error for error in inspection["errors"])
+
+
+@pytest.mark.unit
+def test_list_backups_falls_back_for_mixed_version_metadata_fixture(temp_search_dir: Path):
+    import shutil
+
+    fixture = Path("tests/fixtures/storage/backup_contract_bundle")
+    shutil.copytree(fixture, temp_search_dir, dirs_exist_ok=True)
+
+    mgr = BackupManager(temp_search_dir)
+    listed = {meta.backup_path.name: meta for meta in mgr.list_backups()}
+
+    assert "mixed_version_metadata_full" in listed
+    mixed = listed["mixed_version_metadata_full"]
+    assert mixed.backup_type == "unknown"
+    assert mixed.file_count >= 1
