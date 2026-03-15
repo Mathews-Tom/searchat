@@ -104,3 +104,25 @@ def test_storage_compatibility_repair_normalizes_legacy_backup_metadata(temp_sea
     repaired = repair_storage_metadata(temp_search_dir)
     assert repaired.repairs_applied == 1
     assert not repaired.issues
+
+
+def test_storage_compatibility_repair_migrates_legacy_index_metadata(temp_search_dir: Path) -> None:
+    from searchat.services.storage_health import inspect_storage_health, repair_storage_metadata
+
+    indices_dir = temp_search_dir / "data" / "indices"
+    indices_dir.mkdir(parents=True, exist_ok=True)
+    fixture = Path("tests/fixtures/storage/legacy_index_metadata_missing_fields.json")
+    metadata_path = indices_dir / "index_metadata.json"
+    metadata_path.write_text(fixture.read_text(encoding="utf-8"), encoding="utf-8")
+
+    before = inspect_storage_health(temp_search_dir, embedding_model="all-MiniLM-L6-v2")
+    assert any(issue.scope == "index_metadata" and issue.repairable for issue in before.issues)
+
+    repaired = repair_storage_metadata(temp_search_dir, embedding_model="all-MiniLM-L6-v2")
+    assert repaired.repairs_applied == 1
+
+    payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+    assert payload["embedding_model"] == "all-MiniLM-L6-v2"
+    assert payload["chunk_size"] == 1500
+    assert payload["chunk_overlap"] == 200
+    assert payload["next_vector_id"] == 5
