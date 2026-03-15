@@ -72,3 +72,24 @@ def test_validate_storage_repair_updates_metadata(temp_search_dir: Path) -> None
     repaired_payload = json.loads(metadata_path.read_text(encoding="utf-8"))
     assert result == 0
     assert repaired_payload["metadata_version"] == 1
+
+
+def test_validate_storage_reports_index_metadata_migration(temp_search_dir: Path, capsys) -> None:
+    from searchat.cli.validate_cmd import run_validate
+
+    indices_dir = temp_search_dir / "data" / "indices"
+    indices_dir.mkdir(parents=True, exist_ok=True)
+    fixture = Path("tests/fixtures/storage/legacy_index_metadata_missing_fields.json")
+    (indices_dir / "index_metadata.json").write_text(fixture.read_text(encoding="utf-8"), encoding="utf-8")
+
+    cfg = SimpleNamespace(embedding=SimpleNamespace(model="all-MiniLM-L6-v2"))
+    with (
+        patch("searchat.config.Config.load", return_value=cfg),
+        patch("searchat.config.PathResolver.get_shared_search_dir", return_value=temp_search_dir),
+    ):
+        result = run_validate(["storage"])
+
+    captured = capsys.readouterr()
+    assert result == 0
+    assert "index_metadata" in captured.out
+    assert "embedding_model" in captured.out
