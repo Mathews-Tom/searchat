@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pyarrow as pa
@@ -60,11 +61,8 @@ def test_conversation_code_symbols_returns_aggregates(client: TestClient, tmp_pa
     store = DuckDBStore(search_dir)
 
     with patch(
-        "searchat.api.routers.code.deps.resolve_dataset_search_dir",
-        return_value=(search_dir, None),
-    ), patch(
-        "searchat.api.routers.code.deps.get_duckdb_store_for",
-        return_value=store,
+        "searchat.api.routers.code.get_dataset_store",
+        return_value=SimpleNamespace(search_dir=search_dir, snapshot_name=None, store=store),
     ):
         resp = client.get("/api/conversation/conv-1/code-symbols")
 
@@ -84,11 +82,8 @@ def test_code_functions_endpoint_filters_by_name(client: TestClient, tmp_path: P
     store = DuckDBStore(search_dir)
 
     with patch(
-        "searchat.api.routers.code.deps.resolve_dataset_search_dir",
-        return_value=(search_dir, None),
-    ), patch(
-        "searchat.api.routers.code.deps.get_duckdb_store_for",
-        return_value=store,
+        "searchat.api.routers.code.get_dataset_store",
+        return_value=SimpleNamespace(search_dir=search_dir, snapshot_name=None, store=store),
     ):
         resp = client.get("/api/code/functions?name=greet")
 
@@ -106,11 +101,8 @@ def test_code_imports_endpoint_filters_by_module(client: TestClient, tmp_path: P
     store = DuckDBStore(search_dir)
 
     with patch(
-        "searchat.api.routers.code.deps.resolve_dataset_search_dir",
-        return_value=(search_dir, None),
-    ), patch(
-        "searchat.api.routers.code.deps.get_duckdb_store_for",
-        return_value=store,
+        "searchat.api.routers.code.get_dataset_store",
+        return_value=SimpleNamespace(search_dir=search_dir, snapshot_name=None, store=store),
     ):
         resp = client.get("/api/code/imports?module=os")
 
@@ -126,11 +118,8 @@ def test_code_symbol_endpoints_return_503_when_no_code_index(client: TestClient,
     store = DuckDBStore(search_dir)
 
     with patch(
-        "searchat.api.routers.code.deps.resolve_dataset_search_dir",
-        return_value=(search_dir, None),
-    ), patch(
-        "searchat.api.routers.code.deps.get_duckdb_store_for",
-        return_value=store,
+        "searchat.api.routers.code.get_dataset_store",
+        return_value=SimpleNamespace(search_dir=search_dir, snapshot_name=None, store=store),
     ):
         resp = client.get("/api/conversation/conv-1/code-symbols")
         resp2 = client.get("/api/code/functions?name=greet")
