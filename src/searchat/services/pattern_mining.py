@@ -9,7 +9,7 @@ from searchat.api.dependencies import get_search_engine
 from searchat.config import Config
 from searchat.config.constants import PATTERN_MINING_SEEDS
 from searchat.models import SearchMode, SearchFilters
-from searchat.services.llm_service import build_generation_service
+from searchat.services.llm_service import build_generation_service, resolve_generation_target
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +89,11 @@ def extract_patterns(
         seed_clusters.setdefault(seed, []).append(result)
 
     # Step 4: For each cluster, synthesize a pattern via LLM
+    target = resolve_generation_target(
+        config.llm,
+        provider=model_provider,
+        model_name=model_name,
+    )
     llm = build_generation_service(config.llm)
     patterns: list[ExtractedPattern] = []
 
@@ -127,8 +132,8 @@ def extract_patterns(
         try:
             response = llm.completion(
                 messages=messages,
-                provider=model_provider,
-                model_name=model_name,
+                provider=target.provider,
+                model_name=target.model_name,
             )
             parsed = json.loads(response.strip())
             patterns.append(

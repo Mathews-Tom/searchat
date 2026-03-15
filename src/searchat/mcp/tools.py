@@ -8,7 +8,7 @@ from searchat.api.utils import detect_tool_from_path
 from searchat.config import Config, PathResolver
 from searchat.config.constants import VALID_TOOL_NAMES, RAG_SYSTEM_PROMPT
 from searchat.models import SearchFilters, SearchMode
-from searchat.services.llm_service import build_generation_service
+from searchat.services.llm_service import build_generation_service, resolve_generation_target
 from searchat.services.retrieval_service import SemanticRetrievalService, build_retrieval_service
 from searchat.services.storage_service import StorageService, build_storage_service
 
@@ -303,9 +303,11 @@ def ask_about_history(
     dataset_dir = resolve_dataset(search_dir)
     config, engine, _store = build_services(dataset_dir)
 
-    provider = (model_provider or config.llm.default_provider or "ollama").lower().strip()
-    if provider not in ("openai", "ollama", "embedded"):
-        raise ValueError("model_provider must be one of: openai, ollama, embedded")
+    target = resolve_generation_target(
+        config.llm,
+        provider=model_provider,
+        model_name=model_name,
+    )
 
     results = engine.search(question, mode=SearchMode.HYBRID, filters=SearchFilters())
     top_results = results.results[:8]
@@ -336,7 +338,11 @@ def ask_about_history(
     ]
 
     llm = build_generation_service(config.llm)
-    answer = llm.completion(messages=messages, provider=provider, model_name=model_name)
+    answer = llm.completion(
+        messages=messages,
+        provider=target.provider,
+        model_name=target.model_name,
+    )
 
     payload: dict[str, object] = {"answer": answer}
     if include_sources:
@@ -374,15 +380,17 @@ def extract_patterns(
     dataset_dir = resolve_dataset(search_dir)
     config, _engine, _store = build_services(dataset_dir)
 
-    provider = (model_provider or config.llm.default_provider or "ollama").lower().strip()
-    if provider not in ("openai", "ollama", "embedded"):
-        raise ValueError("model_provider must be one of: openai, ollama, embedded")
+    target = resolve_generation_target(
+        config.llm,
+        provider=model_provider,
+        model_name=model_name,
+    )
 
     patterns = _extract_patterns(
         topic=topic,
         max_patterns=max_patterns,
-        model_provider=provider,
-        model_name=model_name,
+        model_provider=target.provider,
+        model_name=target.model_name,
         config=config,
     )
 
@@ -597,15 +605,17 @@ def generate_agent_config(
     dataset_dir = resolve_dataset(search_dir)
     config, _engine, _store = build_services(dataset_dir)
 
-    provider = (model_provider or config.llm.default_provider or "ollama").lower().strip()
-    if provider not in ("openai", "ollama", "embedded"):
-        raise ValueError("model_provider must be one of: openai, ollama, embedded")
+    target = resolve_generation_target(
+        config.llm,
+        provider=model_provider,
+        model_name=model_name,
+    )
 
     patterns = _extract_patterns(
         topic=project_filter,
         max_patterns=15,
-        model_provider=provider,
-        model_name=model_name,
+        model_provider=target.provider,
+        model_name=target.model_name,
         config=config,
     )
 
