@@ -1,7 +1,6 @@
 """Storage inspection and safe metadata normalization helpers."""
 
 from __future__ import annotations
-
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,11 +10,14 @@ from searchat.services.storage_contracts import (
     BACKUP_MANIFEST_FILE,
     BACKUP_METADATA_FILE,
     BackupManifest,
-    BackupMetadata,
     StorageCompatibilityError,
     index_metadata_path,
 )
-from searchat.services.storage_migrations import migrate_index_metadata_root
+from searchat.services.storage_migrations import (
+    migrate_backup_manifest,
+    migrate_backup_metadata,
+    migrate_index_metadata_root,
+)
 
 
 @dataclass(frozen=True)
@@ -140,16 +142,17 @@ def inspect_storage_health(
             metadata_path = backup_dir / BACKUP_METADATA_FILE
             if metadata_path.exists():
                 try:
-                    payload = json.loads(metadata_path.read_text(encoding="utf-8"))
-                    metadata = BackupMetadata.from_dict(payload)
-                    normalized = metadata.normalized()
-                    if "metadata_version" not in payload or normalized != metadata:
+                    plan = migrate_backup_metadata(backup_dir, apply=False)
+                    if plan.has_changes:
                         issues.append(
                             StorageIssue(
                                 severity="warning",
                                 scope="backup_metadata",
                                 path=metadata_path,
-                                message="Backup metadata can be normalized to the current contract version.",
+                                message=(
+                                    "Backup metadata can be normalized to the current contract version: "
+                                    + ", ".join(plan.changed_fields)
+                                ),
                                 repairable=True,
                             )
                         )
@@ -166,7 +169,20 @@ def inspect_storage_health(
             manifest_valid = False
             if manifest_path.exists():
                 try:
-                    BackupManifest.from_dict(json.loads(manifest_path.read_text(encoding="utf-8")))
+                    plan = migrate_backup_manifest(backup_dir, apply=False)
+                    if plan.has_changes:
+                        issues.append(
+                            StorageIssue(
+                                severity="warning",
+                                scope="backup_manifest",
+                                path=manifest_path,
+                                message=(
+                                    "Backup manifest can be normalized to the current contract version: "
+                                    + ", ".join(plan.changed_fields)
+                                ),
+                                repairable=True,
+                            )
+                        )
                     manifest_valid = True
                 except StorageCompatibilityError as exc:
                     issues.append(
@@ -224,16 +240,21 @@ def repair_storage_metadata(
     if backups_dir.exists():
         for backup_dir in sorted(path for path in backups_dir.iterdir() if path.is_dir()):
             metadata_path = backup_dir / BACKUP_METADATA_FILE
-            if not metadata_path.exists():
-                continue
-            payload = json.loads(metadata_path.read_text(encoding="utf-8"))
-            metadata = BackupMetadata.from_dict(payload)
-            normalized = metadata.normalized()
-            normalized_payload = normalized.to_dict()
-            payload_changed = any(payload.get(key) != value for key, value in normalized_payload.items())
-            if payload_changed:
-                metadata_path.write_text(json.dumps(normalized_payload, indent=2), encoding="utf-8")
-                repairs_applied += 1
+            if metadata_path.exists():
+                try:
+                    plan = migrate_backup_metadata(backup_dir, apply=True)
+                    if plan.has_changes:
+                        repairs_applied += 1
+                except StorageCompatibilityError:
+                    pass
+            manifest_path = backup_dir / BACKUP_MANIFEST_FILE
+            if manifest_path.exists():
+                try:
+                    plan = migrate_backup_manifest(backup_dir, apply=True)
+                    if plan.has_changes:
+                        repairs_applied += 1
+                except StorageCompatibilityError:
+                    pass
 
     refreshed = inspect_storage_health(search_dir, embedding_model=embedding_model)
     return StorageHealthReport(
