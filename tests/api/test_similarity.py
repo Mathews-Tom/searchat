@@ -3,10 +3,15 @@ from __future__ import annotations
 
 import pytest
 import numpy as np
+from types import SimpleNamespace
 from unittest.mock import Mock, patch, MagicMock
 from fastapi.testclient import TestClient
 
 from searchat.api.app import app
+
+
+def _semantic_dataset(mock_duckdb_store):
+    return SimpleNamespace(store=mock_duckdb_store)
 
 
 @pytest.fixture
@@ -102,8 +107,10 @@ def mock_search_engine():
 
 def test_get_similar_conversations(client, mock_duckdb_store, mock_search_engine):
     """Test GET /api/conversation/{id}/similar returns similar conversations."""
-    with patch("searchat.api.routers.conversations.deps.get_duckdb_store", return_value=mock_duckdb_store), \
-         patch("searchat.api.routers.conversations.deps.get_search_engine", return_value=mock_search_engine):
+    with patch(
+        "searchat.api.routers.conversations.get_dataset_semantic_retrieval",
+        return_value=(_semantic_dataset(mock_duckdb_store), mock_search_engine),
+    ):
 
         response = client.get("/api/conversation/conv-123/similar")
 
@@ -134,8 +141,10 @@ def test_get_similar_conversations(client, mock_duckdb_store, mock_search_engine
 
 def test_get_similar_conversations_with_limit(client, mock_duckdb_store, mock_search_engine):
     """Test similarity endpoint respects limit parameter."""
-    with patch("searchat.api.routers.conversations.deps.get_duckdb_store", return_value=mock_duckdb_store), \
-         patch("searchat.api.routers.conversations.deps.get_search_engine", return_value=mock_search_engine):
+    with patch(
+        "searchat.api.routers.conversations.get_dataset_semantic_retrieval",
+        return_value=(_semantic_dataset(mock_duckdb_store), mock_search_engine),
+    ):
 
         response = client.get("/api/conversation/conv-123/similar?limit=10")
 
@@ -147,8 +156,10 @@ def test_get_similar_conversations_with_limit(client, mock_duckdb_store, mock_se
 
 def test_get_similar_conversations_limit_validation(client, mock_duckdb_store, mock_search_engine):
     """Test limit parameter validation."""
-    with patch("searchat.api.routers.conversations.deps.get_duckdb_store", return_value=mock_duckdb_store), \
-         patch("searchat.api.routers.conversations.deps.get_search_engine", return_value=mock_search_engine):
+    with patch(
+        "searchat.api.routers.conversations.get_dataset_semantic_retrieval",
+        return_value=(_semantic_dataset(mock_duckdb_store), mock_search_engine),
+    ):
 
         # limit < 1 should fail
         response = client.get("/api/conversation/conv-123/similar?limit=0")
@@ -165,8 +176,10 @@ def test_get_similar_conversations_limit_validation(client, mock_duckdb_store, m
 
 def test_get_similar_conversations_nonexistent(client, mock_duckdb_store, mock_search_engine):
     """Test similarity for nonexistent conversation returns 404."""
-    with patch("searchat.api.routers.conversations.deps.get_duckdb_store", return_value=mock_duckdb_store), \
-         patch("searchat.api.routers.conversations.deps.get_search_engine", return_value=mock_search_engine):
+    with patch(
+        "searchat.api.routers.conversations.get_dataset_semantic_retrieval",
+        return_value=(_semantic_dataset(mock_duckdb_store), mock_search_engine),
+    ):
 
         response = client.get("/api/conversation/nonexistent/similar")
 
@@ -187,8 +200,10 @@ def test_get_similar_conversations_no_faiss_index(client, mock_duckdb_store):
         'project_id': "project"
     }
 
-    with patch("searchat.api.routers.conversations.deps.get_duckdb_store", return_value=mock_duckdb_store), \
-         patch("searchat.api.routers.conversations.deps.get_search_engine", return_value=mock_engine):
+    with patch(
+        "searchat.api.routers.conversations.get_dataset_semantic_retrieval",
+        return_value=(_semantic_dataset(mock_duckdb_store), mock_engine),
+    ):
 
         response = client.get("/api/conversation/conv-123/similar")
 
@@ -200,8 +215,10 @@ def test_get_similar_conversations_no_embedder(client, mock_duckdb_store, mock_s
     """Test similarity endpoint handles missing embedder."""
     mock_search_engine.embedder = None  # No embedder available
 
-    with patch("searchat.api.routers.conversations.deps.get_duckdb_store", return_value=mock_duckdb_store), \
-         patch("searchat.api.routers.conversations.deps.get_search_engine", return_value=mock_search_engine):
+    with patch(
+        "searchat.api.routers.conversations.get_dataset_semantic_retrieval",
+        return_value=(_semantic_dataset(mock_duckdb_store), mock_search_engine),
+    ):
 
         response = client.get("/api/conversation/conv-123/similar")
 
@@ -216,8 +233,10 @@ def test_get_similar_conversations_no_embeddings(client, mock_duckdb_store, mock
     mock_conn.execute.return_value.fetchone.return_value = None
     mock_duckdb_store._connect.return_value = mock_conn
 
-    with patch("searchat.api.routers.conversations.deps.get_duckdb_store", return_value=mock_duckdb_store), \
-         patch("searchat.api.routers.conversations.deps.get_search_engine", return_value=mock_search_engine):
+    with patch(
+        "searchat.api.routers.conversations.get_dataset_semantic_retrieval",
+        return_value=(_semantic_dataset(mock_duckdb_store), mock_search_engine),
+    ):
 
         response = client.get("/api/conversation/conv-123/similar")
 
@@ -239,8 +258,10 @@ def test_get_similar_conversations_empty_results(client, mock_duckdb_store, mock
         np.array([[]])
     )
 
-    with patch("searchat.api.routers.conversations.deps.get_duckdb_store", return_value=mock_duckdb_store), \
-         patch("searchat.api.routers.conversations.deps.get_search_engine", return_value=mock_search_engine):
+    with patch(
+        "searchat.api.routers.conversations.get_dataset_semantic_retrieval",
+        return_value=(_semantic_dataset(mock_duckdb_store), mock_search_engine),
+    ):
 
         response = client.get("/api/conversation/conv-123/similar")
 
@@ -251,8 +272,10 @@ def test_get_similar_conversations_empty_results(client, mock_duckdb_store, mock
 
 def test_similarity_score_calculation(client, mock_duckdb_store, mock_search_engine):
     """Test similarity score is correctly calculated from distance."""
-    with patch("searchat.api.routers.conversations.deps.get_duckdb_store", return_value=mock_duckdb_store), \
-         patch("searchat.api.routers.conversations.deps.get_search_engine", return_value=mock_search_engine):
+    with patch(
+        "searchat.api.routers.conversations.get_dataset_semantic_retrieval",
+        return_value=(_semantic_dataset(mock_duckdb_store), mock_search_engine),
+    ):
 
         response = client.get("/api/conversation/conv-123/similar")
 
@@ -266,8 +289,10 @@ def test_similarity_score_calculation(client, mock_duckdb_store, mock_search_eng
 
 def test_similar_conversations_sorted_by_similarity(client, mock_duckdb_store, mock_search_engine):
     """Test similar conversations are sorted by similarity score (descending)."""
-    with patch("searchat.api.routers.conversations.deps.get_duckdb_store", return_value=mock_duckdb_store), \
-         patch("searchat.api.routers.conversations.deps.get_search_engine", return_value=mock_search_engine):
+    with patch(
+        "searchat.api.routers.conversations.get_dataset_semantic_retrieval",
+        return_value=(_semantic_dataset(mock_duckdb_store), mock_search_engine),
+    ):
 
         response = client.get("/api/conversation/conv-123/similar")
 
@@ -284,8 +309,10 @@ def test_similar_conversations_excludes_source(client, mock_duckdb_store, mock_s
     # This is tested indirectly via the SQL query in the endpoint
     # The WHERE clause filters out m.conversation_id != ?
 
-    with patch("searchat.api.routers.conversations.deps.get_duckdb_store", return_value=mock_duckdb_store), \
-         patch("searchat.api.routers.conversations.deps.get_search_engine", return_value=mock_search_engine):
+    with patch(
+        "searchat.api.routers.conversations.get_dataset_semantic_retrieval",
+        return_value=(_semantic_dataset(mock_duckdb_store), mock_search_engine),
+    ):
 
         response = client.get("/api/conversation/conv-123/similar")
 
@@ -299,8 +326,10 @@ def test_similar_conversations_excludes_source(client, mock_duckdb_store, mock_s
 
 def test_similar_conversations_tool_detection(client, mock_duckdb_store, mock_search_engine):
     """Test tool is correctly detected from file path."""
-    with patch("searchat.api.routers.conversations.deps.get_duckdb_store", return_value=mock_duckdb_store), \
-         patch("searchat.api.routers.conversations.deps.get_search_engine", return_value=mock_search_engine):
+    with patch(
+        "searchat.api.routers.conversations.get_dataset_semantic_retrieval",
+        return_value=(_semantic_dataset(mock_duckdb_store), mock_search_engine),
+    ):
 
         response = client.get("/api/conversation/conv-123/similar")
 
@@ -313,8 +342,10 @@ def test_similar_conversations_tool_detection(client, mock_duckdb_store, mock_se
 
 def test_similar_conversations_includes_metadata(client, mock_duckdb_store, mock_search_engine):
     """Test similar conversations include all required metadata."""
-    with patch("searchat.api.routers.conversations.deps.get_duckdb_store", return_value=mock_duckdb_store), \
-         patch("searchat.api.routers.conversations.deps.get_search_engine", return_value=mock_search_engine):
+    with patch(
+        "searchat.api.routers.conversations.get_dataset_semantic_retrieval",
+        return_value=(_semantic_dataset(mock_duckdb_store), mock_search_engine),
+    ):
 
         response = client.get("/api/conversation/conv-123/similar")
 
