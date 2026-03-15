@@ -4,9 +4,10 @@ import asyncio
 import importlib
 import os
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -615,6 +616,60 @@ def test_chat_returns_503_on_generate_llm_error(monkeypatch: pytest.MonkeyPatch)
     resp = client.post("/api/chat", json={"query": "hello", "model_provider": "openai"})
     assert resp.status_code == 503
     assert resp.json()["detail"] == "nope"
+
+
+def test_chat_generation_outage_returns_archival_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    from searchat.api.app import app
+    from searchat.api.readiness import get_readiness
+    from searchat.models import SearchResult, SearchResults
+    from searchat.services.llm_service import LLMServiceError
+
+    readiness = get_readiness()
+    readiness.set_component("metadata", "ready")
+    readiness.set_component("faiss", "ready")
+    readiness.set_component("embedder", "ready")
+
+    now = datetime.now()
+    retrieval_service = Mock()
+    retrieval_service.search.return_value = SearchResults(
+        results=[
+            SearchResult(
+                conversation_id="test-conv-123",
+                project_id="test-project",
+                title="Test Conversation",
+                created_at=now - timedelta(days=3),
+                updated_at=now - timedelta(days=1),
+                message_count=10,
+                file_path="/home/user/.claude/projects/test/project/conv.jsonl",
+                score=0.95,
+                snippet="Snippet text",
+                message_start_index=2,
+                message_end_index=6,
+            )
+        ],
+        total_count=1,
+        search_time_ms=5.0,
+        mode_used="hybrid",
+    )
+
+    config = SimpleNamespace(
+        llm=SimpleNamespace(
+            default_provider="ollama",
+            openai_model="gpt-4.1-mini",
+            ollama_model="llama3",
+        )
+    )
+    monkeypatch.setattr("searchat.api.routers.chat.get_config", lambda: config)
+    monkeypatch.setattr("searchat.api.routers.chat.get_search_engine", lambda: retrieval_service)
+
+    with patch("searchat.services.chat_service.build_generation_service") as mock_builder:
+        mock_builder.return_value.stream_completion.side_effect = LLMServiceError("nope")
+
+        client = TestClient(app)
+        resp = client.post("/api/chat", json={"query": "hello", "model_provider": "openai"})
+
+    assert resp.status_code == 200
+    assert resp.text.startswith("Generation is temporarily unavailable.")
 
 
 def test_chat_returns_500_on_generate_unexpected_error(monkeypatch: pytest.MonkeyPatch) -> None:

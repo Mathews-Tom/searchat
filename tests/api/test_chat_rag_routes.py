@@ -189,6 +189,53 @@ def test_chat_rag_llm_error_returns_503(client):
     assert resp.json()["detail"] == "nope"
 
 
+def test_chat_rag_generation_outage_returns_archival_fallback(client):
+    from searchat.models import SearchResults
+    from searchat.services.llm_service import LLMServiceError
+
+    now = datetime.now()
+    result = SearchResult(
+        conversation_id="test-conv-123",
+        project_id="test-project",
+        title="Test Conversation",
+        created_at=now - timedelta(days=3),
+        updated_at=now - timedelta(days=1),
+        message_count=10,
+        file_path="/home/user/.claude/projects/test/project/conv.jsonl",
+        score=0.95,
+        snippet="Snippet text",
+        message_start_index=2,
+        message_end_index=6,
+    )
+
+    retrieval_service = Mock()
+    retrieval_service.search.return_value = SearchResults(
+        results=[result],
+        total_count=1,
+        search_time_ms=5.0,
+        mode_used="hybrid",
+    )
+
+    config = Mock()
+    config.chat = Mock(enable_rag=True, enable_citations=True)
+    config.llm = SimpleNamespace(
+        default_provider="ollama",
+        openai_model="gpt-4.1-mini",
+        ollama_model="llama3",
+    )
+
+    with patch("searchat.api.routers.chat.get_config", return_value=config):
+        with patch("searchat.api.routers.chat.get_search_engine", return_value=retrieval_service):
+            with patch("searchat.services.chat_service.build_generation_service") as mock_builder:
+                mock_builder.return_value.completion.side_effect = LLMServiceError("nope")
+                resp = client.post("/api/chat-rag", json={"query": "x", "model_provider": "ollama"})
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["answer"].startswith("Generation is temporarily unavailable.")
+    assert data["sources"][0]["conversation_id"] == "test-conv-123"
+
+
 def test_chat_rag_unexpected_error_returns_500(client):
     config = Mock()
     config.chat = Mock(enable_rag=True, enable_citations=True)

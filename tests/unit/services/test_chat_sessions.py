@@ -15,6 +15,7 @@ from searchat.services.chat_service import (
     generate_answer_stream,
     generate_rag_response,
 )
+from searchat.services.llm_service import LLMServiceError
 
 
 @pytest.fixture(autouse=True)
@@ -314,6 +315,37 @@ class TestGenerateAnswerStreamWithSessions:
         assert len(session.messages) == 2
         assert session.messages[1]["content"] == "I cannot find the information in the archives."
 
+    def test_generate_answer_stream_llm_unavailable_returns_fallback(self):
+        """Test that generation outages degrade to a deterministic fallback when context exists."""
+        mock_engine = Mock()
+        mock_engine.search.return_value = SearchResults(
+            results=_make_results(5),
+            total_count=5,
+            search_time_ms=5.0,
+            mode_used="hybrid",
+        )
+        config = Mock()
+        config.llm = _make_llm_config()
+
+        with patch("searchat.services.chat_service.build_generation_service") as mock_builder:
+            mock_service = mock_builder.return_value
+            mock_service.stream_completion.side_effect = LLMServiceError("provider down")
+
+            session_id, stream = generate_answer_stream(
+                query="What happened?",
+                provider="ollama",
+                model_name=None,
+                config=config,
+                retrieval_service=mock_engine,
+            )
+            response = "".join(stream)
+
+        assert response.startswith("Generation is temporarily unavailable.")
+        assert "1. Title 0: Snippet 0 content" in response
+        session = chat_service._sessions[session_id]
+        assert session.messages[0] == {"role": "user", "content": "What happened?"}
+        assert session.messages[1]["content"] == response
+
     def test_generate_answer_stream_applies_sliding_window(self):
         """Test that only last MAX_TURNS messages are used in context."""
         session = get_or_create_session(None)
@@ -473,6 +505,36 @@ class TestGenerateRAGResponseWithSessions:
         assert len(result.results) == 0
         # Session should still be created, but no messages added
         assert result.session_id in chat_service._sessions
+
+    def test_generate_rag_response_llm_unavailable_returns_fallback(self):
+        """Test that non-streaming generation outages degrade to deterministic fallback text."""
+        mock_engine = Mock()
+        mock_engine.search.return_value = SearchResults(
+            results=_make_results(8),
+            total_count=8,
+            search_time_ms=5.0,
+            mode_used="hybrid",
+        )
+        config = Mock()
+        config.llm = _make_llm_config()
+
+        with patch("searchat.services.chat_service.build_generation_service") as mock_builder:
+            mock_builder.return_value.completion.side_effect = LLMServiceError("provider down")
+            result = generate_rag_response(
+                query="Summarize this",
+                provider="ollama",
+                model_name=None,
+                config=config,
+                retrieval_service=mock_engine,
+            )
+
+        assert result.answer.startswith("Generation is temporarily unavailable.")
+        assert "1. Title 0: Snippet 0 content" in result.answer
+        assert result.context_used == 6
+        assert len(result.results) == 6
+        session = chat_service._sessions[result.session_id]
+        assert session.messages[0] == {"role": "user", "content": "Summarize this"}
+        assert session.messages[1]["content"] == result.answer
 
     def test_generate_rag_response_applies_sliding_window(self):
         """Test that only last MAX_TURNS messages are used."""
