@@ -335,6 +335,10 @@ class TestListBackupsEndpoint:
         assert entries["broken_chain_child"]["backup_mode"] == "incremental"
         assert any("Backup manifest missing" in error for error in entries["broken_chain_child"]["errors"])
 
+        assert entries["mixed_version_metadata_full"]["valid"] is True
+        assert entries["mixed_version_metadata_full"]["backup_type"] == "unknown"
+        assert entries["mixed_version_metadata_full"]["snapshot_browsable"] is True
+
 
 @pytest.mark.unit
 class TestValidateBackupEndpoint:

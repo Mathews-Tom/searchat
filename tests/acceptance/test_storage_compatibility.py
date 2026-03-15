@@ -268,3 +268,7 @@ def test_storage_compatibility_backup_contract_fixture_bundle_covers_legacy_and_
     assert invalid_chain["chain"] == []
     assert invalid_chain["valid"] is False
     assert any("manifest version mismatch" in error.lower() for error in invalid_chain["errors"])
+
+    listed = {meta.backup_path.name: meta for meta in manager.list_backups()}
+    assert "mixed_version_metadata_full" in listed
+    assert listed["mixed_version_metadata_full"].backup_type == "unknown"

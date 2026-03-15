@@ -245,3 +245,19 @@ def test_inspect_backup_chain_broken_chain_preserves_topology(temp_search_dir: P
     assert inspection["chain_length"] == 2
     assert inspection["valid"] is False
     assert any("Backup manifest missing" in error for error in inspection["errors"])
+
+
+@pytest.mark.unit
+def test_list_backups_falls_back_for_mixed_version_metadata_fixture(temp_search_dir: Path):
+    import shutil
+
+    fixture = Path("tests/fixtures/storage/backup_contract_bundle")
+    shutil.copytree(fixture, temp_search_dir, dirs_exist_ok=True)
+
+    mgr = BackupManager(temp_search_dir)
+    listed = {meta.backup_path.name: meta for meta in mgr.list_backups()}
+
+    assert "mixed_version_metadata_full" in listed
+    mixed = listed["mixed_version_metadata_full"]
+    assert mixed.backup_type == "unknown"
+    assert mixed.file_count >= 1

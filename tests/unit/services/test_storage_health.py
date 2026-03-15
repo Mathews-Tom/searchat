@@ -128,3 +128,9 @@ def test_inspect_storage_health_flags_fixture_backup_contract_bundle(temp_search
         and "validation failed" in issue.message.lower()
         for issue in report.issues
     )
+    assert any(
+        issue.scope == "backup_metadata"
+        and issue.path.parent.name == "mixed_version_metadata_full"
+        and "version mismatch" in issue.message.lower()
+        for issue in report.issues
+    )
