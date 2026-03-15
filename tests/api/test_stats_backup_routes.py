@@ -4,6 +4,7 @@ from datetime import datetime
 from unittest.mock import Mock, patch
 from pathlib import Path
 from types import SimpleNamespace
+import shutil
 
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
@@ -307,6 +308,32 @@ class TestListBackupsEndpoint:
         assert data["backups"][0]["snapshot_browsable"] is False
         assert data["backups"][0]["backup_mode"] == "incremental"
         assert data["backups"][0]["errors"] == ["Backup manifest missing: backup_20250120_090000"]
+
+    def test_list_backups_fixture_bundle_exposes_contract_health(self, client, tmp_path):
+        from searchat.services.backup import BackupManager
+
+        fixture = Path("tests/fixtures/storage/backup_contract_bundle")
+        shutil.copytree(fixture, tmp_path, dirs_exist_ok=True)
+        manager = BackupManager(tmp_path)
+
+        with patch("searchat.api.routers.backup.get_backup_manager", return_value=manager):
+            response = client.get("/api/backup/list")
+
+        assert response.status_code == 200
+        data = response.json()
+        entries = {entry["name"]: entry for entry in data["backups"]}
+
+        assert entries["legacy_plaintext_full"]["valid"] is True
+        assert entries["legacy_plaintext_full"]["has_manifest"] is False
+        assert entries["legacy_plaintext_full"]["snapshot_browsable"] is True
+
+        assert entries["invalid_manifest_full"]["valid"] is False
+        assert entries["invalid_manifest_full"]["backup_mode"] == "unknown"
+        assert any("manifest version mismatch" in error.lower() for error in entries["invalid_manifest_full"]["errors"])
+
+        assert entries["broken_chain_child"]["valid"] is False
+        assert entries["broken_chain_child"]["backup_mode"] == "incremental"
+        assert any("Backup manifest missing" in error for error in entries["broken_chain_child"]["errors"])
 
 
 @pytest.mark.unit

@@ -143,3 +143,22 @@ def test_validate_storage_reports_broken_backup_chain(temp_search_dir: Path, cap
     assert result == 1
     assert "backup_chain" in captured.out
     assert "validation failed" in captured.out.lower()
+
+
+def test_validate_storage_reports_fixture_backup_contract_bundle_issues(temp_search_dir: Path, capsys) -> None:
+    from searchat.cli.validate_cmd import run_validate
+
+    fixture = Path("tests/fixtures/storage/backup_contract_bundle")
+    shutil.copytree(fixture, temp_search_dir, dirs_exist_ok=True)
+
+    cfg = SimpleNamespace(embedding=SimpleNamespace(model="all-MiniLM-L6-v2"))
+    with (
+        patch("searchat.config.Config.load", return_value=cfg),
+        patch("searchat.config.PathResolver.get_shared_search_dir", return_value=temp_search_dir),
+    ):
+        result = run_validate(["storage"])
+
+    captured = capsys.readouterr()
+    assert result == 1
+    assert "backup_manifest" in captured.out
+    assert "backup_chain" in captured.out
