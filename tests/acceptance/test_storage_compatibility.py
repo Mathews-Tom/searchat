@@ -226,3 +226,35 @@ def test_storage_compatibility_storage_health_reports_broken_backup_chain(temp_s
         and "validation failed" in issue.message.lower()
         for issue in report.issues
     )
+
+
+def test_storage_compatibility_backup_contract_fixture_bundle_covers_legacy_and_broken_artifacts(
+    temp_search_dir: Path,
+) -> None:
+    from searchat.services.storage_health import inspect_storage_health
+
+    fixture = Path("tests/fixtures/storage/backup_contract_bundle")
+    shutil.copytree(fixture, temp_search_dir, dirs_exist_ok=True)
+
+    manager = BackupManager(temp_search_dir)
+
+    legacy = manager.validate_backup_artifact("legacy_plaintext_full", verify_hashes=False)
+    assert legacy["valid"] is True
+    assert legacy["has_manifest"] is False
+    assert legacy["snapshot_browsable"] is True
+
+    invalid_summary = manager.get_backup_summary("invalid_manifest_full")
+    assert invalid_summary["valid"] is False
+    assert invalid_summary["backup_mode"] == "unknown"
+    assert invalid_summary["snapshot_browsable"] is False
+    assert any("manifest version mismatch" in error.lower() for error in invalid_summary["errors"])
+
+    broken_chain = manager.validate_backup_artifact("broken_chain_child", verify_hashes=False)
+    assert broken_chain["valid"] is False
+    assert broken_chain["backup_mode"] == "incremental"
+    assert broken_chain["snapshot_browsable"] is False
+    assert any("Backup manifest missing" in error for error in broken_chain["errors"])
+
+    report = inspect_storage_health(temp_search_dir)
+    assert any(issue.scope == "backup_manifest" and issue.path.name == BACKUP_MANIFEST_FILE for issue in report.issues)
+    assert any(issue.scope == "backup_chain" and issue.path.name == "broken_chain_child" for issue in report.issues)

@@ -108,3 +108,23 @@ def test_inspect_storage_health_flags_broken_backup_chain(temp_search_dir: Path)
         and issue.severity == "error"
         for issue in report.issues
     )
+
+
+def test_inspect_storage_health_flags_fixture_backup_contract_bundle(temp_search_dir: Path) -> None:
+    fixture = Path("tests/fixtures/storage/backup_contract_bundle")
+    shutil.copytree(fixture, temp_search_dir, dirs_exist_ok=True)
+
+    report = inspect_storage_health(temp_search_dir)
+
+    assert any(
+        issue.scope == "backup_manifest"
+        and issue.path.name == BACKUP_MANIFEST_FILE
+        and "version mismatch" in issue.message.lower()
+        for issue in report.issues
+    )
+    assert any(
+        issue.scope == "backup_chain"
+        and issue.path.name == "broken_chain_child"
+        and "validation failed" in issue.message.lower()
+        for issue in report.issues
+    )
