@@ -162,3 +162,28 @@ def test_validate_storage_reports_fixture_backup_contract_bundle_issues(temp_sea
     assert result == 1
     assert "backup_manifest" in captured.out
     assert "backup_chain" in captured.out
+
+
+def test_validate_storage_repair_updates_legacy_backup_manifest_fixture(temp_search_dir: Path) -> None:
+    from searchat.cli.validate_cmd import run_validate
+
+    fixture = Path("tests/fixtures/storage/backup_contract_bundle")
+    shutil.copytree(fixture, temp_search_dir, dirs_exist_ok=True)
+
+    cfg = SimpleNamespace(embedding=SimpleNamespace(model="all-MiniLM-L6-v2"))
+    with (
+        patch("searchat.config.Config.load", return_value=cfg),
+        patch("searchat.config.PathResolver.get_shared_search_dir", return_value=temp_search_dir),
+    ):
+        result = run_validate(["storage", "--repair"])
+
+    manifest_payload = json.loads(
+        (
+            temp_search_dir
+            / "backups"
+            / "repairable_manifest_base"
+            / "backup_manifest.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert result == 1
+    assert manifest_payload["manifest_version"] == 1

@@ -45,6 +45,24 @@ def test_repair_storage_metadata_normalizes_legacy_backup_metadata(temp_search_d
     assert repaired_payload["metadata_version"] == 1
 
 
+def test_repair_storage_metadata_normalizes_legacy_backup_manifest_fixture(temp_search_dir: Path) -> None:
+    fixture = Path("tests/fixtures/storage/backup_contract_bundle")
+    shutil.copytree(fixture, temp_search_dir, dirs_exist_ok=True)
+
+    report = repair_storage_metadata(temp_search_dir)
+
+    assert report.repairs_applied >= 1
+    manifest_payload = json.loads(
+        (
+            temp_search_dir
+            / "backups"
+            / "repairable_manifest_base"
+            / "backup_manifest.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert manifest_payload["manifest_version"] == 1
+
+
 def test_inspect_storage_health_flags_legacy_backup_dataset_index_metadata(temp_search_dir: Path) -> None:
     fixture = Path("tests/fixtures/storage/legacy_dataset_bundle")
     shutil.copytree(fixture, temp_search_dir, dirs_exist_ok=True)
@@ -132,5 +150,11 @@ def test_inspect_storage_health_flags_fixture_backup_contract_bundle(temp_search
         issue.scope == "backup_metadata"
         and issue.path.parent.name == "mixed_version_metadata_full"
         and "version mismatch" in issue.message.lower()
+        for issue in report.issues
+    )
+    assert any(
+        issue.scope == "backup_manifest"
+        and issue.path.parent.name == "repairable_manifest_base"
+        and issue.repairable
         for issue in report.issues
     )

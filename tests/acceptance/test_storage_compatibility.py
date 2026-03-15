@@ -272,3 +272,31 @@ def test_storage_compatibility_backup_contract_fixture_bundle_covers_legacy_and_
     listed = {meta.backup_path.name: meta for meta in manager.list_backups()}
     assert "mixed_version_metadata_full" in listed
     assert listed["mixed_version_metadata_full"].backup_type == "unknown"
+
+
+def test_storage_compatibility_repair_normalizes_legacy_backup_manifest_fixture(temp_search_dir: Path) -> None:
+    from searchat.services.storage_health import inspect_storage_health, repair_storage_metadata
+
+    fixture = Path("tests/fixtures/storage/backup_contract_bundle")
+    shutil.copytree(fixture, temp_search_dir, dirs_exist_ok=True)
+
+    before = inspect_storage_health(temp_search_dir)
+    assert any(
+        issue.scope == "backup_manifest"
+        and issue.path.parent.name == "repairable_manifest_base"
+        and issue.repairable
+        for issue in before.issues
+    )
+
+    repaired = repair_storage_metadata(temp_search_dir)
+    assert repaired.repairs_applied >= 1
+
+    payload = json.loads(
+        (
+            temp_search_dir
+            / "backups"
+            / "repairable_manifest_base"
+            / "backup_manifest.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert payload["manifest_version"] == 1

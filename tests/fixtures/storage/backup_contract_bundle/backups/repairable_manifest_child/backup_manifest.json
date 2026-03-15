@@ -1,0 +1,17 @@
+{
+  "manifest_version": 1,
+  "backup_mode": "incremental",
+  "encrypted": false,
+  "created_at": "2026-03-16T11:25:00",
+  "parent_name": "repairable_manifest_base",
+  "files": {
+    "config/settings.toml": {
+      "content_sha256": "repairable-child-settings-sha",
+      "stored_sha256": "repairable-child-settings-sha",
+      "stored_rel_path": "config/settings.toml",
+      "size_bytes": 8,
+      "mtime_epoch": 1.0
+    }
+  },
+  "deleted_files": []
+}
