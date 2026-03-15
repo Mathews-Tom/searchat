@@ -16,6 +16,11 @@ import hashlib
 import tempfile
 
 from searchat.services.backup_crypto import decrypt_file, encrypt_file, get_backup_key
+from searchat.services.backup_contracts import (
+    inspect_backup_chain,
+    inspect_legacy_full_backup,
+    inspect_manifest_backup,
+)
 from searchat.services.storage_contracts import (
     BACKUP_MANIFEST_FILE,
     BACKUP_MANIFEST_VERSION,
@@ -171,20 +176,13 @@ class BackupManager:
             }
         if manifest is None:
             # Older backups: structural checks only.
-            if verify_hashes:
-                errors.append("Backup manifest missing")
             structural_ok = self.validate_backup(backup_path)
-            return {
-                "backup_name": backup_name,
-                "backup_mode": "full",
-                "encrypted": False,
-                "parent_name": None,
-                "chain_length": 1,
-                "snapshot_browsable": structural_ok,
-                "has_manifest": False,
-                "valid": structural_ok and not errors,
-                "errors": errors,
-            }
+            return inspect_legacy_full_backup(
+                backup_name,
+                backup_path,
+                structure_valid=structural_ok,
+                verify_hashes=verify_hashes,
+            ).to_dict()
 
         try:
             chain = self.resolve_backup_chain(backup_name, max_chain_length=max_chain_length)
@@ -248,61 +246,118 @@ class BackupManager:
         if manifest.backup_mode == "full" and not manifest.encrypted:
             snapshot_browsable = self.validate_backup(backup_path)
 
-        return {
-            "backup_name": backup_name,
-            "backup_mode": manifest.backup_mode,
-            "encrypted": bool(manifest.encrypted),
-            "parent_name": manifest.parent_name,
-            "chain_length": len(chain),
-            "snapshot_browsable": snapshot_browsable,
-            "has_manifest": True,
-            "valid": not errors,
-            "errors": errors,
-        }
+        return inspect_manifest_backup(
+            backup_name,
+            backup_mode=manifest.backup_mode,
+            encrypted=bool(manifest.encrypted),
+            parent_name=manifest.parent_name,
+            chain_length=len(chain),
+            snapshot_browsable=snapshot_browsable,
+            errors=errors,
+        ).to_dict()
+
+    def inspect_backup_chain(
+        self,
+        backup_name: str,
+        *,
+        max_chain_length: int = 10,
+    ) -> dict[str, object]:
+        """Inspect chain topology while preserving invalid-state diagnostics."""
+        try:
+            chain = self.resolve_backup_chain(backup_name, max_chain_length=max_chain_length)
+        except Exception as exc:
+            return inspect_backup_chain(
+                backup_name,
+                chain=[],
+                errors=[str(exc)],
+            ).to_dict()
+
+        artifact = self.validate_backup_artifact(
+            backup_name,
+            verify_hashes=False,
+            max_chain_length=max_chain_length,
+        )
+        errors = [str(error) for error in artifact.get("errors", [])]
+        return inspect_backup_chain(
+            backup_name,
+            chain=chain,
+            errors=errors,
+        ).to_dict()
 
     def get_backup_summary(self, backup_name: str) -> dict[str, object]:
         backup_path = self.backup_dir / backup_name
+        manifest_path = backup_path / BACKUP_MANIFEST_FILE
         try:
             manifest = self._load_manifest(backup_path)
+            manifest_error: str | None = None
         except ValueError:
             manifest = None
+            manifest_error = "Backup manifest version mismatch or is otherwise invalid."
 
-        backup_mode = "full"
-        encrypted = False
-        parent_name: str | None = None
-        chain_length = 1
+        if manifest_error is not None:
+            return {
+                "name": backup_name,
+                "backup_mode": "unknown",
+                "encrypted": False,
+                "parent_name": None,
+                "chain_length": 0,
+                "snapshot_browsable": False,
+                "has_manifest": manifest_path.exists(),
+                "valid": False,
+                "errors": [manifest_error],
+            }
 
         if manifest is not None:
-            backup_mode = manifest.backup_mode
-            encrypted = bool(manifest.encrypted)
-            parent_name = manifest.parent_name
-            try:
-                chain_length = len(self.resolve_backup_chain(backup_name))
-            except Exception:
-                chain_length = 0
+            artifact = self.validate_backup_artifact(backup_name, verify_hashes=False)
+            backup_mode = str(artifact.get("backup_mode", manifest.backup_mode))
+            encrypted = bool(artifact.get("encrypted", bool(manifest.encrypted)))
+            parent_name = artifact.get("parent_name", manifest.parent_name)
+            if parent_name is not None:
+                parent_name = str(parent_name)
+            chain_length = int(artifact.get("chain_length", 0) or 0)
+            has_manifest = bool(artifact.get("has_manifest", True))
+            snapshot_browsable = bool(artifact.get("snapshot_browsable", False))
+            errors = [str(error) for error in artifact.get("errors", [])]
+
+            inspection = inspect_manifest_backup(
+                backup_name,
+                backup_mode=backup_mode,
+                encrypted=encrypted,
+                parent_name=parent_name,
+                chain_length=chain_length,
+                snapshot_browsable=snapshot_browsable,
+                errors=errors,
+            )
+            return {
+                "name": backup_name,
+                "backup_mode": inspection.backup_mode,
+                "encrypted": inspection.encrypted,
+                "parent_name": inspection.parent_name,
+                "chain_length": inspection.chain_length,
+                "snapshot_browsable": inspection.snapshot_browsable,
+                "has_manifest": has_manifest,
+                "valid": inspection.valid,
+                "errors": list(inspection.errors),
+            }
         else:
             # Older backups without a manifest are treated as plaintext full backups.
-            backup_mode = "full"
-            encrypted = False
-            parent_name = None
-            chain_length = 1
-
-        snapshot_browsable = False
-        if backup_mode == "full" and not encrypted:
-            try:
-                snapshot_browsable = self.validate_backup(backup_path)
-            except Exception:
-                snapshot_browsable = False
-
-        return {
-            "name": backup_name,
-            "backup_mode": backup_mode,
-            "encrypted": encrypted,
-            "parent_name": parent_name,
-            "chain_length": chain_length,
-            "snapshot_browsable": snapshot_browsable,
-            "has_manifest": manifest is not None,
-        }
+            inspection = inspect_legacy_full_backup(
+                backup_name,
+                backup_path,
+                structure_valid=self.validate_backup(backup_path),
+                verify_hashes=False,
+            )
+            return {
+                "name": backup_name,
+                "backup_mode": inspection.backup_mode,
+                "encrypted": inspection.encrypted,
+                "parent_name": inspection.parent_name,
+                "chain_length": inspection.chain_length,
+                "snapshot_browsable": inspection.snapshot_browsable,
+                "has_manifest": inspection.has_manifest,
+                "valid": inspection.valid,
+                "errors": list(inspection.errors),
+            }
 
     def _count_files(self, path: Path) -> int:
         """Count all files in a directory."""
@@ -482,6 +537,10 @@ class BackupManager:
         if dest_dir.exists() and any(dest_dir.iterdir()):
             raise ValueError(f"Destination directory is not empty: {dest_dir}")
         dest_dir.mkdir(parents=True, exist_ok=True)
+
+        inspection = self.inspect_backup_chain(backup_name, max_chain_length=max_chain_length)
+        if not inspection.get("valid"):
+            raise ValueError(f"Backup validation failed: {inspection.get('errors', [])}")
 
         chain = self.resolve_backup_chain(backup_name, max_chain_length=max_chain_length)
         if not chain:
@@ -695,13 +754,12 @@ class BackupManager:
                     backups.append(BackupMetadata.from_dict(data))
                 except Exception as e:
                     logger.warning(f"Failed to load backup metadata from {metadata_path}: {e}")
-            else:
-                # Create metadata on-the-fly for older backups without metadata
+            if not any(meta.backup_path == backup_path for meta in backups):
+                # Create metadata on-the-fly for older or incompatible backups.
                 try:
                     file_count = self._count_files(backup_path)
                     total_size = self._get_directory_size(backup_path)
 
-                    # Extract timestamp from folder name
                     folder_name = backup_path.name
                     if "_" in folder_name:
                         timestamp = folder_name.rsplit("_", 1)[-1]
@@ -795,20 +853,15 @@ class BackupManager:
         if not backup_path.exists():
             raise FileNotFoundError(f"Backup not found: {backup_path}")
 
-        manifest = self._load_manifest(backup_path)
+        artifact = self.validate_backup_artifact(
+            backup_path.name,
+            verify_hashes=verify_hashes,
+        )
+        if not artifact.get("valid"):
+            errors = artifact.get("errors")
+            raise ValueError(f"Backup validation failed: {errors}")
 
-        if manifest is not None:
-            res = self.validate_backup_artifact(
-                backup_path.name,
-                verify_hashes=verify_hashes,
-            )
-            if not res.get("valid"):
-                errors = res.get("errors")
-                raise ValueError(f"Backup validation failed: {errors}")
-        else:
-            # Older backups: structural checks only.
-            if not self.validate_backup(backup_path):
-                raise ValueError(f"Backup validation failed: {backup_path}")
+        manifest = self._load_manifest(backup_path) if (backup_path / BACKUP_MANIFEST_FILE).exists() else None
 
         # Create pre-restore backup
         pre_restore_metadata = None

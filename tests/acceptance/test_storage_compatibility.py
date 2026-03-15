@@ -165,3 +165,138 @@ def test_storage_compatibility_repair_migrates_legacy_dataset_bundle(temp_search
     assert backup_payload["embedding_model"] == "all-MiniLM-L6-v2"
     assert backup_payload["next_vector_id"] == 4
     assert backup_meta["metadata_version"] == 1
+
+
+def test_storage_compatibility_legacy_full_backup_without_manifest_remains_browsable(temp_search_dir: Path) -> None:
+    manager = BackupManager(temp_search_dir)
+    live_file = temp_search_dir / "data" / "conversations" / "conv.parquet"
+    live_file.parent.mkdir(parents=True, exist_ok=True)
+    live_file.write_bytes(b"PAR1\n")
+
+    backup = manager.create_backup(backup_name="legacy-full")
+    (backup.backup_path / BACKUP_MANIFEST_FILE).unlink()
+
+    result = manager.validate_backup_artifact(backup.backup_path.name, verify_hashes=False)
+    assert result["valid"] is True
+    assert result["has_manifest"] is False
+    assert result["snapshot_browsable"] is True
+    assert result["chain_length"] == 1
+
+
+def test_storage_compatibility_invalid_chain_with_missing_parent_manifest_fails_closed(temp_search_dir: Path) -> None:
+    manager = BackupManager(temp_search_dir)
+    live_file = temp_search_dir / "data" / "conversations" / "conv.parquet"
+    settings = temp_search_dir / "config" / "settings.toml"
+    live_file.parent.mkdir(parents=True, exist_ok=True)
+    settings.parent.mkdir(parents=True, exist_ok=True)
+    live_file.write_bytes(b"PAR1\n")
+    settings.write_bytes(b"a = 1\n")
+
+    base = manager.create_backup(backup_name="base")
+    settings.write_bytes(b"a = 2\n")
+    child = manager.create_incremental_backup(parent_name=base.backup_path.name, backup_name="child")
+    (base.backup_path / BACKUP_MANIFEST_FILE).unlink()
+
+    result = manager.validate_backup_artifact(child.backup_path.name, verify_hashes=False)
+    assert result["valid"] is False
+    assert result["snapshot_browsable"] is False
+    assert any("Backup manifest missing" in error for error in result["errors"])
+
+
+def test_storage_compatibility_storage_health_reports_broken_backup_chain(temp_search_dir: Path) -> None:
+    from searchat.services.storage_health import inspect_storage_health
+
+    manager = BackupManager(temp_search_dir)
+    live_file = temp_search_dir / "data" / "conversations" / "conv.parquet"
+    settings = temp_search_dir / "config" / "settings.toml"
+    live_file.parent.mkdir(parents=True, exist_ok=True)
+    settings.parent.mkdir(parents=True, exist_ok=True)
+    live_file.write_bytes(b"PAR1\n")
+    settings.write_bytes(b"a = 1\n")
+
+    base = manager.create_backup(backup_name="base")
+    settings.write_bytes(b"a = 2\n")
+    child = manager.create_incremental_backup(parent_name=base.backup_path.name, backup_name="child")
+    (base.backup_path / BACKUP_MANIFEST_FILE).unlink()
+
+    report = inspect_storage_health(temp_search_dir)
+    assert any(
+        issue.scope == "backup_chain"
+        and issue.path == child.backup_path
+        and "validation failed" in issue.message.lower()
+        for issue in report.issues
+    )
+
+
+def test_storage_compatibility_backup_contract_fixture_bundle_covers_legacy_and_broken_artifacts(
+    temp_search_dir: Path,
+) -> None:
+    from searchat.services.storage_health import inspect_storage_health
+
+    fixture = Path("tests/fixtures/storage/backup_contract_bundle")
+    shutil.copytree(fixture, temp_search_dir, dirs_exist_ok=True)
+
+    manager = BackupManager(temp_search_dir)
+
+    legacy = manager.validate_backup_artifact("legacy_plaintext_full", verify_hashes=False)
+    assert legacy["valid"] is True
+    assert legacy["has_manifest"] is False
+    assert legacy["snapshot_browsable"] is True
+
+    invalid_summary = manager.get_backup_summary("invalid_manifest_full")
+    assert invalid_summary["valid"] is False
+    assert invalid_summary["backup_mode"] == "unknown"
+    assert invalid_summary["snapshot_browsable"] is False
+    assert any("manifest version mismatch" in error.lower() for error in invalid_summary["errors"])
+
+    broken_chain = manager.validate_backup_artifact("broken_chain_child", verify_hashes=False)
+    assert broken_chain["valid"] is False
+    assert broken_chain["backup_mode"] == "incremental"
+    assert broken_chain["snapshot_browsable"] is False
+    assert any("Backup manifest missing" in error for error in broken_chain["errors"])
+
+    report = inspect_storage_health(temp_search_dir)
+    assert any(issue.scope == "backup_manifest" and issue.path.name == BACKUP_MANIFEST_FILE for issue in report.issues)
+    assert any(issue.scope == "backup_chain" and issue.path.name == "broken_chain_child" for issue in report.issues)
+
+    chain = manager.inspect_backup_chain("broken_chain_child")
+    assert chain["chain"] == ["broken_chain_base", "broken_chain_child"]
+    assert chain["valid"] is False
+    assert any("Backup manifest missing" in error for error in chain["errors"])
+
+    invalid_chain = manager.inspect_backup_chain("invalid_manifest_full")
+    assert invalid_chain["chain"] == []
+    assert invalid_chain["valid"] is False
+    assert any("manifest version mismatch" in error.lower() for error in invalid_chain["errors"])
+
+    listed = {meta.backup_path.name: meta for meta in manager.list_backups()}
+    assert "mixed_version_metadata_full" in listed
+    assert listed["mixed_version_metadata_full"].backup_type == "unknown"
+
+
+def test_storage_compatibility_repair_normalizes_legacy_backup_manifest_fixture(temp_search_dir: Path) -> None:
+    from searchat.services.storage_health import inspect_storage_health, repair_storage_metadata
+
+    fixture = Path("tests/fixtures/storage/backup_contract_bundle")
+    shutil.copytree(fixture, temp_search_dir, dirs_exist_ok=True)
+
+    before = inspect_storage_health(temp_search_dir)
+    assert any(
+        issue.scope == "backup_manifest"
+        and issue.path.parent.name == "repairable_manifest_base"
+        and issue.repairable
+        for issue in before.issues
+    )
+
+    repaired = repair_storage_metadata(temp_search_dir)
+    assert repaired.repairs_applied >= 1
+
+    payload = json.loads(
+        (
+            temp_search_dir
+            / "backups"
+            / "repairable_manifest_base"
+            / "backup_manifest.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert payload["manifest_version"] == 1

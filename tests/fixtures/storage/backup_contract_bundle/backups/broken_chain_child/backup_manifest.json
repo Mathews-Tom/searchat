@@ -1,0 +1,17 @@
+{
+  "manifest_version": 1,
+  "backup_mode": "incremental",
+  "encrypted": false,
+  "created_at": "2026-03-16T09:45:00",
+  "parent_name": "broken_chain_base",
+  "files": {
+    "config/settings.toml": {
+      "content_sha256": "child-settings-sha",
+      "stored_sha256": "child-settings-sha",
+      "stored_rel_path": "config/settings.toml",
+      "size_bytes": 8,
+      "mtime_epoch": 1.0
+    }
+  },
+  "deleted_files": []
+}

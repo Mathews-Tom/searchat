@@ -276,6 +276,29 @@ def test_warmup_semantic_components_failure_marks_unready_components_error(monke
     assert readiness.components["embedder"] == "error"
 
 
+@pytest.mark.asyncio
+async def test_warmup_all_relies_on_semantic_component_warmup(monkeypatch: pytest.MonkeyPatch) -> None:
+    import searchat.api.warmup as api_warmup
+
+    called = {"duckdb": 0, "embedded": 0, "semantic": 0}
+
+    monkeypatch.setattr(api_warmup, "_warmup_duckdb_parquet", lambda: called.__setitem__("duckdb", called["duckdb"] + 1))
+    monkeypatch.setattr(api_warmup, "_warmup_embedded_model", lambda: called.__setitem__("embedded", called["embedded"] + 1))
+    monkeypatch.setattr(
+        api_warmup,
+        "_warmup_semantic_components",
+        lambda: called.__setitem__("semantic", called["semantic"] + 1),
+    )
+    monkeypatch.setattr(
+        "searchat.api.dependencies._ensure_search_engine",
+        lambda: (_ for _ in ()).throw(AssertionError("_ensure_search_engine should not be called directly")),
+    )
+
+    await api_warmup._warmup_all()
+
+    assert called == {"duckdb": 1, "embedded": 1, "semantic": 1}
+
+
 def test_invalidate_search_index_clears_caches_and_marks_idle(monkeypatch: pytest.MonkeyPatch) -> None:
     import searchat.api.warmup as api_warmup
 

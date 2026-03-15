@@ -91,15 +91,16 @@ async def get_backup_chain(backup_name: str):
     """Return the resolved backup chain (base -> target)."""
     try:
         backup_manager = get_backup_manager()
-        if not hasattr(backup_manager, "resolve_backup_chain"):
-            raise HTTPException(status_code=500, detail="Backup chain resolution is not available")
-
-        chain = backup_manager.resolve_backup_chain(backup_name)
-        return {
-            "backup_name": backup_name,
-            "chain": chain,
-            "chain_length": len(chain),
-        }
+        if hasattr(backup_manager, "inspect_backup_chain"):
+            return backup_manager.inspect_backup_chain(backup_name)
+        if hasattr(backup_manager, "resolve_backup_chain"):
+            chain = backup_manager.resolve_backup_chain(backup_name)
+            return {
+                "backup_name": backup_name,
+                "chain": chain,
+                "chain_length": len(chain),
+            }
+        raise HTTPException(status_code=500, detail="Backup chain resolution is not available")
     except HTTPException:
         raise
     except Exception as e:
@@ -114,15 +115,13 @@ async def list_backups():
         backup_manager = get_backup_manager()
         backups = backup_manager.list_backups()
 
-        from searchat.services.backup import BackupManager
-
         enriched: list[dict] = []
         for b in backups:
             entry = b.to_dict()
             backup_path = str(entry.get("backup_path", ""))
             name = Path(backup_path).name if backup_path else ""
 
-            if isinstance(backup_manager, BackupManager) and name:
+            if hasattr(backup_manager, "get_backup_summary") and name:
                 try:
                     entry.update(backup_manager.get_backup_summary(name))
                 except Exception:
@@ -134,6 +133,8 @@ async def list_backups():
                         "chain_length": 0,
                         "snapshot_browsable": False,
                         "has_manifest": False,
+                        "valid": False,
+                        "errors": ["Backup summary unavailable"],
                     })
             else:
                 # In tests backup_manager may be a mock; keep response stable.
@@ -145,6 +146,8 @@ async def list_backups():
                     "chain_length": 1 if name else 0,
                     "snapshot_browsable": False,
                     "has_manifest": False,
+                    "valid": False,
+                    "errors": [],
                 })
 
             enriched.append(entry)

@@ -4,10 +4,16 @@ import json
 import shutil
 from pathlib import Path
 
+import pytest
+
 from searchat.services.storage_contracts import IndexMetadata
 from searchat.services.storage_migrations import (
+    migrate_backup_manifest,
+    migrate_backup_metadata,
     migrate_index_metadata_file,
     migrate_index_metadata_root,
+    plan_backup_manifest_migration,
+    plan_backup_metadata_migration,
     plan_index_metadata_migration,
 )
 
@@ -71,3 +77,60 @@ def test_migrate_index_metadata_root_applies_backup_dataset_fixture(tmp_path: Pa
     assert payload["chunk_size"] == 1500
     assert payload["chunk_overlap"] == 200
     assert payload["next_vector_id"] == 4
+
+
+def test_plan_backup_metadata_migration_marks_missing_version_repairable() -> None:
+    payload = {
+        "timestamp": "20260316_120000",
+        "backup_path": "/tmp/backup",
+        "source_path": "/tmp/search",
+        "file_count": 1,
+        "total_size_bytes": 5,
+        "total_size_mb": 0.0,
+        "backup_type": "manual",
+    }
+
+    plan = plan_backup_metadata_migration(payload)
+
+    assert plan.has_changes is True
+    assert "metadata_version" in plan.changed_fields
+    assert set(plan.changed_fields).issubset({"metadata_version", "backup_path", "source_path"})
+    assert plan.migrated_payload["metadata_version"] == 1
+
+
+def test_plan_backup_manifest_migration_marks_missing_version_repairable() -> None:
+    payload = {
+        "backup_mode": "full",
+        "encrypted": False,
+        "created_at": "2026-03-16T12:00:00",
+        "parent_name": None,
+        "files": {},
+        "deleted_files": [],
+    }
+
+    plan = plan_backup_manifest_migration(payload)
+
+    assert plan.has_changes is True
+    assert "manifest_version" in plan.changed_fields
+    assert plan.migrated_payload["manifest_version"] == 1
+
+
+def test_migrate_backup_manifest_repairs_fixture(tmp_path: Path) -> None:
+    backup_dir = tmp_path / "repairable_manifest_base"
+    fixture = Path("tests/fixtures/storage/backup_contract_bundle/backups/repairable_manifest_base")
+    shutil.copytree(fixture, backup_dir, dirs_exist_ok=True)
+
+    plan = migrate_backup_manifest(backup_dir, apply=True)
+
+    assert plan.has_changes is True
+    payload = json.loads((backup_dir / "backup_manifest.json").read_text(encoding="utf-8"))
+    assert payload["manifest_version"] == 1
+
+
+def test_migrate_backup_metadata_rejects_unsupported_version(tmp_path: Path) -> None:
+    backup_dir = tmp_path / "mixed_version_metadata_full"
+    fixture = Path("tests/fixtures/storage/backup_contract_bundle/backups/mixed_version_metadata_full")
+    shutil.copytree(fixture, backup_dir, dirs_exist_ok=True)
+
+    with pytest.raises(ValueError, match="version mismatch"):
+        migrate_backup_metadata(backup_dir, apply=False)
