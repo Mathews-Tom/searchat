@@ -82,3 +82,25 @@ def test_storage_compatibility_invalid_manifest_version_fails_closed(temp_search
     result = manager.validate_backup_artifact(backup.backup_path.name, verify_hashes=False)
     assert result["valid"] is False
     assert any("manifest version mismatch" in error for error in result["errors"])
+
+
+def test_storage_compatibility_repair_normalizes_legacy_backup_metadata(temp_search_dir: Path) -> None:
+    from searchat.services.storage_health import inspect_storage_health, repair_storage_metadata
+
+    manager = BackupManager(temp_search_dir)
+    live_file = temp_search_dir / "data" / "conversations" / "conv.parquet"
+    live_file.parent.mkdir(parents=True, exist_ok=True)
+    live_file.write_bytes(b"PAR1\n")
+
+    backup = manager.create_backup(backup_name="repairable")
+    metadata_path = backup.backup_path / manager.METADATA_FILE
+    payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+    payload.pop("metadata_version", None)
+    metadata_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    before = inspect_storage_health(temp_search_dir)
+    assert any(issue.scope == "backup_metadata" and issue.repairable for issue in before.issues)
+
+    repaired = repair_storage_metadata(temp_search_dir)
+    assert repaired.repairs_applied == 1
+    assert not repaired.issues
