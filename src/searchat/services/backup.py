@@ -750,13 +750,12 @@ class BackupManager:
                     backups.append(BackupMetadata.from_dict(data))
                 except Exception as e:
                     logger.warning(f"Failed to load backup metadata from {metadata_path}: {e}")
-            else:
-                # Create metadata on-the-fly for older backups without metadata
+            if not any(meta.backup_path == backup_path for meta in backups):
+                # Create metadata on-the-fly for older or incompatible backups.
                 try:
                     file_count = self._count_files(backup_path)
                     total_size = self._get_directory_size(backup_path)
 
-                    # Extract timestamp from folder name
                     folder_name = backup_path.name
                     if "_" in folder_name:
                         timestamp = folder_name.rsplit("_", 1)[-1]
