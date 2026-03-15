@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 import pytest
@@ -249,8 +250,6 @@ def test_inspect_backup_chain_broken_chain_preserves_topology(temp_search_dir: P
 
 @pytest.mark.unit
 def test_list_backups_falls_back_for_mixed_version_metadata_fixture(temp_search_dir: Path):
-    import shutil
-
     fixture = Path("tests/fixtures/storage/backup_contract_bundle")
     shutil.copytree(fixture, temp_search_dir, dirs_exist_ok=True)
 
@@ -261,3 +260,68 @@ def test_list_backups_falls_back_for_mixed_version_metadata_fixture(temp_search_
     mixed = listed["mixed_version_metadata_full"]
     assert mixed.backup_type == "unknown"
     assert mixed.file_count >= 1
+
+
+@pytest.mark.unit
+def test_materialize_backup_accepts_repairable_legacy_manifest_chain_fixture(tmp_path: Path, temp_search_dir: Path):
+    fixture = Path("tests/fixtures/storage/backup_contract_bundle")
+    shutil.copytree(fixture, temp_search_dir, dirs_exist_ok=True)
+
+    mgr = BackupManager(temp_search_dir)
+    out = tmp_path / "materialized"
+    mgr.materialize_backup(
+        backup_name="repairable_manifest_child",
+        dest_dir=out,
+        verify_hashes=False,
+    )
+
+    assert (out / "data" / "conversations" / "conv.parquet").read_bytes() == b"PAR1\n"
+    assert (out / "config" / "settings.toml").read_bytes() == b"a = 3\n"
+
+
+@pytest.mark.unit
+def test_materialize_backup_invalid_manifest_fixture_fails_closed(tmp_path: Path, temp_search_dir: Path):
+    fixture = Path("tests/fixtures/storage/backup_contract_bundle")
+    shutil.copytree(fixture, temp_search_dir, dirs_exist_ok=True)
+
+    mgr = BackupManager(temp_search_dir)
+    with pytest.raises(ValueError, match="manifest version mismatch"):
+        mgr.materialize_backup(
+            backup_name="invalid_manifest_full",
+            dest_dir=tmp_path / "materialized",
+            verify_hashes=False,
+        )
+
+
+@pytest.mark.unit
+def test_restore_from_backup_allows_mixed_version_metadata_fixture(temp_search_dir: Path):
+    fixture = Path("tests/fixtures/storage/backup_contract_bundle")
+    shutil.copytree(fixture, temp_search_dir, dirs_exist_ok=True)
+
+    mgr = BackupManager(temp_search_dir)
+    live_settings = temp_search_dir / "config" / "settings.toml"
+    live_parquet = temp_search_dir / "data" / "conversations" / "conv.parquet"
+    _write_bytes(live_settings, b"a = stale\n")
+    _write_bytes(live_parquet, b"PAR1\nSTALE")
+
+    mgr.restore_from_backup(
+        temp_search_dir / "backups" / "mixed_version_metadata_full",
+        create_pre_restore_backup=False,
+        verify_hashes=False,
+    )
+
+    assert live_parquet.read_bytes() == b"PAR1\n"
+
+
+@pytest.mark.unit
+def test_restore_from_backup_invalid_manifest_fixture_fails_closed(temp_search_dir: Path):
+    fixture = Path("tests/fixtures/storage/backup_contract_bundle")
+    shutil.copytree(fixture, temp_search_dir, dirs_exist_ok=True)
+
+    mgr = BackupManager(temp_search_dir)
+    with pytest.raises(ValueError, match="manifest version mismatch"):
+        mgr.restore_from_backup(
+            temp_search_dir / "backups" / "invalid_manifest_full",
+            create_pre_restore_backup=False,
+            verify_hashes=False,
+        )

@@ -4,6 +4,7 @@ import asyncio
 import importlib
 import os
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -772,6 +773,31 @@ def test_resolve_dataset_search_dir_accepts_legacy_browsable_snapshot(tmp_path) 
     resolved, name = deps.resolve_dataset_search_dir("legacy")
     assert resolved == snapshot_dir
     assert name == "legacy"
+
+
+def test_resolve_dataset_search_dir_fixture_snapshots_follow_contracts(tmp_path) -> None:
+    import shutil
+    import searchat.api.dependencies as deps
+    from searchat.services.backup import BackupManager
+
+    fixture = Path("tests/fixtures/storage/backup_contract_bundle")
+    shutil.copytree(fixture, tmp_path, dirs_exist_ok=True)
+    backup_root = tmp_path / "backups"
+
+    deps._search_dir = tmp_path
+    deps._config = SimpleNamespace(snapshots=SimpleNamespace(enabled=True))
+    deps._backup_manager = BackupManager(tmp_path)
+
+    resolved, name = deps.resolve_dataset_search_dir("repairable_manifest_base")
+    assert resolved == backup_root / "repairable_manifest_base"
+    assert name == "repairable_manifest_base"
+
+    resolved_mixed, name_mixed = deps.resolve_dataset_search_dir("mixed_version_metadata_full")
+    assert resolved_mixed == backup_root / "mixed_version_metadata_full"
+    assert name_mixed == "mixed_version_metadata_full"
+
+    with pytest.raises(ValueError, match="Snapshot validation failed"):
+        deps.resolve_dataset_search_dir("invalid_manifest_full")
 
 
 @pytest.mark.asyncio
