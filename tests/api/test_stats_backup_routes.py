@@ -54,6 +54,17 @@ def mock_backup_manager():
     mock.create_incremental_backup.return_value = mock_metadata
     mock.list_backups.return_value = [mock_metadata]
     mock.restore_from_backup.return_value = None
+    mock.get_backup_summary.return_value = {
+        "name": "backup_20250120_100000",
+        "backup_mode": "full",
+        "encrypted": False,
+        "parent_name": None,
+        "chain_length": 1,
+        "snapshot_browsable": True,
+        "has_manifest": True,
+        "valid": True,
+        "errors": [],
+    }
     mock.delete_backup.return_value = None
     mock.validate_backup_artifact.return_value = {
         "backup_name": "backup_20250120_100000",
@@ -271,6 +282,8 @@ class TestListBackupsEndpoint:
             assert "backup_directory" in data
             assert data["total"] == 1
             assert len(data["backups"]) == 1
+            assert data["backups"][0]["valid"] is True
+            assert data["backups"][0]["errors"] == []
 
 
 @pytest.mark.unit

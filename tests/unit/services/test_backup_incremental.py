@@ -161,3 +161,41 @@ def test_validate_backup_artifact_fails_closed_when_parent_manifest_is_missing(t
     assert res["valid"] is False
     assert res["snapshot_browsable"] is False
     assert any("Backup manifest missing" in e for e in res.get("errors", []))
+
+
+@pytest.mark.unit
+def test_get_backup_summary_legacy_full_backup_reports_valid_and_browsable(temp_search_dir: Path):
+    live = temp_search_dir
+    mgr = BackupManager(live)
+
+    parquet = live / "data" / "conversations" / "conv.parquet"
+    _write_bytes(parquet, b"PAR1\n")
+
+    meta = mgr.create_backup(backup_name="legacy")
+    (meta.backup_path / "backup_manifest.json").unlink()
+
+    summary = mgr.get_backup_summary(meta.backup_path.name)
+    assert summary["has_manifest"] is False
+    assert summary["valid"] is True
+    assert summary["snapshot_browsable"] is True
+    assert summary["errors"] == []
+
+
+@pytest.mark.unit
+def test_get_backup_summary_invalid_manifest_fails_closed(temp_search_dir: Path):
+    live = temp_search_dir
+    mgr = BackupManager(live)
+
+    parquet = live / "data" / "conversations" / "conv.parquet"
+    _write_bytes(parquet, b"PAR1\n")
+
+    meta = mgr.create_backup(backup_name="broken")
+    manifest_path = meta.backup_path / "backup_manifest.json"
+    manifest_path.write_text('{"manifest_version": 999}', encoding="utf-8")
+
+    summary = mgr.get_backup_summary(meta.backup_path.name)
+    assert summary["has_manifest"] is True
+    assert summary["valid"] is False
+    assert summary["snapshot_browsable"] is False
+    assert summary["backup_mode"] == "unknown"
+    assert summary["errors"]

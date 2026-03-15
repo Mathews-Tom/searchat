@@ -257,10 +257,26 @@ class BackupManager:
 
     def get_backup_summary(self, backup_name: str) -> dict[str, object]:
         backup_path = self.backup_dir / backup_name
+        manifest_path = backup_path / BACKUP_MANIFEST_FILE
         try:
             manifest = self._load_manifest(backup_path)
+            manifest_error: str | None = None
         except ValueError:
             manifest = None
+            manifest_error = "Backup manifest version mismatch or is otherwise invalid."
+
+        if manifest_error is not None:
+            return {
+                "name": backup_name,
+                "backup_mode": "unknown",
+                "encrypted": False,
+                "parent_name": None,
+                "chain_length": 0,
+                "snapshot_browsable": False,
+                "has_manifest": manifest_path.exists(),
+                "valid": False,
+                "errors": [manifest_error],
+            }
 
         backup_mode = "full"
         encrypted = False
@@ -291,23 +307,18 @@ class BackupManager:
                 "chain_length": inspection.chain_length,
                 "snapshot_browsable": inspection.snapshot_browsable,
                 "has_manifest": inspection.has_manifest,
+                "valid": inspection.valid,
+                "errors": list(inspection.errors),
             }
-
-        snapshot_browsable = False
-        if backup_mode == "full" and not encrypted:
-            try:
-                snapshot_browsable = self.validate_backup(backup_path)
-            except Exception:
-                snapshot_browsable = False
-
+        artifact = self.validate_backup_artifact(backup_name, verify_hashes=False)
         inspection = inspect_manifest_backup(
             backup_name,
             backup_mode=backup_mode,
             encrypted=encrypted,
             parent_name=parent_name,
             chain_length=chain_length,
-            snapshot_browsable=snapshot_browsable,
-            errors=[],
+            snapshot_browsable=bool(artifact.get("snapshot_browsable", False)),
+            errors=[str(error) for error in artifact.get("errors", [])],
         )
         return {
             "name": backup_name,
@@ -317,6 +328,8 @@ class BackupManager:
             "chain_length": inspection.chain_length,
             "snapshot_browsable": inspection.snapshot_browsable,
             "has_manifest": inspection.has_manifest,
+            "valid": inspection.valid,
+            "errors": list(inspection.errors),
         }
 
     def _count_files(self, path: Path) -> int:
