@@ -223,3 +223,25 @@ def test_get_backup_summary_broken_chain_uses_artifact_validation(temp_search_di
     assert summary["backup_mode"] == "incremental"
     assert summary["chain_length"] == 2
     assert any("Backup manifest missing" in error for error in summary["errors"])
+
+
+@pytest.mark.unit
+def test_inspect_backup_chain_broken_chain_preserves_topology(temp_search_dir: Path):
+    live = temp_search_dir
+    mgr = BackupManager(live)
+
+    parquet = live / "data" / "conversations" / "conv.parquet"
+    settings = live / "config" / "settings.toml"
+    _write_bytes(parquet, b"PAR1\n")
+    _write_bytes(settings, b"a = 1\n")
+
+    base = mgr.create_backup(backup_name="base")
+    _write_bytes(settings, b"a = 2\n")
+    child = mgr.create_incremental_backup(parent_name=base.backup_path.name, backup_name="child")
+    (base.backup_path / "backup_manifest.json").unlink()
+
+    inspection = mgr.inspect_backup_chain(child.backup_path.name)
+    assert inspection["chain"] == [base.backup_path.name, child.backup_path.name]
+    assert inspection["chain_length"] == 2
+    assert inspection["valid"] is False
+    assert any("Backup manifest missing" in error for error in inspection["errors"])

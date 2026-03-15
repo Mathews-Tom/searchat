@@ -258,3 +258,13 @@ def test_storage_compatibility_backup_contract_fixture_bundle_covers_legacy_and_
     report = inspect_storage_health(temp_search_dir)
     assert any(issue.scope == "backup_manifest" and issue.path.name == BACKUP_MANIFEST_FILE for issue in report.issues)
     assert any(issue.scope == "backup_chain" and issue.path.name == "broken_chain_child" for issue in report.issues)
+
+    chain = manager.inspect_backup_chain("broken_chain_child")
+    assert chain["chain"] == ["broken_chain_base", "broken_chain_child"]
+    assert chain["valid"] is False
+    assert any("Backup manifest missing" in error for error in chain["errors"])
+
+    invalid_chain = manager.inspect_backup_chain("invalid_manifest_full")
+    assert invalid_chain["chain"] == []
+    assert invalid_chain["valid"] is False
+    assert any("manifest version mismatch" in error.lower() for error in invalid_chain["errors"])

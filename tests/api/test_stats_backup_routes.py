@@ -357,6 +357,13 @@ class TestGetBackupChainEndpoint:
     """Tests for GET /api/backup/chain/{backup_name} endpoint."""
 
     def test_get_backup_chain_success(self, client, mock_backup_manager):
+        mock_backup_manager.inspect_backup_chain.return_value = {
+            "backup_name": "backup_20250120_100000",
+            "chain": ["backup_20250120_090000", "backup_20250120_100000"],
+            "chain_length": 2,
+            "valid": True,
+            "errors": [],
+        }
         with patch('searchat.api.routers.backup.get_backup_manager', return_value=mock_backup_manager):
             resp = client.get("/api/backup/chain/backup_20250120_100000")
 
@@ -365,7 +372,33 @@ class TestGetBackupChainEndpoint:
         assert data["backup_name"] == "backup_20250120_100000"
         assert data["chain_length"] == 2
         assert data["chain"] == ["backup_20250120_090000", "backup_20250120_100000"]
-        mock_backup_manager.resolve_backup_chain.assert_called_once_with("backup_20250120_100000")
+        assert data["valid"] is True
+        assert data["errors"] == []
+        mock_backup_manager.inspect_backup_chain.assert_called_once_with("backup_20250120_100000")
+
+    def test_get_backup_chain_fixture_bundle_surfaces_invalid_state(self, client, tmp_path):
+        from searchat.services.backup import BackupManager
+
+        fixture = Path("tests/fixtures/storage/backup_contract_bundle")
+        shutil.copytree(fixture, tmp_path, dirs_exist_ok=True)
+        manager = BackupManager(tmp_path)
+
+        with patch("searchat.api.routers.backup.get_backup_manager", return_value=manager):
+            broken = client.get("/api/backup/chain/broken_chain_child")
+            invalid = client.get("/api/backup/chain/invalid_manifest_full")
+
+        assert broken.status_code == 200
+        broken_payload = broken.json()
+        assert broken_payload["chain"] == ["broken_chain_base", "broken_chain_child"]
+        assert broken_payload["valid"] is False
+        assert any("Backup manifest missing" in error for error in broken_payload["errors"])
+
+        assert invalid.status_code == 200
+        invalid_payload = invalid.json()
+        assert invalid_payload["chain"] == []
+        assert invalid_payload["chain_length"] == 0
+        assert invalid_payload["valid"] is False
+        assert any("manifest version mismatch" in error.lower() for error in invalid_payload["errors"])
 
     def test_list_backups_empty(self, client, mock_backup_manager):
         """Test listing when no backups exist."""
