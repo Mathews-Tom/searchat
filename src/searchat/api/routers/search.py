@@ -37,6 +37,16 @@ def _cached_highlight(
     )
 
 
+def _resolve_highlight_terms(
+    dataset_key: str, query: str, provider: str, model: str | None,
+) -> list[str] | None:
+    """Treat highlight extraction as optional enrichment, not a search prerequisite."""
+    try:
+        return _cached_highlight(dataset_key, query, provider, model)
+    except (LLMServiceError, ValueError):
+        return None
+
+
 @router.get("/search/code")
 async def search_code(
     q: str = Query("*", description="Code search query (use * to list recent)"),
@@ -193,12 +203,9 @@ async def search(
             provider = highlight_provider.lower()
             if provider not in ("openai", "ollama"):
                 raise HTTPException(status_code=400, detail="Invalid highlight provider")
-            try:
-                highlight_terms = _cached_highlight(str(search_dir), q, provider, highlight_model)
-            except LLMServiceError as exc:
-                raise HTTPException(status_code=503, detail=str(exc)) from exc
-            except ValueError as exc:
-                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            highlight_terms = _resolve_highlight_terms(
+                str(search_dir), q, provider, highlight_model
+            )
 
         # Log search analytics (opt-in; active dataset only)
         config = deps.get_config()
