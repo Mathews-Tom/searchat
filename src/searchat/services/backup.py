@@ -16,11 +16,15 @@ import hashlib
 import tempfile
 
 from searchat.services.backup_crypto import decrypt_file, encrypt_file, get_backup_key
+from searchat.services.storage_contracts import (
+    BACKUP_MANIFEST_FILE,
+    BACKUP_MANIFEST_VERSION,
+    BACKUP_METADATA_FILE,
+    BackupManifest,
+    BackupMetadata,
+)
 
 logger = logging.getLogger(__name__)
-
-
-BACKUP_MANIFEST_FILE = "backup_manifest.json"
 
 
 def _sha256_file(path: Path) -> str:
@@ -31,109 +35,10 @@ def _sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
-class BackupManifest:
-    """Manifest describing backup contents and ancestry.
-
-    This is the source of truth for:
-    - backup type (full vs incremental)
-    - whether payload files are encrypted
-    - file-level integrity metadata
-    - chain resolution (parent pointers)
-    """
-
-    def __init__(
-        self,
-        *,
-        manifest_version: int,
-        backup_mode: str,
-        encrypted: bool,
-        created_at: str,
-        parent_name: str | None,
-        files: dict[str, dict[str, object]],
-        deleted_files: list[str],
-    ):
-        self.manifest_version = manifest_version
-        self.backup_mode = backup_mode
-        self.encrypted = encrypted
-        self.created_at = created_at
-        self.parent_name = parent_name
-        self.files = files
-        self.deleted_files = deleted_files
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "manifest_version": self.manifest_version,
-            "backup_mode": self.backup_mode,
-            "encrypted": self.encrypted,
-            "created_at": self.created_at,
-            "parent_name": self.parent_name,
-            "files": self.files,
-            "deleted_files": self.deleted_files,
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "BackupManifest":
-        parent = data.get("parent_name")
-        parent_name = None if parent is None else str(parent)
-        return cls(
-            manifest_version=int(data.get("manifest_version", 1)),
-            backup_mode=str(data.get("backup_mode", "full")),
-            encrypted=bool(data.get("encrypted", False)),
-            created_at=str(data.get("created_at", "")),
-            parent_name=parent_name,
-            files=cast(dict[str, dict[str, object]], data.get("files", {})),
-            deleted_files=list(data.get("deleted_files", [])),
-        )
-
-
-class BackupMetadata:
-    """Metadata for a backup."""
-
-    def __init__(
-        self,
-        timestamp: str,
-        backup_path: Path,
-        source_path: Path,
-        file_count: int,
-        total_size_bytes: int,
-        backup_type: str = "manual"
-    ):
-        self.timestamp = timestamp
-        self.backup_path = backup_path
-        self.source_path = source_path
-        self.file_count = file_count
-        self.total_size_bytes = total_size_bytes
-        self.backup_type = backup_type
-
-    def to_dict(self) -> dict[str, Any]:
-        """Convert metadata to dictionary."""
-        return {
-            "timestamp": self.timestamp,
-            "backup_path": str(self.backup_path),
-            "source_path": str(self.source_path),
-            "file_count": self.file_count,
-            "total_size_bytes": self.total_size_bytes,
-            "total_size_mb": round(self.total_size_bytes / (1024 * 1024), 2),
-            "backup_type": self.backup_type,
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "BackupMetadata":
-        """Create metadata from dictionary."""
-        return cls(
-            timestamp=data["timestamp"],
-            backup_path=Path(data["backup_path"]),
-            source_path=Path(data["source_path"]),
-            file_count=data["file_count"],
-            total_size_bytes=data["total_size_bytes"],
-            backup_type=data.get("backup_type", "manual"),
-        )
-
-
 class BackupManager:
     """Manages backups and restores for Searchat data."""
 
-    METADATA_FILE = "backup_metadata.json"
+    METADATA_FILE = BACKUP_METADATA_FILE
 
     def __init__(self, data_dir: Path, backup_dir: Path | None = None):
         """
@@ -256,7 +161,14 @@ class BackupManager:
                 "errors": [f"Backup not found: {backup_name}"],
             }
 
-        manifest = self._load_manifest(backup_path)
+        try:
+            manifest = self._load_manifest(backup_path)
+        except ValueError as exc:
+            return {
+                "backup_name": backup_name,
+                "valid": False,
+                "errors": [str(exc)],
+            }
         if manifest is None:
             # Older backups: structural checks only.
             if verify_hashes:
@@ -289,7 +201,11 @@ class BackupManager:
 
         chain_manifests: list[tuple[str, BackupManifest]] = []
         for name in chain:
-            m = self._load_manifest(self.backup_dir / name)
+            try:
+                m = self._load_manifest(self.backup_dir / name)
+            except ValueError as exc:
+                errors.append(str(exc))
+                continue
             if m is None:
                 errors.append(f"Backup manifest missing: {name}")
                 continue
@@ -346,7 +262,10 @@ class BackupManager:
 
     def get_backup_summary(self, backup_name: str) -> dict[str, object]:
         backup_path = self.backup_dir / backup_name
-        manifest = self._load_manifest(backup_path)
+        try:
+            manifest = self._load_manifest(backup_path)
+        except ValueError:
+            manifest = None
 
         backup_mode = "full"
         encrypted = False
@@ -539,7 +458,7 @@ class BackupManager:
             json.dump(metadata.to_dict(), f, indent=2)
 
         manifest = BackupManifest(
-            manifest_version=1,
+            manifest_version=BACKUP_MANIFEST_VERSION,
             backup_mode="incremental",
             encrypted=encrypted,
             created_at=datetime.now().isoformat(),
@@ -733,7 +652,7 @@ class BackupManager:
 
         # Save manifest (new backups always include it).
         manifest = BackupManifest(
-            manifest_version=1,
+            manifest_version=BACKUP_MANIFEST_VERSION,
             backup_mode="full",
             encrypted=encrypted,
             created_at=datetime.now().isoformat(),
