@@ -91,15 +91,16 @@ async def get_backup_chain(backup_name: str):
     """Return the resolved backup chain (base -> target)."""
     try:
         backup_manager = get_backup_manager()
-        if not hasattr(backup_manager, "resolve_backup_chain"):
-            raise HTTPException(status_code=500, detail="Backup chain resolution is not available")
-
-        chain = backup_manager.resolve_backup_chain(backup_name)
-        return {
-            "backup_name": backup_name,
-            "chain": chain,
-            "chain_length": len(chain),
-        }
+        if hasattr(backup_manager, "inspect_backup_chain"):
+            return backup_manager.inspect_backup_chain(backup_name)
+        if hasattr(backup_manager, "resolve_backup_chain"):
+            chain = backup_manager.resolve_backup_chain(backup_name)
+            return {
+                "backup_name": backup_name,
+                "chain": chain,
+                "chain_length": len(chain),
+            }
+        raise HTTPException(status_code=500, detail="Backup chain resolution is not available")
     except HTTPException:
         raise
     except Exception as e:

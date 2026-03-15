@@ -17,6 +17,7 @@ import tempfile
 
 from searchat.services.backup_crypto import decrypt_file, encrypt_file, get_backup_key
 from searchat.services.backup_contracts import (
+    inspect_backup_chain,
     inspect_legacy_full_backup,
     inspect_manifest_backup,
 )
@@ -252,6 +253,34 @@ class BackupManager:
             parent_name=manifest.parent_name,
             chain_length=len(chain),
             snapshot_browsable=snapshot_browsable,
+            errors=errors,
+        ).to_dict()
+
+    def inspect_backup_chain(
+        self,
+        backup_name: str,
+        *,
+        max_chain_length: int = 10,
+    ) -> dict[str, object]:
+        """Inspect chain topology while preserving invalid-state diagnostics."""
+        try:
+            chain = self.resolve_backup_chain(backup_name, max_chain_length=max_chain_length)
+        except Exception as exc:
+            return inspect_backup_chain(
+                backup_name,
+                chain=[],
+                errors=[str(exc)],
+            ).to_dict()
+
+        artifact = self.validate_backup_artifact(
+            backup_name,
+            verify_hashes=False,
+            max_chain_length=max_chain_length,
+        )
+        errors = [str(error) for error in artifact.get("errors", [])]
+        return inspect_backup_chain(
+            backup_name,
+            chain=chain,
             errors=errors,
         ).to_dict()
 

@@ -32,6 +32,23 @@ class BackupArtifactInspection:
         }
 
 
+@dataclass(frozen=True)
+class BackupChainInspection:
+    backup_name: str
+    chain: tuple[str, ...]
+    valid: bool
+    errors: tuple[str, ...]
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "backup_name": self.backup_name,
+            "chain": list(self.chain),
+            "chain_length": len(self.chain),
+            "valid": self.valid,
+            "errors": list(self.errors),
+        }
+
+
 def inspect_legacy_full_backup(
     backup_name: str,
     backup_path: Path,
@@ -73,6 +90,20 @@ def inspect_manifest_backup(
         chain_length=chain_length,
         snapshot_browsable=snapshot_browsable,
         has_manifest=True,
+        valid=not errors,
+        errors=tuple(errors),
+    )
+
+
+def inspect_backup_chain(
+    backup_name: str,
+    *,
+    chain: list[str],
+    errors: list[str],
+) -> BackupChainInspection:
+    return BackupChainInspection(
+        backup_name=backup_name,
+        chain=tuple(chain),
         valid=not errors,
         errors=tuple(errors),
     )
