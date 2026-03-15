@@ -16,6 +16,7 @@ from searchat.services.storage_contracts import (
     read_index_metadata,
     write_index_metadata,
 )
+from searchat.services.storage_migrations import migrate_index_metadata_file, plan_index_metadata_migration
 
 
 @dataclass(frozen=True)
@@ -54,15 +55,18 @@ def inspect_storage_health(
     if metadata_path.exists():
         try:
             index_metadata = read_index_metadata(search_dir)
-            index_metadata.validate_compatible(embedding_model=embedding_model)
-            normalized = index_metadata.normalized(embedding_model=embedding_model)
-            if normalized != index_metadata:
+            plan = plan_index_metadata_migration(index_metadata, embedding_model=embedding_model)
+            plan.migrated.validate_compatible(embedding_model=embedding_model)
+            if plan.has_changes:
                 issues.append(
                     StorageIssue(
                         severity="warning",
                         scope="index_metadata",
                         path=metadata_path,
-                        message="Index metadata is missing normalizable fields.",
+                        message=(
+                            "Index metadata can be migrated by normalizing fields: "
+                            + ", ".join(plan.changed_fields)
+                        ),
                         repairable=True,
                     )
                 )
@@ -135,10 +139,12 @@ def repair_storage_metadata(
     metadata_path = indices_dir / "index_metadata.json"
     if metadata_path.exists():
         try:
-            index_metadata = read_index_metadata(search_dir)
-            normalized = index_metadata.normalized(embedding_model=embedding_model)
-            if normalized != index_metadata:
-                write_index_metadata(search_dir, normalized)
+            plan = migrate_index_metadata_file(
+                search_dir,
+                embedding_model=embedding_model,
+                apply=True,
+            )
+            if plan.has_changes:
                 repairs_applied += 1
         except (FileNotFoundError, StorageCompatibilityError):
             pass
