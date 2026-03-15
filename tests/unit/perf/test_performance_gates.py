@@ -229,7 +229,15 @@ def test_dashboard_render_10_widgets_under_2s(monkeypatch: pytest.MonkeyPatch) -
         "get_saved_queries_service",
         lambda: _SavedQueriesService(queries),
     )
-    monkeypatch.setattr(dashboards_router, "get_or_create_search_engine", lambda: _Engine(results))
+    monkeypatch.setattr(
+        dashboards_router,
+        "get_dataset_retrieval",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            search_dir=None,
+            snapshot_name=None,
+            retrieval_service=_Engine(results),
+        ),
+    )
 
     client = TestClient(app)
     start = time.perf_counter()
