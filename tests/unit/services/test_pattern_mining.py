@@ -13,6 +13,7 @@ from searchat.services.pattern_mining import (
     PatternEvidence,
     extract_patterns,
 )
+from searchat.services.llm_service import LLMServiceError
 
 
 # ============================================================================
@@ -835,3 +836,61 @@ def test_extract_patterns_with_multiple_projects(
     assert len(evidence) == 3
     conv_ids = {e.conversation_id for e in evidence}
     assert conv_ids == {"conv-1", "conv-2", "conv-3"}
+
+
+@patch("searchat.services.pattern_mining.get_search_engine", side_effect=AssertionError("compat fallback not expected"))
+@patch("searchat.services.pattern_mining.build_generation_service")
+def test_extract_patterns_uses_injected_retrieval_service(
+    mock_llm_class, _mock_get_engine, mock_config
+):
+    """Test that explicit retrieval injection bypasses the compatibility fallback."""
+    mock_engine = Mock()
+    mock_engine.search.return_value = _make_search_results(
+        [_make_search_result("conv-1", "Use repository abstractions")]
+    )
+
+    mock_llm = Mock()
+    mock_llm_class.return_value = mock_llm
+    mock_llm.completion.return_value = json.dumps({
+        "name": "Repository Pattern",
+        "description": "Use repository abstractions over raw store access",
+        "confidence": 0.8,
+    })
+
+    patterns = extract_patterns(
+        topic="repositories",
+        max_patterns=1,
+        config=mock_config,
+        retrieval_service=mock_engine,
+    )
+
+    assert len(patterns) == 1
+    assert patterns[0].name == "Repository Pattern"
+
+
+@patch("searchat.services.pattern_mining.build_generation_service")
+@patch("searchat.services.pattern_mining.get_search_engine")
+def test_extract_patterns_llm_unavailable_returns_fallback_pattern(
+    mock_get_engine, mock_llm_class, mock_config
+):
+    """Test that synthesis provider failures degrade to deterministic fallback patterns."""
+    mock_engine = Mock()
+    mock_get_engine.return_value = mock_engine
+    mock_engine.search.return_value = _make_search_results(
+        [_make_search_result("conv-1", "Always start from failing tests")]
+    )
+
+    mock_llm = Mock()
+    mock_llm_class.return_value = mock_llm
+    mock_llm.completion.side_effect = LLMServiceError("provider unreachable")
+
+    patterns = extract_patterns(
+        topic="testing",
+        max_patterns=1,
+        config=mock_config,
+    )
+
+    assert len(patterns) == 1
+    assert patterns[0].name == "testing conventions"
+    assert patterns[0].description == "Pattern cluster related to: testing conventions"
+    assert patterns[0].confidence == pytest.approx(0.3)

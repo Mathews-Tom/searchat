@@ -66,6 +66,12 @@ def semantic_components_ready():
         yield
 
 
+@pytest.fixture(autouse=True)
+def pattern_retrieval_service():
+    with patch("searchat.api.routers.patterns.get_search_engine", return_value=Mock()):
+        yield
+
+
 def test_extract_patterns_success_ollama(client, mock_patterns):
     """Test successful pattern extraction with ollama provider."""
     config = Mock()
