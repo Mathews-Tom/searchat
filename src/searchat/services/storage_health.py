@@ -6,6 +6,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from searchat.services.backup import BackupManager
 from searchat.services.storage_contracts import (
     BACKUP_MANIFEST_FILE,
     BACKUP_METADATA_FILE,
@@ -127,6 +128,7 @@ def inspect_storage_health(
     embedding_model: str | None = None,
 ) -> StorageHealthReport:
     issues: list[StorageIssue] = []
+    backup_manager = BackupManager(search_dir)
     for target in _iter_index_targets(search_dir):
         issue = _inspect_index_target(target, embedding_model=embedding_model)
         if issue is not None:
@@ -161,9 +163,11 @@ def inspect_storage_health(
                         )
                     )
             manifest_path = backup_dir / BACKUP_MANIFEST_FILE
+            manifest_valid = False
             if manifest_path.exists():
                 try:
                     BackupManifest.from_dict(json.loads(manifest_path.read_text(encoding="utf-8")))
+                    manifest_valid = True
                 except StorageCompatibilityError as exc:
                     issues.append(
                         StorageIssue(
@@ -173,6 +177,26 @@ def inspect_storage_health(
                             message=str(exc),
                         )
                     )
+            if manifest_valid:
+                artifact = backup_manager.validate_backup_artifact(backup_dir.name, verify_hashes=False)
+                if not artifact.get("valid"):
+                    errors = [
+                        str(error)
+                        for error in artifact.get("errors", [])
+                        if "manifest version mismatch" not in str(error)
+                    ]
+                    if errors:
+                        issues.append(
+                            StorageIssue(
+                                severity="error",
+                                scope="backup_chain",
+                                path=backup_dir,
+                                message=(
+                                    f"Backup chain validation failed for '{backup_dir.name}': "
+                                    + "; ".join(errors)
+                                ),
+                            )
+                        )
 
     return StorageHealthReport(search_dir=search_dir, issues=issues)
 

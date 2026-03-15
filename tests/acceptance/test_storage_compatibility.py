@@ -201,3 +201,28 @@ def test_storage_compatibility_invalid_chain_with_missing_parent_manifest_fails_
     assert result["valid"] is False
     assert result["snapshot_browsable"] is False
     assert any("Backup manifest missing" in error for error in result["errors"])
+
+
+def test_storage_compatibility_storage_health_reports_broken_backup_chain(temp_search_dir: Path) -> None:
+    from searchat.services.storage_health import inspect_storage_health
+
+    manager = BackupManager(temp_search_dir)
+    live_file = temp_search_dir / "data" / "conversations" / "conv.parquet"
+    settings = temp_search_dir / "config" / "settings.toml"
+    live_file.parent.mkdir(parents=True, exist_ok=True)
+    settings.parent.mkdir(parents=True, exist_ok=True)
+    live_file.write_bytes(b"PAR1\n")
+    settings.write_bytes(b"a = 1\n")
+
+    base = manager.create_backup(backup_name="base")
+    settings.write_bytes(b"a = 2\n")
+    child = manager.create_incremental_backup(parent_name=base.backup_path.name, backup_name="child")
+    (base.backup_path / BACKUP_MANIFEST_FILE).unlink()
+
+    report = inspect_storage_health(temp_search_dir)
+    assert any(
+        issue.scope == "backup_chain"
+        and issue.path == child.backup_path
+        and "validation failed" in issue.message.lower()
+        for issue in report.issues
+    )

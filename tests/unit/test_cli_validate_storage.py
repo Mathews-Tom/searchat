@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from searchat.services.backup import BackupManager
+from searchat.services.storage_contracts import BACKUP_MANIFEST_FILE
 
 
 def test_validate_storage_help_text(capsys) -> None:
@@ -113,3 +114,32 @@ def test_validate_storage_reports_legacy_dataset_bundle_issues(temp_search_dir: 
     assert result == 0
     assert "backup dataset" in captured.out.lower()
     assert "backup_metadata" in captured.out
+
+
+def test_validate_storage_reports_broken_backup_chain(temp_search_dir: Path, capsys) -> None:
+    from searchat.cli.validate_cmd import run_validate
+
+    manager = BackupManager(temp_search_dir)
+    live_file = temp_search_dir / "data" / "conversations" / "conv.parquet"
+    settings = temp_search_dir / "config" / "settings.toml"
+    live_file.parent.mkdir(parents=True, exist_ok=True)
+    settings.parent.mkdir(parents=True, exist_ok=True)
+    live_file.write_bytes(b"PAR1\n")
+    settings.write_bytes(b"a = 1\n")
+
+    base = manager.create_backup(backup_name="base")
+    settings.write_bytes(b"a = 2\n")
+    manager.create_incremental_backup(parent_name=base.backup_path.name, backup_name="child")
+    (base.backup_path / BACKUP_MANIFEST_FILE).unlink()
+
+    cfg = SimpleNamespace(embedding=SimpleNamespace(model="all-MiniLM-L6-v2"))
+    with (
+        patch("searchat.config.Config.load", return_value=cfg),
+        patch("searchat.config.PathResolver.get_shared_search_dir", return_value=temp_search_dir),
+    ):
+        result = run_validate(["storage"])
+
+    captured = capsys.readouterr()
+    assert result == 1
+    assert "backup_chain" in captured.out
+    assert "validation failed" in captured.out.lower()
