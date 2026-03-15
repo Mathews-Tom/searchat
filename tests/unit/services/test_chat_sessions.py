@@ -190,8 +190,9 @@ class TestGenerateAnswerStreamWithSessions:
         config = Mock()
         config.llm = object()
 
-        with patch("searchat.services.chat_service.LLMService.stream_completion") as mock_stream:
-            mock_stream.return_value = iter(["Hello", " ", "world"])
+        with patch("searchat.services.chat_service.build_generation_service") as mock_builder:
+            mock_service = mock_builder.return_value
+            mock_service.stream_completion.return_value = iter(["Hello", " ", "world"])
 
             session_id, stream = generate_answer_stream(
                 query="test query",
@@ -225,8 +226,9 @@ class TestGenerateAnswerStreamWithSessions:
         config = Mock()
         config.llm = object()
 
-        with patch("searchat.services.chat_service.LLMService.stream_completion") as mock_stream:
-            mock_stream.return_value = iter(["new", " ", "response"])
+        with patch("searchat.services.chat_service.build_generation_service") as mock_builder:
+            mock_service = mock_builder.return_value
+            mock_service.stream_completion.return_value = iter(["new", " ", "response"])
 
             session_id, stream = generate_answer_stream(
                 query="new query",
@@ -256,8 +258,9 @@ class TestGenerateAnswerStreamWithSessions:
         config = Mock()
         config.llm = object()
 
-        with patch("searchat.services.chat_service.LLMService.stream_completion") as mock_stream:
-            mock_stream.return_value = iter(["Test", " ", "answer"])
+        with patch("searchat.services.chat_service.build_generation_service") as mock_builder:
+            mock_service = mock_builder.return_value
+            mock_service.stream_completion.return_value = iter(["Test", " ", "answer"])
 
             session_id, stream = generate_answer_stream(
                 query="What is the answer?",
@@ -322,8 +325,9 @@ class TestGenerateAnswerStreamWithSessions:
         config = Mock()
         config.llm = object()
 
-        with patch("searchat.services.chat_service.LLMService.stream_completion") as mock_stream:
-            mock_stream.return_value = iter(["ok"])
+        with patch("searchat.services.chat_service.build_generation_service") as mock_builder:
+            mock_service = mock_builder.return_value
+            mock_service.stream_completion.return_value = iter(["ok"])
 
             _, stream = generate_answer_stream(
                 query="test",
@@ -337,7 +341,7 @@ class TestGenerateAnswerStreamWithSessions:
             list(stream)
 
             # Check that LLM was called with limited history
-            call_args = mock_stream.call_args
+            call_args = mock_service.stream_completion.call_args
             messages = call_args[1]["messages"]
 
             # Should have: system + history (max MAX_TURNS*2) + current user message
@@ -363,7 +367,8 @@ class TestGenerateRAGResponseWithSessions:
         config = Mock()
         config.llm = object()
 
-        with patch("searchat.services.chat_service.LLMService.completion", return_value="Answer text"):
+        with patch("searchat.services.chat_service.build_generation_service") as mock_builder:
+            mock_builder.return_value.completion.return_value = "Answer text"
             result = generate_rag_response(
                 query="test query",
                 provider="ollama",
@@ -392,7 +397,8 @@ class TestGenerateRAGResponseWithSessions:
         config = Mock()
         config.llm = object()
 
-        with patch("searchat.services.chat_service.LLMService.completion", return_value="New answer"):
+        with patch("searchat.services.chat_service.build_generation_service") as mock_builder:
+            mock_builder.return_value.completion.return_value = "New answer"
             result = generate_rag_response(
                 query="new query",
                 provider="ollama",
@@ -418,7 +424,8 @@ class TestGenerateRAGResponseWithSessions:
         config = Mock()
         config.llm = object()
 
-        with patch("searchat.services.chat_service.LLMService.completion", return_value="Complete answer"):
+        with patch("searchat.services.chat_service.build_generation_service") as mock_builder:
+            mock_builder.return_value.completion.return_value = "Complete answer"
             result = generate_rag_response(
                 query="What is the question?",
                 provider="ollama",
@@ -478,7 +485,8 @@ class TestGenerateRAGResponseWithSessions:
         config = Mock()
         config.llm = object()
 
-        with patch("searchat.services.chat_service.LLMService.completion", return_value="ok") as mock_completion:
+        with patch("searchat.services.chat_service.build_generation_service") as mock_builder:
+            mock_builder.return_value.completion.return_value = "ok"
             generate_rag_response(
                 query="test",
                 provider="ollama",
@@ -488,7 +496,7 @@ class TestGenerateRAGResponseWithSessions:
                 session_id=session_id,
             )
 
-            call_args = mock_completion.call_args
+            call_args = mock_builder.return_value.completion.call_args
             messages = call_args[1]["messages"]
 
             # Should have: system + history (max MAX_TURNS*2) + current user message
@@ -511,8 +519,8 @@ class TestGenerateRAGResponseWithSessions:
         session_id = None
         queries = ["First question", "Second question", "Third question"]
 
-        with patch("searchat.services.chat_service.LLMService.completion") as mock_completion:
-            mock_completion.side_effect = ["Answer 1", "Answer 2", "Answer 3"]
+        with patch("searchat.services.chat_service.build_generation_service") as mock_builder:
+            mock_builder.return_value.completion.side_effect = ["Answer 1", "Answer 2", "Answer 3"]
 
             for query in queries:
                 result = generate_rag_response(

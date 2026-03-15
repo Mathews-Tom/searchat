@@ -1,4 +1,4 @@
-"""Tests for LLMExtractor — mocked LLMService calls."""
+"""Tests for LLMExtractor, with the generation seam mocked."""
 from __future__ import annotations
 
 import json
@@ -12,13 +12,13 @@ from searchat.services.llm_service import LLMServiceError
 
 
 def _make_extractor() -> tuple[LLMExtractor, MagicMock]:
-    """Return an LLMExtractor and its patched LLMService instance."""
+    """Return an LLMExtractor and its patched generation service."""
     llm_config = MagicMock()
     llm_config.default_provider = "openai"
 
-    with patch("searchat.expertise.llm_extractor.LLMService") as mock_cls:
+    with patch("searchat.expertise.llm_extractor.build_generation_service") as mock_builder:
         mock_service = MagicMock()
-        mock_cls.return_value = mock_service
+        mock_builder.return_value = mock_service
         extractor = LLMExtractor(llm_config)
 
     return extractor, mock_service
