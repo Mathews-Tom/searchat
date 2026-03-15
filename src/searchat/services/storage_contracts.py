@@ -92,6 +92,28 @@ class IndexMetadata:
                 f"expected version {INDEX_FORMAT_VERSION}. Rebuild index required."
             )
 
+    def normalized(self, *, embedding_model: str | None = None) -> "IndexMetadata":
+        model_name = self.embedding_model or (embedding_model or "")
+        last_updated = self.last_updated or self.created_at
+        chunk_size = self.chunk_size if self.chunk_size is not None else 1500
+        chunk_overlap = self.chunk_overlap if self.chunk_overlap is not None else 200
+        next_vector_id = self.next_vector_id
+        if next_vector_id == 0 and self.total_chunks > 0:
+            next_vector_id = self.total_chunks
+        return IndexMetadata(
+            schema_version=self.schema_version,
+            index_format_version=self.index_format_version,
+            created_at=self.created_at,
+            embedding_model=model_name,
+            format=self.format,
+            last_updated=last_updated,
+            total_conversations=self.total_conversations,
+            total_chunks=self.total_chunks,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            next_vector_id=next_vector_id,
+        )
+
 
 def read_index_metadata(search_dir: Path) -> IndexMetadata:
     metadata_path = search_dir / "data" / "indices" / INDEX_METADATA_FILENAME
@@ -192,4 +214,15 @@ class BackupMetadata:
             total_size_bytes=int(data["total_size_bytes"]),
             backup_type=str(data.get("backup_type", "manual")),
             metadata_version=metadata_version,
+        )
+
+    def normalized(self) -> "BackupMetadata":
+        return BackupMetadata(
+            timestamp=self.timestamp,
+            backup_path=self.backup_path,
+            source_path=self.source_path,
+            file_count=self.file_count,
+            total_size_bytes=self.total_size_bytes,
+            backup_type=self.backup_type,
+            metadata_version=BACKUP_METADATA_VERSION,
         )
