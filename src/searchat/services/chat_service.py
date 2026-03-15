@@ -9,7 +9,11 @@ from uuid import uuid4
 from searchat.config import Config
 from searchat.config.constants import RAG_SYSTEM_PROMPT
 from searchat.models import SearchMode, SearchFilters, SearchResult
-from searchat.services.llm_service import build_generation_service, resolve_generation_target
+from searchat.services.llm_service import (
+    LLMServiceError,
+    build_generation_service,
+    resolve_generation_target,
+)
 from searchat.services.retrieval_service import RetrievalService
 
 
@@ -25,6 +29,7 @@ class ChatSession:
 _sessions: dict[str, ChatSession] = {}
 _SESSION_TTL = 1800  # 30 minutes
 _MAX_TURNS = 10  # Sliding window of turn pairs
+_FALLBACK_SOURCE_LIMIT = 3
 
 
 def get_or_create_session(session_id: str | None) -> ChatSession:
@@ -90,13 +95,20 @@ def generate_answer_stream(
 
     def _stream():
         chunks: list[str] = []
-        for chunk in llm_service.stream_completion(
-            messages=messages,
-            provider=target.provider,
-            model_name=target.model_name,
-        ):
-            chunks.append(chunk)
-            yield chunk
+        try:
+            for chunk in llm_service.stream_completion(
+                messages=messages,
+                provider=target.provider,
+                model_name=target.model_name,
+            ):
+                chunks.append(chunk)
+                yield chunk
+        except LLMServiceError:
+            if chunks:
+                raise
+            fallback_answer = _build_generation_unavailable_fallback(top_results)
+            chunks.append(fallback_answer)
+            yield fallback_answer
         # After streaming completes, update session
         full_answer = "".join(chunks)
         session.messages.append({"role": "user", "content": query})
@@ -155,13 +167,16 @@ def generate_rag_response(
 
     target = resolve_generation_target(config.llm, provider=provider, model_name=model_name)
     llm_service = build_generation_service(config.llm)
-    answer = llm_service.completion(
-        messages=messages,
-        provider=target.provider,
-        model_name=target.model_name,
-        temperature=temperature,
-        max_tokens=max_tokens,
-    )
+    try:
+        answer = llm_service.completion(
+            messages=messages,
+            provider=target.provider,
+            model_name=target.model_name,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+    except LLMServiceError:
+        answer = _build_generation_unavailable_fallback(top_results)
 
     session.messages.append({"role": "user", "content": query})
     session.messages.append({"role": "assistant", "content": answer})
@@ -232,3 +247,14 @@ def _format_context(results: list[SearchResult]) -> str:
             ]
         )
     return "\n".join(lines).strip()
+
+
+def _build_generation_unavailable_fallback(results: list[SearchResult]) -> str:
+    """Return a deterministic fallback when grounded context exists but generation is unavailable."""
+    lines = [
+        "Generation is temporarily unavailable. Relevant archived context:",
+    ]
+    for idx, result in enumerate(results[:_FALLBACK_SOURCE_LIMIT], start=1):
+        snippet = result.snippet.strip() or "No snippet available."
+        lines.append(f"{idx}. {result.title}: {snippet}")
+    return "\n".join(lines)
