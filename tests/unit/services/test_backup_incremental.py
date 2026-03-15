@@ -199,3 +199,27 @@ def test_get_backup_summary_invalid_manifest_fails_closed(temp_search_dir: Path)
     assert summary["snapshot_browsable"] is False
     assert summary["backup_mode"] == "unknown"
     assert summary["errors"]
+
+
+@pytest.mark.unit
+def test_get_backup_summary_broken_chain_uses_artifact_validation(temp_search_dir: Path):
+    live = temp_search_dir
+    mgr = BackupManager(live)
+
+    parquet = live / "data" / "conversations" / "conv.parquet"
+    settings = live / "config" / "settings.toml"
+    _write_bytes(parquet, b"PAR1\n")
+    _write_bytes(settings, b"a = 1\n")
+
+    base = mgr.create_backup(backup_name="base")
+    _write_bytes(settings, b"a = 2\n")
+    child = mgr.create_incremental_backup(parent_name=base.backup_path.name, backup_name="child")
+    (base.backup_path / "backup_manifest.json").unlink()
+
+    summary = mgr.get_backup_summary(child.backup_path.name)
+    assert summary["has_manifest"] is True
+    assert summary["valid"] is False
+    assert summary["snapshot_browsable"] is False
+    assert summary["backup_mode"] == "incremental"
+    assert summary["chain_length"] == 2
+    assert any("Backup manifest missing" in error for error in summary["errors"])

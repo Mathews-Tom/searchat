@@ -278,19 +278,38 @@ class BackupManager:
                 "errors": [manifest_error],
             }
 
-        backup_mode = "full"
-        encrypted = False
-        parent_name: str | None = None
-        chain_length = 1
-
         if manifest is not None:
-            backup_mode = manifest.backup_mode
-            encrypted = bool(manifest.encrypted)
-            parent_name = manifest.parent_name
-            try:
-                chain_length = len(self.resolve_backup_chain(backup_name))
-            except Exception:
-                chain_length = 0
+            artifact = self.validate_backup_artifact(backup_name, verify_hashes=False)
+            backup_mode = str(artifact.get("backup_mode", manifest.backup_mode))
+            encrypted = bool(artifact.get("encrypted", bool(manifest.encrypted)))
+            parent_name = artifact.get("parent_name", manifest.parent_name)
+            if parent_name is not None:
+                parent_name = str(parent_name)
+            chain_length = int(artifact.get("chain_length", 0) or 0)
+            has_manifest = bool(artifact.get("has_manifest", True))
+            snapshot_browsable = bool(artifact.get("snapshot_browsable", False))
+            errors = [str(error) for error in artifact.get("errors", [])]
+
+            inspection = inspect_manifest_backup(
+                backup_name,
+                backup_mode=backup_mode,
+                encrypted=encrypted,
+                parent_name=parent_name,
+                chain_length=chain_length,
+                snapshot_browsable=snapshot_browsable,
+                errors=errors,
+            )
+            return {
+                "name": backup_name,
+                "backup_mode": inspection.backup_mode,
+                "encrypted": inspection.encrypted,
+                "parent_name": inspection.parent_name,
+                "chain_length": inspection.chain_length,
+                "snapshot_browsable": inspection.snapshot_browsable,
+                "has_manifest": has_manifest,
+                "valid": inspection.valid,
+                "errors": list(inspection.errors),
+            }
         else:
             # Older backups without a manifest are treated as plaintext full backups.
             inspection = inspect_legacy_full_backup(
@@ -310,27 +329,6 @@ class BackupManager:
                 "valid": inspection.valid,
                 "errors": list(inspection.errors),
             }
-        artifact = self.validate_backup_artifact(backup_name, verify_hashes=False)
-        inspection = inspect_manifest_backup(
-            backup_name,
-            backup_mode=backup_mode,
-            encrypted=encrypted,
-            parent_name=parent_name,
-            chain_length=chain_length,
-            snapshot_browsable=bool(artifact.get("snapshot_browsable", False)),
-            errors=[str(error) for error in artifact.get("errors", [])],
-        )
-        return {
-            "name": backup_name,
-            "backup_mode": inspection.backup_mode,
-            "encrypted": inspection.encrypted,
-            "parent_name": inspection.parent_name,
-            "chain_length": inspection.chain_length,
-            "snapshot_browsable": inspection.snapshot_browsable,
-            "has_manifest": inspection.has_manifest,
-            "valid": inspection.valid,
-            "errors": list(inspection.errors),
-        }
 
     def _count_files(self, path: Path) -> int:
         """Count all files in a directory."""

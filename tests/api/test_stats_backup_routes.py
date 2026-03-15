@@ -285,6 +285,29 @@ class TestListBackupsEndpoint:
             assert data["backups"][0]["valid"] is True
             assert data["backups"][0]["errors"] == []
 
+    def test_list_backups_includes_invalid_summary_state(self, client, mock_backup_manager):
+        mock_backup_manager.get_backup_summary.return_value = {
+            "name": "backup_20250120_100000",
+            "backup_mode": "incremental",
+            "encrypted": False,
+            "parent_name": "backup_20250120_090000",
+            "chain_length": 0,
+            "snapshot_browsable": False,
+            "has_manifest": True,
+            "valid": False,
+            "errors": ["Backup manifest missing: backup_20250120_090000"],
+        }
+
+        with patch('searchat.api.routers.backup.get_backup_manager', return_value=mock_backup_manager):
+            response = client.get("/api/backup/list")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["backups"][0]["valid"] is False
+        assert data["backups"][0]["snapshot_browsable"] is False
+        assert data["backups"][0]["backup_mode"] == "incremental"
+        assert data["backups"][0]["errors"] == ["Backup manifest missing: backup_20250120_090000"]
+
 
 @pytest.mark.unit
 class TestValidateBackupEndpoint:
