@@ -16,6 +16,10 @@ import hashlib
 import tempfile
 
 from searchat.services.backup_crypto import decrypt_file, encrypt_file, get_backup_key
+from searchat.services.backup_contracts import (
+    inspect_legacy_full_backup,
+    inspect_manifest_backup,
+)
 from searchat.services.storage_contracts import (
     BACKUP_MANIFEST_FILE,
     BACKUP_MANIFEST_VERSION,
@@ -171,20 +175,13 @@ class BackupManager:
             }
         if manifest is None:
             # Older backups: structural checks only.
-            if verify_hashes:
-                errors.append("Backup manifest missing")
             structural_ok = self.validate_backup(backup_path)
-            return {
-                "backup_name": backup_name,
-                "backup_mode": "full",
-                "encrypted": False,
-                "parent_name": None,
-                "chain_length": 1,
-                "snapshot_browsable": structural_ok,
-                "has_manifest": False,
-                "valid": structural_ok and not errors,
-                "errors": errors,
-            }
+            return inspect_legacy_full_backup(
+                backup_name,
+                backup_path,
+                structure_valid=structural_ok,
+                verify_hashes=verify_hashes,
+            ).to_dict()
 
         try:
             chain = self.resolve_backup_chain(backup_name, max_chain_length=max_chain_length)
@@ -248,17 +245,15 @@ class BackupManager:
         if manifest.backup_mode == "full" and not manifest.encrypted:
             snapshot_browsable = self.validate_backup(backup_path)
 
-        return {
-            "backup_name": backup_name,
-            "backup_mode": manifest.backup_mode,
-            "encrypted": bool(manifest.encrypted),
-            "parent_name": manifest.parent_name,
-            "chain_length": len(chain),
-            "snapshot_browsable": snapshot_browsable,
-            "has_manifest": True,
-            "valid": not errors,
-            "errors": errors,
-        }
+        return inspect_manifest_backup(
+            backup_name,
+            backup_mode=manifest.backup_mode,
+            encrypted=bool(manifest.encrypted),
+            parent_name=manifest.parent_name,
+            chain_length=len(chain),
+            snapshot_browsable=snapshot_browsable,
+            errors=errors,
+        ).to_dict()
 
     def get_backup_summary(self, backup_name: str) -> dict[str, object]:
         backup_path = self.backup_dir / backup_name
@@ -282,10 +277,21 @@ class BackupManager:
                 chain_length = 0
         else:
             # Older backups without a manifest are treated as plaintext full backups.
-            backup_mode = "full"
-            encrypted = False
-            parent_name = None
-            chain_length = 1
+            inspection = inspect_legacy_full_backup(
+                backup_name,
+                backup_path,
+                structure_valid=self.validate_backup(backup_path),
+                verify_hashes=False,
+            )
+            return {
+                "name": backup_name,
+                "backup_mode": inspection.backup_mode,
+                "encrypted": inspection.encrypted,
+                "parent_name": inspection.parent_name,
+                "chain_length": inspection.chain_length,
+                "snapshot_browsable": inspection.snapshot_browsable,
+                "has_manifest": inspection.has_manifest,
+            }
 
         snapshot_browsable = False
         if backup_mode == "full" and not encrypted:
@@ -294,14 +300,23 @@ class BackupManager:
             except Exception:
                 snapshot_browsable = False
 
+        inspection = inspect_manifest_backup(
+            backup_name,
+            backup_mode=backup_mode,
+            encrypted=encrypted,
+            parent_name=parent_name,
+            chain_length=chain_length,
+            snapshot_browsable=snapshot_browsable,
+            errors=[],
+        )
         return {
             "name": backup_name,
-            "backup_mode": backup_mode,
-            "encrypted": encrypted,
-            "parent_name": parent_name,
-            "chain_length": chain_length,
-            "snapshot_browsable": snapshot_browsable,
-            "has_manifest": manifest is not None,
+            "backup_mode": inspection.backup_mode,
+            "encrypted": inspection.encrypted,
+            "parent_name": inspection.parent_name,
+            "chain_length": inspection.chain_length,
+            "snapshot_browsable": inspection.snapshot_browsable,
+            "has_manifest": inspection.has_manifest,
         }
 
     def _count_files(self, path: Path) -> int:
