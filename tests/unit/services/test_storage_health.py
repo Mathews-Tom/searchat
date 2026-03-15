@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 from searchat.services.backup import BackupManager
@@ -41,3 +42,44 @@ def test_repair_storage_metadata_normalizes_legacy_backup_metadata(temp_search_d
     assert report.repairs_applied == 1
     repaired_payload = json.loads(metadata_path.read_text(encoding="utf-8"))
     assert repaired_payload["metadata_version"] == 1
+
+
+def test_inspect_storage_health_flags_legacy_backup_dataset_index_metadata(temp_search_dir: Path) -> None:
+    fixture = Path("tests/fixtures/storage/legacy_dataset_bundle")
+    shutil.copytree(fixture, temp_search_dir, dirs_exist_ok=True)
+
+    report = inspect_storage_health(temp_search_dir, embedding_model="all-MiniLM-L6-v2")
+
+    assert any(issue.scope == "backup_index_metadata" and issue.repairable for issue in report.issues)
+
+
+def test_repair_storage_metadata_migrates_legacy_dataset_bundle(temp_search_dir: Path) -> None:
+    fixture = Path("tests/fixtures/storage/legacy_dataset_bundle")
+    shutil.copytree(fixture, temp_search_dir, dirs_exist_ok=True)
+
+    report = repair_storage_metadata(temp_search_dir, embedding_model="all-MiniLM-L6-v2")
+
+    assert report.repairs_applied == 3
+
+    live_payload = json.loads(
+        (temp_search_dir / "data" / "indices" / "index_metadata.json").read_text(encoding="utf-8")
+    )
+    backup_payload = json.loads(
+        (
+            temp_search_dir
+            / "backups"
+            / "legacy_full_dataset"
+            / "data"
+            / "indices"
+            / "index_metadata.json"
+        ).read_text(encoding="utf-8")
+    )
+    backup_meta = json.loads(
+        (temp_search_dir / "backups" / "legacy_full_dataset" / "backup_metadata.json").read_text(encoding="utf-8")
+    )
+
+    assert live_payload["embedding_model"] == "all-MiniLM-L6-v2"
+    assert live_payload["next_vector_id"] == 3
+    assert backup_payload["embedding_model"] == "all-MiniLM-L6-v2"
+    assert backup_payload["next_vector_id"] == 4
+    assert backup_meta["metadata_version"] == 1

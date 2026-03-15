@@ -11,12 +11,18 @@ from searchat.services.storage_contracts import (
     BACKUP_METADATA_FILE,
     BackupManifest,
     BackupMetadata,
-    IndexMetadata,
     StorageCompatibilityError,
-    read_index_metadata,
-    write_index_metadata,
+    index_metadata_path,
 )
-from searchat.services.storage_migrations import migrate_index_metadata_file, plan_index_metadata_migration
+from searchat.services.storage_migrations import migrate_index_metadata_root
+
+
+@dataclass(frozen=True)
+class DatasetIndexTarget:
+    scope: str
+    dataset_root: Path
+    metadata_path: Path
+    label: str
 
 
 @dataclass(frozen=True)
@@ -43,44 +49,88 @@ class StorageHealthReport:
         return [issue for issue in self.issues if issue.repairable]
 
 
+def _iter_index_targets(search_dir: Path) -> list[DatasetIndexTarget]:
+    targets = [
+        DatasetIndexTarget(
+            scope="index_metadata",
+            dataset_root=search_dir,
+            metadata_path=index_metadata_path(search_dir),
+            label="live dataset",
+        )
+    ]
+
+    backups_dir = search_dir / "backups"
+    if not backups_dir.exists():
+        return targets
+
+    for backup_dir in sorted(path for path in backups_dir.iterdir() if path.is_dir()):
+        manifest_path = backup_dir / BACKUP_MANIFEST_FILE
+        if manifest_path.exists():
+            try:
+                manifest = BackupManifest.from_dict(json.loads(manifest_path.read_text(encoding="utf-8")))
+            except StorageCompatibilityError:
+                continue
+            if manifest.backup_mode != "full" or manifest.encrypted:
+                continue
+        metadata_path = index_metadata_path(backup_dir)
+        if metadata_path.exists():
+            targets.append(
+                DatasetIndexTarget(
+                    scope="backup_index_metadata",
+                    dataset_root=backup_dir,
+                    metadata_path=metadata_path,
+                    label=f"backup dataset '{backup_dir.name}'",
+                )
+            )
+
+    return targets
+
+
+def _inspect_index_target(
+    target: DatasetIndexTarget,
+    *,
+    embedding_model: str | None,
+) -> StorageIssue | None:
+    if not target.metadata_path.exists():
+        return None
+    try:
+        plan = migrate_index_metadata_root(
+            target.dataset_root,
+            embedding_model=embedding_model,
+            apply=False,
+        )
+        plan.migrated.validate_compatible(embedding_model=embedding_model)
+        if plan.has_changes:
+            return StorageIssue(
+                severity="warning",
+                scope=target.scope,
+                path=target.metadata_path,
+                message=(
+                    f"{target.label.capitalize()} index metadata can be migrated by normalizing fields: "
+                    + ", ".join(plan.changed_fields)
+                ),
+                repairable=True,
+            )
+    except (FileNotFoundError, StorageCompatibilityError) as exc:
+        return StorageIssue(
+            severity="error",
+            scope=target.scope,
+            path=target.metadata_path,
+            message=str(exc),
+        )
+    return None
+
+
 def inspect_storage_health(
     search_dir: Path,
     *,
     embedding_model: str | None = None,
 ) -> StorageHealthReport:
     issues: list[StorageIssue] = []
-    indices_dir = search_dir / "data" / "indices"
-    metadata_path = indices_dir / "index_metadata.json"
-
-    if metadata_path.exists():
-        try:
-            index_metadata = read_index_metadata(search_dir)
-            plan = plan_index_metadata_migration(index_metadata, embedding_model=embedding_model)
-            plan.migrated.validate_compatible(embedding_model=embedding_model)
-            if plan.has_changes:
-                issues.append(
-                    StorageIssue(
-                        severity="warning",
-                        scope="index_metadata",
-                        path=metadata_path,
-                        message=(
-                            "Index metadata can be migrated by normalizing fields: "
-                            + ", ".join(plan.changed_fields)
-                        ),
-                        repairable=True,
-                    )
-                )
-        except FileNotFoundError:
-            pass
-        except StorageCompatibilityError as exc:
-            issues.append(
-                StorageIssue(
-                    severity="error",
-                    scope="index_metadata",
-                    path=metadata_path,
-                    message=str(exc),
-                )
-            )
+    for target in _iter_index_targets(search_dir):
+        issue = _inspect_index_target(target, embedding_model=embedding_model)
+        if issue is not None:
+            issues.append(issue)
 
     backups_dir = search_dir / "backups"
     if backups_dir.exists():
@@ -133,14 +183,11 @@ def repair_storage_metadata(
     embedding_model: str | None = None,
 ) -> StorageHealthReport:
     repairs_applied = 0
-    report = inspect_storage_health(search_dir, embedding_model=embedding_model)
 
-    indices_dir = search_dir / "data" / "indices"
-    metadata_path = indices_dir / "index_metadata.json"
-    if metadata_path.exists():
+    for target in _iter_index_targets(search_dir):
         try:
-            plan = migrate_index_metadata_file(
-                search_dir,
+            plan = migrate_index_metadata_root(
+                target.dataset_root,
                 embedding_model=embedding_model,
                 apply=True,
             )
