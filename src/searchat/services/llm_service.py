@@ -2,13 +2,37 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from typing import Any
+from typing import Any, Protocol
 
 from searchat.config.settings import LLMConfig
 
 
 class LLMServiceError(RuntimeError):
     """Raised when the LLM provider fails."""
+
+
+class GenerationService(Protocol):
+    """Provider-agnostic text generation contract."""
+
+    def stream_completion(
+        self,
+        *,
+        messages: list[dict[str, str]],
+        provider: str,
+        model_name: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> Iterator[str]: ...
+
+    def completion(
+        self,
+        *,
+        messages: list[dict[str, str]],
+        provider: str,
+        model_name: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> str: ...
 
 
 class LLMService:
@@ -157,6 +181,11 @@ class LLMService:
             )
         except Exception as exc:
             raise self._wrap_error("embedded", exc) from exc
+
+
+def build_generation_service(config: LLMConfig) -> GenerationService:
+    """Build the default generation service for the active config."""
+    return LLMService(config)
 
 
 def _extract_chunk_text(chunk: Any) -> str:

@@ -7,6 +7,7 @@ from unittest.mock import patch
 import pytest
 
 from searchat.services.llm_service import (
+    build_generation_service,
     LLMService,
     LLMServiceError,
     _extract_chunk_text,
@@ -137,6 +138,11 @@ def test_resolve_model_empty_raises(llm_config: SimpleNamespace):
     s = LLMService(llm_config)
     with pytest.raises(ValueError, match="must be provided or configured"):
         s._resolve_model("openai", None)
+
+
+def test_build_generation_service_returns_llm_service(llm_config: SimpleNamespace):
+    service = build_generation_service(llm_config)
+    assert isinstance(service, LLMService)
 
 
 # ── _wrap_error() ──────────────────────────────────────────────────
