@@ -2,12 +2,12 @@
 from __future__ import annotations
 
 import pytest
-import numpy as np
 from types import SimpleNamespace
 from unittest.mock import Mock, patch, MagicMock
 from fastapi.testclient import TestClient
 
 from searchat.api.app import app
+from searchat.services.retrieval_service import SemanticVectorHit
 
 
 def _semantic_dataset(mock_duckdb_store):
@@ -80,27 +80,14 @@ def mock_search_engine():
     mock = Mock()
 
     # Mock FAISS index
-    mock_faiss = Mock()
-
-    # Mock FAISS search results
-    # Returns distances and labels (vector IDs)
-    mock_faiss.search.return_value = (
-        np.array([[0.15, 0.25, 0.35, 0.45]]),  # distances
-        np.array([[100, 200, 300, 400]])  # vector IDs
-    )
-
-    mock.faiss_index = mock_faiss
     mock.metadata_path = "/path/to/metadata.parquet"
     mock.conversations_glob = "/path/to/conversations/*.parquet"
-
-    # Mock embedder
-    mock_embedder = Mock()
-    mock_embedder.encode.return_value = np.array([0.1, 0.2, 0.3])  # Mock embedding
-    mock.embedder = mock_embedder
-
-    # Mock ensure methods
-    mock.ensure_faiss_loaded = Mock()
-    mock.ensure_embedder_loaded = Mock()
+    mock.find_similar_vector_hits.return_value = [
+        SemanticVectorHit(vector_id=100, distance=0.15),
+        SemanticVectorHit(vector_id=200, distance=0.25),
+        SemanticVectorHit(vector_id=300, distance=0.35),
+        SemanticVectorHit(vector_id=400, distance=0.45),
+    ]
 
     return mock
 
@@ -134,9 +121,7 @@ def test_get_similar_conversations(client, mock_duckdb_store, mock_search_engine
         assert sim2["conversation_id"] == "conv-789"
         assert 0.0 <= sim2["similarity_score"] <= 1.0
 
-        # Verify FAISS was loaded
-        mock_search_engine.ensure_faiss_loaded.assert_called_once()
-        mock_search_engine.ensure_embedder_loaded.assert_called_once()
+        mock_search_engine.find_similar_vector_hits.assert_called_once()
 
 
 def test_get_similar_conversations_with_limit(client, mock_duckdb_store, mock_search_engine):
@@ -150,8 +135,7 @@ def test_get_similar_conversations_with_limit(client, mock_duckdb_store, mock_se
 
         assert response.status_code == 200
 
-        # Verify embedder was called
-        mock_search_engine.embedder.encode.assert_called_once()
+        mock_search_engine.find_similar_vector_hits.assert_called_once()
 
 
 def test_get_similar_conversations_limit_validation(client, mock_duckdb_store, mock_search_engine):
@@ -190,9 +174,8 @@ def test_get_similar_conversations_nonexistent(client, mock_duckdb_store, mock_s
 def test_get_similar_conversations_no_faiss_index(client, mock_duckdb_store):
     """Test similarity endpoint handles missing FAISS index."""
     mock_engine = Mock()
-    mock_engine.faiss_index = None  # No index available
-    mock_engine.ensure_faiss_loaded = Mock()
-    mock_engine.ensure_embedder_loaded = Mock()
+    mock_engine.metadata_path = "/path/to/metadata.parquet"
+    mock_engine.find_similar_vector_hits.side_effect = RuntimeError("FAISS index not available")
 
     mock_duckdb_store.get_conversation_meta.return_value = {
         'conversation_id': "conv-123",
@@ -213,7 +196,7 @@ def test_get_similar_conversations_no_faiss_index(client, mock_duckdb_store):
 
 def test_get_similar_conversations_no_embedder(client, mock_duckdb_store, mock_search_engine):
     """Test similarity endpoint handles missing embedder."""
-    mock_search_engine.embedder = None  # No embedder available
+    mock_search_engine.find_similar_vector_hits.side_effect = RuntimeError("Embedder not available")
 
     with patch(
         "searchat.api.routers.conversations.get_dataset_semantic_retrieval",
@@ -252,11 +235,7 @@ def test_get_similar_conversations_empty_results(client, mock_duckdb_store, mock
     mock_conn.execute.return_value.fetchall.return_value = []
     mock_duckdb_store._connect.return_value = mock_conn
 
-    # Mock FAISS to return no valid results
-    mock_search_engine.faiss_index.search.return_value = (
-        np.array([[]]),
-        np.array([[]])
-    )
+    mock_search_engine.find_similar_vector_hits.return_value = []
 
     with patch(
         "searchat.api.routers.conversations.get_dataset_semantic_retrieval",
