@@ -21,6 +21,12 @@ from searchat.models import (
 from searchat.core.query_parser import QueryParser
 from searchat.config import Config
 from searchat.config.constants import FTS_STEMMER, FTS_STOPWORDS, QUERY_SYNONYMS
+from searchat.services.semantic_model_service import (
+    EmbeddingService,
+    RerankingService,
+    build_embedding_service,
+    build_reranking_service,
+)
 from searchat.services.storage_contracts import read_index_metadata
 
 
@@ -32,7 +38,7 @@ class SearchEngine:
     def __init__(self, search_dir: Path, config: Config | None = None):
         self.search_dir = search_dir
         self.faiss_index: faiss.Index | None = None
-        self.embedder: SentenceTransformer | None = None
+        self.embedder: SentenceTransformer | EmbeddingService | None = None
         self.query_parser = QueryParser()
 
         self._init_lock = Lock()
@@ -79,7 +85,7 @@ class SearchEngine:
             self._logger.warning("Failed to set DuckDB memory limit: %s", exc)
 
         # Reranker (lazy loaded)
-        self._reranker = None
+        self._reranker: RerankingService | None = None
 
         # Build persistent table + FTS index (best-effort at init)
         self._fts_ready = False
@@ -113,6 +119,11 @@ class SearchEngine:
             self._ensure_metadata_ready_locked()
             self._ensure_faiss_loaded_locked()
             self._ensure_embedder_loaded_locked()
+
+    def ensure_reranker_loaded(self) -> None:
+        """Ensure the reranker model is loaded when reranking is enabled."""
+        with self._init_lock:
+            self._ensure_reranker_loaded_locked()
 
 
     def _ensure_metadata_ready_locked(self) -> None:
@@ -148,10 +159,13 @@ class SearchEngine:
         self._validate_index_metadata()
 
         if self.embedder is None:
-            device = self.config.embedding.get_device()
-            from sentence_transformers import SentenceTransformer
+            self.embedder = build_embedding_service(self.config)
 
-            self.embedder = SentenceTransformer(self.config.embedding.model, device=device)
+    def _ensure_reranker_loaded_locked(self) -> None:
+        if not self.config.reranking.enabled:
+            return
+        if self._reranker is None:
+            self._reranker = build_reranking_service(self.config)
 
 
     def refresh_index(self) -> None:
@@ -612,9 +626,9 @@ class SearchEngine:
         if not self.config.reranking.enabled or not results:
             return results
 
+        self.ensure_reranker_loaded()
         if self._reranker is None:
-            from sentence_transformers import CrossEncoder
-            self._reranker = CrossEncoder(self.config.reranking.model)
+            return results
 
         top_k = min(self.config.reranking.top_k, len(results))
         candidates = results[:top_k]
