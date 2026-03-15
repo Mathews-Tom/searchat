@@ -106,12 +106,14 @@ async def generate_agent_config(request: AgentConfigRequest):
     config = deps.get_config()
 
     try:
+        retrieval_service = deps.get_search_engine()
         patterns = extract_patterns(
             topic=request.project_filter,
             max_patterns=15,
             model_provider=provider,
             model_name=request.model_name,
             config=config,
+            retrieval_service=retrieval_service,
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc

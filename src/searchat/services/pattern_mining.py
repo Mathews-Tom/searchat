@@ -9,7 +9,12 @@ from searchat.api.dependencies import get_search_engine
 from searchat.config import Config
 from searchat.config.constants import PATTERN_MINING_SEEDS
 from searchat.models import SearchMode, SearchFilters
-from searchat.services.llm_service import build_generation_service, resolve_generation_target
+from searchat.services.llm_service import (
+    LLMServiceError,
+    build_generation_service,
+    resolve_generation_target,
+)
+from searchat.services.retrieval_service import RetrievalService
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +45,7 @@ def extract_patterns(
     model_provider: str = "ollama",
     model_name: str | None = None,
     config: Config,
+    retrieval_service: RetrievalService | None = None,
 ) -> list[ExtractedPattern]:
     """Extract recurring patterns from conversation history.
 
@@ -60,7 +66,7 @@ def extract_patterns(
     Returns:
         List of extracted patterns with evidence.
     """
-    search_engine = get_search_engine()
+    search_engine = retrieval_service or get_search_engine()
 
     # Step 1: Generate seed queries
     if topic:
@@ -144,15 +150,25 @@ def extract_patterns(
                     confidence=float(parsed.get("confidence", 0.5)),
                 )
             )
+        except LLMServiceError as exc:
+            logger.warning(
+                "LLM provider unavailable during pattern synthesis for seed '%s': %s",
+                seed,
+                exc,
+            )
+            patterns.append(_fallback_pattern(seed, evidence_items))
         except (json.JSONDecodeError, KeyError, ValueError) as exc:
             logger.warning("Failed to parse pattern from LLM response for seed '%s': %s", seed, exc)
-            patterns.append(
-                ExtractedPattern(
-                    name=seed,
-                    description=f"Pattern cluster related to: {seed}",
-                    evidence=evidence_items,
-                    confidence=0.3,
-                )
-            )
+            patterns.append(_fallback_pattern(seed, evidence_items))
 
     return patterns[:max_patterns]
+
+
+def _fallback_pattern(seed: str, evidence_items: list[PatternEvidence]) -> ExtractedPattern:
+    """Build a deterministic fallback pattern when synthesis is unavailable."""
+    return ExtractedPattern(
+        name=seed,
+        description=f"Pattern cluster related to: {seed}",
+        evidence=evidence_items,
+        confidence=0.3,
+    )

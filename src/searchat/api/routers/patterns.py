@@ -4,7 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from searchat.api.dependencies import get_config
+from searchat.api.dependencies import get_config, get_search_engine
 from searchat.api.utils import validate_provider, check_semantic_readiness
 from searchat.services.pattern_mining import extract_patterns
 
@@ -63,6 +63,7 @@ async def extract_patterns_endpoint(request: PatternExtractRequest):
             model_provider=provider,
             model_name=request.model_name,
             config=config,
+            retrieval_service=get_search_engine(),
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc

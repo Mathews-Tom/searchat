@@ -363,7 +363,7 @@ def extract_patterns(
     from searchat.services.pattern_mining import extract_patterns as _extract_patterns
 
     dataset_dir = resolve_dataset(search_dir)
-    config, _engine, _store = build_services(dataset_dir)
+    config, engine, _store = build_services(dataset_dir)
 
     target = resolve_generation_target(
         config.llm,
@@ -377,6 +377,7 @@ def extract_patterns(
         model_provider=target.provider,
         model_name=target.model_name,
         config=config,
+        retrieval_service=engine,
     )
 
     return _json_dumps({
@@ -588,7 +589,7 @@ def generate_agent_config(
         raise ValueError("format must be one of: claude.md, copilot-instructions.md, cursorrules")
 
     dataset_dir = resolve_dataset(search_dir)
-    config, _engine, _store = build_services(dataset_dir)
+    config, engine, _store = build_services(dataset_dir)
 
     target = resolve_generation_target(
         config.llm,
@@ -602,6 +603,7 @@ def generate_agent_config(
         model_provider=target.provider,
         model_name=target.model_name,
         config=config,
+        retrieval_service=engine,
     )
 
     pattern_lines: list[str] = []
