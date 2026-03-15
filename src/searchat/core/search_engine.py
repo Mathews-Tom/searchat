@@ -27,6 +27,7 @@ from searchat.services.semantic_model_service import (
     build_embedding_service,
     build_reranking_service,
 )
+from searchat.services.retrieval_service import SemanticVectorHit
 from searchat.services.storage_contracts import read_index_metadata
 
 
@@ -124,6 +125,28 @@ class SearchEngine:
         """Ensure the reranker model is loaded when reranking is enabled."""
         with self._init_lock:
             self._ensure_reranker_loaded_locked()
+
+    def find_similar_vector_hits(self, text: str, k: int) -> list[SemanticVectorHit]:
+        """Return vector hits for semantic nearest-neighbor lookup."""
+        self.ensure_faiss_loaded()
+        if self.faiss_index is None:
+            raise RuntimeError("FAISS index not available")
+
+        self.ensure_embedder_loaded()
+        if self.embedder is None:
+            raise RuntimeError("Embedder not available")
+
+        query_embedding = np.asarray(self.embedder.encode(text), dtype=np.float32)
+        distances, labels = self.faiss_index.search(  # type: ignore[call-arg,arg-type]
+            query_embedding.reshape(1, -1),
+            k,
+        )
+
+        valid_mask = labels[0] >= 0
+        return [
+            SemanticVectorHit(vector_id=int(vector_id), distance=float(distance))
+            for vector_id, distance in zip(labels[0][valid_mask], distances[0][valid_mask])
+        ]
 
 
     def _ensure_metadata_ready_locked(self) -> None:
@@ -431,24 +454,10 @@ class SearchEngine:
         return results
     
     def _semantic_search(self, query: str, filters: SearchFilters | None) -> list[SearchResult]:
-        self.ensure_faiss_loaded()
-        self.ensure_embedder_loaded()
-        embedder = self.embedder
-        faiss_index = self.faiss_index
-        if embedder is None or faiss_index is None:
-            raise RuntimeError("Search engine not initialized")
-
-        query_embedding = np.asarray(embedder.encode(query), dtype=np.float32)
-        
         k = 100
-        # Use the stable Python binding signature: search(x, k) -> (D, I).
-        # Some FAISS index wrappers don't expose the 4-arg C++ signature.
-        distances, labels = faiss_index.search(query_embedding.reshape(1, -1), k)  # type: ignore[call-arg,arg-type]
-        
-        valid_mask = labels[0] >= 0
         hits = []
-        for vector_id, distance, order in zip(labels[0][valid_mask], distances[0][valid_mask], np.arange(len(labels[0]))[valid_mask]):
-            hits.append((int(vector_id), float(distance), int(order)))
+        for order, hit in enumerate(self.find_similar_vector_hits(query, k)):
+            hits.append((hit.vector_id, hit.distance, order))
 
         if not hits:
             return []

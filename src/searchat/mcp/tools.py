@@ -12,8 +12,6 @@ from searchat.services.llm_service import build_generation_service, resolve_gene
 from searchat.services.retrieval_service import SemanticRetrievalService, build_retrieval_service
 from searchat.services.storage_service import StorageService, build_storage_service
 
-from typing import cast, Any
-
 
 def _json_default(value: object) -> str:
     if isinstance(value, datetime):
@@ -169,11 +167,6 @@ def find_similar_conversations(
     if not conv_meta:
         raise ValueError(f"Conversation not found: {conversation_id}")
 
-    engine.ensure_faiss_loaded()
-    engine.ensure_embedder_loaded()
-    if engine.faiss_index is None or engine.embedder is None:
-        raise RuntimeError("Semantic components not available")
-
     con = store._connect()
     try:
         row = con.execute(
@@ -194,18 +187,10 @@ def find_similar_conversations(
 
     chunk_text = row[0]
     representative_text = f"{conv_meta['title']} {chunk_text}"
-
-    import numpy as np
-
-    query_embedding = np.asarray(engine.embedder.encode(representative_text), dtype=np.float32)
-    k = limit + 10
-    faiss_index = cast(Any, engine.faiss_index)
-    distances, labels = faiss_index.search(query_embedding.reshape(1, -1), k)
-
-    valid_mask = labels[0] >= 0
-    hits: list[tuple[int, float]] = []
-    for vid, distance in zip(labels[0][valid_mask], distances[0][valid_mask]):
-        hits.append((int(vid), float(distance)))
+    hits = [
+        (hit.vector_id, hit.distance)
+        for hit in engine.find_similar_vector_hits(representative_text, limit + 10)
+    ]
 
     if not hits:
         return _json_dumps({"conversation_id": conversation_id, "similar_conversations": []})

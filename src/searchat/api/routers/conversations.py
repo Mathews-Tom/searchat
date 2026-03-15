@@ -771,20 +771,7 @@ async def get_similar_conversations(
                 detail=f"Conversation {conversation_id} not found"
             )
 
-        # Ensure FAISS and embedder are ready
-        search_engine.ensure_faiss_loaded()
-        search_engine.ensure_embedder_loaded()
-
-        faiss_index = search_engine.faiss_index
-        if faiss_index is None:
-            raise HTTPException(
-                status_code=503,
-                detail="FAISS index not available"
-            )
-
         # Get representative text from the conversation to generate embedding
-        import numpy as np
-
         # Get the conversation's title and some content
         metadata_path = search_engine.metadata_path
         conn = store._connect()
@@ -808,34 +795,12 @@ async def get_similar_conversations(
 
             chunk_text = result[0]
 
-            # Generate embedding from the conversation's representative text
-            embedder = search_engine.embedder
-            if embedder is None:
-                raise HTTPException(
-                    status_code=503,
-                    detail="Embedder not available"
-                )
-
             # Combine title and chunk text for better representation
             representative_text = f"{conv_meta['title']} {chunk_text}"
-            query_embedding = np.asarray(
-                embedder.encode(representative_text),
-                dtype=np.float32
-            )
-
-            # Search for similar vectors
-            # Request more than needed to filter out the original conversation
-            k = limit + 10
-            distances, labels = faiss_index.search(  # type: ignore
-                query_embedding.reshape(1, -1),
-                k
-            )
-
-            # Build results
-            valid_mask = labels[0] >= 0
-            hits = []
-            for vid, distance in zip(labels[0][valid_mask], distances[0][valid_mask]):
-                hits.append((int(vid), float(distance)))
+            hits = [
+                (hit.vector_id, hit.distance)
+                for hit in search_engine.find_similar_vector_hits(representative_text, limit + 10)
+            ]
 
             if not hits:
                 return {
@@ -929,6 +894,8 @@ async def get_similar_conversations(
 
     except HTTPException:
         raise
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
     except Exception as e:
         logger.error(f"Failed to find similar conversations for {conversation_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
