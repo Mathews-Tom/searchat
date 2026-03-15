@@ -6,12 +6,11 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from searchat.api.models import CodeSearchResponse
+from searchat.api.dataset_access import get_dataset_store
 from searchat.api.utils import (
-    resolve_dataset,
     ensure_code_index_has_symbol_columns,
     rows_to_code_results,
 )
-import searchat.api.dependencies as deps
 
 
 router = APIRouter()
@@ -93,7 +92,8 @@ async def get_conversation_code_symbols(
     """Return aggregated code symbols for a conversation from the code index."""
 
     try:
-        search_dir, _snapshot_name = resolve_dataset(snapshot)
+        dataset = get_dataset_store(snapshot)
+        search_dir = dataset.search_dir
 
         code_dir = search_dir / "data" / "code"
         if not code_dir.exists() or not any(code_dir.glob("*.parquet")):
@@ -103,7 +103,7 @@ async def get_conversation_code_symbols(
             )
 
         parquet_glob = str(code_dir / "*.parquet")
-        conn = deps.get_duckdb_store_for(search_dir)._connect()
+        conn = dataset.store._connect()
         try:
             ensure_code_index_has_symbol_columns(conn, parquet_glob)
 
@@ -190,7 +190,8 @@ async def _search_code_symbol(
     snapshot: str | None,
 ) -> CodeSearchResponse:
     try:
-        search_dir, _snapshot_name = resolve_dataset(snapshot)
+        dataset = get_dataset_store(snapshot)
+        search_dir = dataset.search_dir
 
         code_dir = search_dir / "data" / "code"
         if not code_dir.exists() or not any(code_dir.glob("*.parquet")):
@@ -200,7 +201,7 @@ async def _search_code_symbol(
             )
 
         parquet_glob = str(code_dir / "*.parquet")
-        conn = deps.get_duckdb_store_for(search_dir)._connect()
+        conn = dataset.store._connect()
         try:
             ensure_code_index_has_symbol_columns(conn, parquet_glob)
 
