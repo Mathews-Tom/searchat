@@ -538,6 +538,10 @@ class BackupManager:
             raise ValueError(f"Destination directory is not empty: {dest_dir}")
         dest_dir.mkdir(parents=True, exist_ok=True)
 
+        inspection = self.inspect_backup_chain(backup_name, max_chain_length=max_chain_length)
+        if not inspection.get("valid"):
+            raise ValueError(f"Backup validation failed: {inspection.get('errors', [])}")
+
         chain = self.resolve_backup_chain(backup_name, max_chain_length=max_chain_length)
         if not chain:
             raise ValueError("Empty backup chain")
@@ -849,20 +853,15 @@ class BackupManager:
         if not backup_path.exists():
             raise FileNotFoundError(f"Backup not found: {backup_path}")
 
-        manifest = self._load_manifest(backup_path)
+        artifact = self.validate_backup_artifact(
+            backup_path.name,
+            verify_hashes=verify_hashes,
+        )
+        if not artifact.get("valid"):
+            errors = artifact.get("errors")
+            raise ValueError(f"Backup validation failed: {errors}")
 
-        if manifest is not None:
-            res = self.validate_backup_artifact(
-                backup_path.name,
-                verify_hashes=verify_hashes,
-            )
-            if not res.get("valid"):
-                errors = res.get("errors")
-                raise ValueError(f"Backup validation failed: {errors}")
-        else:
-            # Older backups: structural checks only.
-            if not self.validate_backup(backup_path):
-                raise ValueError(f"Backup validation failed: {backup_path}")
+        manifest = self._load_manifest(backup_path) if (backup_path / BACKUP_MANIFEST_FILE).exists() else None
 
         # Create pre-restore backup
         pre_restore_metadata = None
