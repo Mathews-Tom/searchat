@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from searchat.models import SearchResult, SearchResults
@@ -39,7 +40,11 @@ def test_generate_rag_response_selects_more_context_for_complex_query():
     )
 
     config = Mock()
-    config.llm = object()
+    config.llm = SimpleNamespace(
+        default_provider="ollama",
+        openai_model="gpt-4.1-mini",
+        ollama_model="llama3",
+    )
 
     with patch("searchat.services.chat_service.build_generation_service") as mock_builder:
         mock_builder.return_value.completion.return_value = "ok"

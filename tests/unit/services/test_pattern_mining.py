@@ -770,7 +770,7 @@ def test_extract_patterns_with_max_patterns_zero(
 def test_extract_patterns_with_model_name_none(
     mock_get_engine, mock_llm_class, mock_config
 ):
-    """Test that model_name=None is passed correctly to LLM service."""
+    """Test that missing model_name is resolved through the generation target."""
     mock_engine = Mock()
     mock_get_engine.return_value = mock_engine
 
@@ -794,7 +794,7 @@ def test_extract_patterns_with_model_name_none(
     )
 
     call_args = mock_llm.completion.call_args
-    assert call_args[1]["model_name"] is None
+    assert call_args[1]["model_name"] == "ollama/llama3"
 
 
 @patch("searchat.services.pattern_mining.build_generation_service")

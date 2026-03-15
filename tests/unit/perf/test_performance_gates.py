@@ -23,7 +23,11 @@ def _make_config(tmp_path: Path, *, analytics_enabled: bool = True) -> Mock:
     config.paths = Mock()
     config.paths.search_directory = str(tmp_path / ".searchat")
     config.analytics = SimpleNamespace(enabled=analytics_enabled, retention_days=30)
-    config.llm = object()
+    config.llm = SimpleNamespace(
+        default_provider="ollama",
+        openai_model="gpt-4.1-mini",
+        ollama_model="llama3",
+    )
     return config
 
 

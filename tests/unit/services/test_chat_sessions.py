@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
@@ -45,6 +46,14 @@ def _make_results(count: int) -> list[SearchResult]:
             )
         )
     return results
+
+
+def _make_llm_config() -> SimpleNamespace:
+    return SimpleNamespace(
+        default_provider="ollama",
+        openai_model="gpt-4.1-mini",
+        ollama_model="llama3",
+    )
 
 
 class TestChatSession:
@@ -188,7 +197,7 @@ class TestGenerateAnswerStreamWithSessions:
             mode_used="hybrid",
         )
         config = Mock()
-        config.llm = object()
+        config.llm = _make_llm_config()
 
         with patch("searchat.services.chat_service.build_generation_service") as mock_builder:
             mock_service = mock_builder.return_value
@@ -224,7 +233,7 @@ class TestGenerateAnswerStreamWithSessions:
             mode_used="hybrid",
         )
         config = Mock()
-        config.llm = object()
+        config.llm = _make_llm_config()
 
         with patch("searchat.services.chat_service.build_generation_service") as mock_builder:
             mock_service = mock_builder.return_value
@@ -256,7 +265,7 @@ class TestGenerateAnswerStreamWithSessions:
             mode_used="hybrid",
         )
         config = Mock()
-        config.llm = object()
+        config.llm = _make_llm_config()
 
         with patch("searchat.services.chat_service.build_generation_service") as mock_builder:
             mock_service = mock_builder.return_value
@@ -288,7 +297,7 @@ class TestGenerateAnswerStreamWithSessions:
             mode_used="hybrid",
         )
         config = Mock()
-        config.llm = object()
+        config.llm = _make_llm_config()
 
         session_id, stream = generate_answer_stream(
             query="unknown query",
@@ -323,7 +332,7 @@ class TestGenerateAnswerStreamWithSessions:
             mode_used="hybrid",
         )
         config = Mock()
-        config.llm = object()
+        config.llm = _make_llm_config()
 
         with patch("searchat.services.chat_service.build_generation_service") as mock_builder:
             mock_service = mock_builder.return_value
@@ -365,7 +374,7 @@ class TestGenerateRAGResponseWithSessions:
             mode_used="hybrid",
         )
         config = Mock()
-        config.llm = object()
+        config.llm = _make_llm_config()
 
         with patch("searchat.services.chat_service.build_generation_service") as mock_builder:
             mock_builder.return_value.completion.return_value = "Answer text"
@@ -395,7 +404,7 @@ class TestGenerateRAGResponseWithSessions:
             mode_used="hybrid",
         )
         config = Mock()
-        config.llm = object()
+        config.llm = _make_llm_config()
 
         with patch("searchat.services.chat_service.build_generation_service") as mock_builder:
             mock_builder.return_value.completion.return_value = "New answer"
@@ -422,7 +431,7 @@ class TestGenerateRAGResponseWithSessions:
             mode_used="hybrid",
         )
         config = Mock()
-        config.llm = object()
+        config.llm = _make_llm_config()
 
         with patch("searchat.services.chat_service.build_generation_service") as mock_builder:
             mock_builder.return_value.completion.return_value = "Complete answer"
@@ -449,7 +458,7 @@ class TestGenerateRAGResponseWithSessions:
             mode_used="hybrid",
         )
         config = Mock()
-        config.llm = object()
+        config.llm = _make_llm_config()
 
         result = generate_rag_response(
             query="unknown query",
@@ -483,7 +492,7 @@ class TestGenerateRAGResponseWithSessions:
             mode_used="hybrid",
         )
         config = Mock()
-        config.llm = object()
+        config.llm = _make_llm_config()
 
         with patch("searchat.services.chat_service.build_generation_service") as mock_builder:
             mock_builder.return_value.completion.return_value = "ok"
@@ -514,7 +523,7 @@ class TestGenerateRAGResponseWithSessions:
             mode_used="hybrid",
         )
         config = Mock()
-        config.llm = object()
+        config.llm = _make_llm_config()
 
         session_id = None
         queries = ["First question", "Second question", "Third question"]

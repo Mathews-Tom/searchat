@@ -15,6 +15,7 @@ def _make_extractor() -> tuple[LLMExtractor, MagicMock]:
     """Return an LLMExtractor and its patched generation service."""
     llm_config = MagicMock()
     llm_config.default_provider = "openai"
+    llm_config.openai_model = "gpt-4.1-mini"
 
     with patch("searchat.expertise.llm_extractor.build_generation_service") as mock_builder:
         mock_service = MagicMock()
