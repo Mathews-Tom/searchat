@@ -8,7 +8,7 @@ from searchat.api.utils import detect_tool_from_path
 from searchat.config import Config, PathResolver
 from searchat.config.constants import VALID_TOOL_NAMES, RAG_SYSTEM_PROMPT
 from searchat.models import SearchFilters, SearchMode
-from searchat.services.llm_service import LLMService
+from searchat.services.llm_service import build_generation_service
 from searchat.services.retrieval_service import SemanticRetrievalService, build_retrieval_service
 from searchat.services.storage_service import StorageService, build_storage_service
 
@@ -335,7 +335,7 @@ def ask_about_history(
         {"role": "user", "content": question},
     ]
 
-    llm = LLMService(config.llm)
+    llm = build_generation_service(config.llm)
     answer = llm.completion(messages=messages, provider=provider, model_name=model_name)
 
     payload: dict[str, object] = {"answer": answer}

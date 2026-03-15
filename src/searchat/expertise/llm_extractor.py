@@ -9,7 +9,11 @@ from searchat.expertise.models import (
     ExpertiseSeverity,
     ExpertiseType,
 )
-from searchat.services.llm_service import LLMService, LLMServiceError
+from searchat.services.llm_service import (
+    GenerationService,
+    LLMServiceError,
+    build_generation_service,
+)
 
 EXTRACTION_PROMPT = """\
 Analyze this AI coding conversation and extract structured expertise records.
@@ -43,8 +47,9 @@ class LLMExtractor:
         llm_config: LLMConfig,
         provider: str | None = None,
         model: str | None = None,
+        generation_service: GenerationService | None = None,
     ) -> None:
-        self._llm = LLMService(llm_config)
+        self._llm = generation_service or build_generation_service(llm_config)
         self._provider = provider or llm_config.default_provider
         self._model = model
 

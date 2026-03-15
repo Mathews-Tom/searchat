@@ -9,7 +9,7 @@ from uuid import uuid4
 from searchat.config import Config
 from searchat.config.constants import RAG_SYSTEM_PROMPT
 from searchat.models import SearchMode, SearchFilters, SearchResult
-from searchat.services.llm_service import LLMService
+from searchat.services.llm_service import build_generation_service
 from searchat.services.retrieval_service import RetrievalService
 
 
@@ -85,7 +85,7 @@ def generate_answer_stream(
         {"role": "user", "content": query},
     ]
 
-    llm_service = LLMService(config.llm)
+    llm_service = build_generation_service(config.llm)
 
     def _stream():
         chunks: list[str] = []
@@ -152,7 +152,7 @@ def generate_rag_response(
         {"role": "user", "content": query},
     ]
 
-    llm_service = LLMService(config.llm)
+    llm_service = build_generation_service(config.llm)
     answer = llm_service.completion(
         messages=messages,
         provider=provider,

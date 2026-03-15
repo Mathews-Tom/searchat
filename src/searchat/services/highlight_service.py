@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 
 from searchat.config import Config
-from searchat.services.llm_service import LLMService
+from searchat.services.llm_service import build_generation_service
 
 
 SYSTEM_PROMPT = """
@@ -28,7 +28,7 @@ def extract_highlight_terms(
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": query},
     ]
-    llm_service = LLMService(config.llm)
+    llm_service = build_generation_service(config.llm)
     response_text = llm_service.completion(
         messages=messages,
         provider=provider,
