@@ -92,4 +92,4 @@ def test_validate_storage_reports_index_metadata_migration(temp_search_dir: Path
     captured = capsys.readouterr()
     assert result == 0
     assert "index_metadata" in captured.out
-    assert "embedding_model" in captured.out
+    assert "can be migrated" in captured.out
