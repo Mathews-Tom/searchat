@@ -10,13 +10,9 @@ from pydantic import BaseModel, Field
 
 from searchat.config.constants import VALID_TOOL_NAMES
 import searchat.api.dependencies as deps
-from searchat.api.dependencies import (
-    get_or_create_search_engine,
-    get_search_engine,
-)
+from searchat.api.dataset_access import _DatasetNotReady, get_dataset_retrieval
 from searchat.api.utils import (
     parse_date_filter,
-    check_semantic_readiness,
     sort_results,
     search_result_to_response,
 )
@@ -203,13 +199,14 @@ async def render_dashboard(dashboard_id: str):
 
             widget_requests.append({"widget": widget, "query": query, "mode": mode})
 
-        if needs_semantic:
-            not_ready = check_semantic_readiness()
-            if not_ready is not None:
-                return not_ready
-            search_engine = get_search_engine()
-        else:
-            search_engine = get_or_create_search_engine()
+        try:
+            if needs_semantic:
+                dataset = get_dataset_retrieval(None, search_mode=SearchMode.HYBRID)
+            else:
+                dataset = get_dataset_retrieval(None, search_mode=SearchMode.KEYWORD)
+        except _DatasetNotReady as exc:
+            return exc.response
+        search_engine = dataset.retrieval_service
 
         rendered_widgets = []
         for request in widget_requests:
@@ -304,5 +301,4 @@ def _normalize_sort_by(filters_value: Any) -> str:
         if isinstance(sort_by, str) and sort_by:
             return sort_by
     return "relevance"
-
 
