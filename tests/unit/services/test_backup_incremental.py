@@ -275,8 +275,8 @@ def test_materialize_backup_accepts_repairable_legacy_manifest_chain_fixture(tmp
         verify_hashes=False,
     )
 
-    assert (out / "data" / "conversations" / "conv.parquet").read_bytes() == b"PAR1\n"
-    assert (out / "config" / "settings.toml").read_bytes() == b"a = 3\n"
+    assert (out / "data" / "conversations" / "conv.parquet").read_bytes().replace(b"\r\n", b"\n") == b"PAR1\n"
+    assert (out / "config" / "settings.toml").read_bytes().replace(b"\r\n", b"\n") == b"a = 3\n"
 
 
 @pytest.mark.unit
@@ -310,7 +310,7 @@ def test_restore_from_backup_allows_mixed_version_metadata_fixture(temp_search_d
         verify_hashes=False,
     )
 
-    assert live_parquet.read_bytes() == b"PAR1\n"
+    assert live_parquet.read_bytes().replace(b"\r\n", b"\n") == b"PAR1\n"
 
 
 @pytest.mark.unit

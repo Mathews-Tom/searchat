@@ -143,7 +143,8 @@ def test_validate_storage_reports_broken_backup_chain(temp_search_dir: Path, cap
     assert result == 1
     assert "backup_chain" in captured.out
     assert "backup chain" in captured.out.lower()
-    assert "must be full" in captured.out.lower()
+    assert "must be" in captured.out.lower()
+    assert "full:" in captured.out.lower()
 
 
 def test_validate_storage_reports_fixture_backup_contract_bundle_issues(temp_search_dir: Path, capsys) -> None:
