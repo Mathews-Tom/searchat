@@ -27,12 +27,13 @@ from searchat.models import (
 )
 from searchat.config import Config, PathResolver
 from searchat.config.constants import (
-    INDEX_SCHEMA_VERSION,
-    INDEX_FORMAT_VERSION,
     INDEX_FORMAT,
+    INDEX_FORMAT_VERSION,
     INDEX_METADATA_FILENAME,
+    INDEX_SCHEMA_VERSION,
 )
 from searchat.core.connectors import discover_all_files, detect_connector
+from searchat.services.storage_contracts import IndexMetadata, read_index_metadata, write_index_metadata
 
 logger = get_logger(__name__)
 
@@ -833,9 +834,7 @@ class ConversationIndexer:
                 0, existing_meta.get("total_chunks", 0) - len(removed_vector_ids)
             )
             existing_meta["last_updated"] = datetime.now().isoformat()
-            metadata_json_path = self.indices_dir / "index_metadata.json"
-            with open(metadata_json_path, "w", encoding="utf-8") as f:
-                json.dump(existing_meta, f, indent=2)
+            write_index_metadata(self.search_dir, IndexMetadata.from_dict(existing_meta))
 
         # 10. Delete source files if requested
         source_files_deleted = 0
@@ -905,23 +904,20 @@ class ConversationIndexer:
         if next_vector_id is None:
             next_vector_id = total_chunks
 
-        metadata = {
-            "schema_version": INDEX_SCHEMA_VERSION,
-            "index_format_version": INDEX_FORMAT_VERSION,
-            "created_at": created_at,
-            "embedding_model": self.config.embedding.model,
-            "format": INDEX_FORMAT,
-            "last_updated": datetime.now().isoformat(),
-            "total_conversations": total_conversations,
-            "total_chunks": total_chunks,
-            "chunk_size": self.chunk_size,
-            "chunk_overlap": self.chunk_overlap,
-            "next_vector_id": next_vector_id,
-        }
-
-        metadata_path = self.indices_dir / INDEX_METADATA_FILENAME
-        with open(metadata_path, "w", encoding="utf-8") as f:
-            json.dump(metadata, f, indent=2)
+        metadata = IndexMetadata(
+            schema_version=INDEX_SCHEMA_VERSION,
+            index_format_version=INDEX_FORMAT_VERSION,
+            created_at=created_at,
+            embedding_model=self.config.embedding.model,
+            format=INDEX_FORMAT,
+            last_updated=datetime.now().isoformat(),
+            total_conversations=total_conversations,
+            total_chunks=total_chunks,
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+            next_vector_id=next_vector_id,
+        )
+        write_index_metadata(self.search_dir, metadata)
     
     def _has_existing_index(self) -> bool:
         """Check if an existing index is present."""
@@ -935,32 +931,21 @@ class ConversationIndexer:
         metadata_path = self.indices_dir / INDEX_METADATA_FILENAME
         if not metadata_path.exists():
             return None
-        
-        with open(metadata_path, 'r') as f:
-            return json.load(f)
+
+        return read_index_metadata(self.search_dir).to_dict()
 
     def _require_compatible_index(self, metadata: dict) -> None:
-        if metadata.get("embedding_model") != self.config.embedding.model:
-            raise ValueError(
-                f"Model mismatch: index uses '{metadata.get('embedding_model')}', "
-                f"config specifies '{self.config.embedding.model}'. "
-                "Cannot append with different embedding model."
-            )
-        if metadata.get("format") != INDEX_FORMAT:
-            raise ValueError(
-                f"Index format mismatch: index uses '{metadata.get('format')}', "
-                f"expected '{INDEX_FORMAT}'. Rebuild index required."
-            )
-        if metadata.get("schema_version") != INDEX_SCHEMA_VERSION:
-            raise ValueError(
-                f"Schema version mismatch: index uses version {metadata.get('schema_version')}, "
-                f"expected version {INDEX_SCHEMA_VERSION}. Rebuild index required."
-            )
-        if metadata.get("index_format_version") != INDEX_FORMAT_VERSION:
-            raise ValueError(
-                f"Index format version mismatch: index uses version {metadata.get('index_format_version')}, "
-                f"expected version {INDEX_FORMAT_VERSION}. Rebuild index required."
-            )
+        index_metadata = IndexMetadata.from_dict(metadata)
+        try:
+            index_metadata.validate_compatible(embedding_model=self.config.embedding.model)
+        except ValueError as exc:
+            if "Rebuild index with correct model." in str(exc):
+                raise ValueError(
+                    f"Model mismatch: index uses '{index_metadata.embedding_model}', "
+                    f"config specifies '{self.config.embedding.model}'. "
+                    "Cannot append with different embedding model."
+                ) from exc
+            raise
     
     def get_indexed_file_paths(self) -> set:
         """
