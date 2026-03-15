@@ -55,7 +55,7 @@ def test_docs_summary_markdown_returns_content_and_citations(client):
     engine.search.return_value = _make_results()
 
     with patch("searchat.api.routers.docs.deps.get_config", return_value=cfg):
-        with patch("searchat.api.routers.docs.deps.get_search_engine", return_value=engine):
+        with patch("searchat.api.routers.docs.get_dataset_semantic_retrieval", return_value=(None, engine)):
             resp = client.post(
                 "/api/docs/summary",
                 json={
@@ -84,7 +84,7 @@ def test_docs_summary_asciidoc_returns_content(client):
     engine.search.return_value = _make_results()
 
     with patch("searchat.api.routers.docs.deps.get_config", return_value=cfg):
-        with patch("searchat.api.routers.docs.deps.get_search_engine", return_value=engine):
+        with patch("searchat.api.routers.docs.get_dataset_semantic_retrieval", return_value=(None, engine)):
             resp = client.post(
                 "/api/docs/summary",
                 json={

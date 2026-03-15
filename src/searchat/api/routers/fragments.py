@@ -8,6 +8,7 @@ from fastapi import APIRouter, Query, Request
 from fastapi.responses import HTMLResponse
 from starlette.responses import StreamingResponse
 
+from searchat.api.dataset_access import get_dataset_store
 from searchat.api.templates import templates
 import searchat.api.dependencies as deps
 from searchat.api import state as api_state
@@ -180,8 +181,7 @@ async def project_summary(
 def _list_projects() -> list[str]:
     """Fetch project list from DuckDB store (mirrors /api/projects logic)."""
     try:
-        search_dir, _snapshot_name = deps.resolve_dataset_search_dir(None)
-        store = deps.get_duckdb_store_for(search_dir)
+        store = get_dataset_store(None).store
         if api_state.projects_cache is None:
             api_state.projects_cache = store.list_projects()
         return api_state.projects_cache
@@ -210,10 +210,10 @@ async def project_dropdown(request: Request) -> HTMLResponse:
 @router.get("/manage-project-dropdown", response_class=HTMLResponse)
 async def manage_project_dropdown(request: Request) -> HTMLResponse:
     """Return filter dropdown buttons for the manage page project filter."""
-    store = _safe_get(deps.get_duckdb_store)
-    projects: list[str] = []
-    if store:
-        projects = store.list_projects()
+    try:
+        projects = get_dataset_store(None).store.list_projects()
+    except RuntimeError:
+        projects = []
     return templates.TemplateResponse(
         request, "fragments/manage-project-dropdown.html",
         {"projects": projects},

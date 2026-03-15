@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 import searchat.api.dependencies as deps
+from searchat.api.dataset_access import get_dataset_semantic_retrieval
 from searchat.api.utils import parse_date_filter
 from searchat.config.constants import AGENT_CONFIG_TEMPLATES
 from searchat.models import SearchMode
@@ -38,7 +39,7 @@ async def create_docs_summary(request: DocsSummaryRequest):
         raise HTTPException(status_code=404, detail="Tech docs generator is disabled")
 
     try:
-        search_engine = deps.get_search_engine()
+        _, search_engine = get_dataset_semantic_retrieval(None)
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 

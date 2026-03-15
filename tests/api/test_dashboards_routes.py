@@ -3,13 +3,14 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
+from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 
 from searchat.api.app import app
+from searchat.api.dataset_access import _DatasetNotReady
 from searchat.models import SearchResult, SearchResults, SearchMode
 
 
@@ -82,6 +83,10 @@ def _enabled_config():
 
 def _disabled_config():
     return SimpleNamespace(dashboards=SimpleNamespace(enabled=False))
+
+
+def _dataset_retrieval(engine):
+    return SimpleNamespace(search_dir=None, snapshot_name=None, retrieval_service=engine)
 
 
 def test_dashboards_crud_flow(client, monkeypatch):
@@ -175,8 +180,8 @@ def test_dashboards_render_flow(client, monkeypatch):
         lambda: saved_queries_service,
     )
     monkeypatch.setattr(
-        "searchat.api.routers.dashboards.get_or_create_search_engine",
-        lambda: FakeSearchEngine(search_results),
+        "searchat.api.routers.dashboards.get_dataset_retrieval",
+        lambda snapshot, search_mode: _dataset_retrieval(FakeSearchEngine(search_results)),
     )
     monkeypatch.setattr("searchat.api.routers.dashboards.deps.get_config", _enabled_config)
 
@@ -325,18 +330,16 @@ def test_dashboards_render_returns_503_when_semantic_components_not_ready(client
     )
     saved_queries_service = InMemorySavedQueriesService({"id": "q-1", "query": "deployment", "mode": "semantic"})
 
-    readiness = SimpleNamespace(snapshot=lambda: SimpleNamespace(components={"metadata": "idle", "faiss": "ready", "embedder": "ready"}))
-    monkeypatch.setattr("searchat.api.readiness.get_readiness", lambda: readiness)
-    warmup = MagicMock()
-    monkeypatch.setattr("searchat.api.warmup.trigger_search_engine_warmup", warmup)
-
     monkeypatch.setattr("searchat.api.routers.dashboards.deps.get_dashboards_service", lambda: dashboards_service)
     monkeypatch.setattr("searchat.api.routers.dashboards.deps.get_saved_queries_service", lambda: saved_queries_service)
     monkeypatch.setattr("searchat.api.routers.dashboards.deps.get_config", _enabled_config)
+    monkeypatch.setattr("searchat.api.routers.dashboards.get_dataset_retrieval", lambda snapshot, search_mode: (_ for _ in ()).throw(
+        _DatasetNotReady(JSONResponse(status_code=503, content={"status": "warming"}))
+    ))
 
     resp = client.get(f"/api/dashboards/{dashboard['id']}/render")
     assert resp.status_code == 503
-    warmup.assert_called_once()
+    assert resp.json()["status"] == "warming"
 
 
 def test_dashboards_render_returns_500_when_semantic_component_error(client, monkeypatch):
@@ -352,12 +355,12 @@ def test_dashboards_render_returns_500_when_semantic_component_error(client, mon
     )
     saved_queries_service = InMemorySavedQueriesService({"id": "q-1", "query": "deployment", "mode": "semantic"})
 
-    readiness = SimpleNamespace(snapshot=lambda: SimpleNamespace(components={"metadata": "error", "faiss": "ready", "embedder": "ready"}))
-    monkeypatch.setattr("searchat.api.readiness.get_readiness", lambda: readiness)
-
     monkeypatch.setattr("searchat.api.routers.dashboards.deps.get_dashboards_service", lambda: dashboards_service)
     monkeypatch.setattr("searchat.api.routers.dashboards.deps.get_saved_queries_service", lambda: saved_queries_service)
     monkeypatch.setattr("searchat.api.routers.dashboards.deps.get_config", _enabled_config)
+    monkeypatch.setattr("searchat.api.routers.dashboards.get_dataset_retrieval", lambda snapshot, search_mode: (_ for _ in ()).throw(
+        _DatasetNotReady(JSONResponse(status_code=500, content={"status": "error"}))
+    ))
 
     resp = client.get(f"/api/dashboards/{dashboard['id']}/render")
     assert resp.status_code == 500
@@ -408,7 +411,10 @@ def test_dashboards_render_sorts_results_by_messages(client, monkeypatch):
         ),
     ]
     search_results = SearchResults(results=results, total_count=2, search_time_ms=1.0, mode_used="keyword")
-    monkeypatch.setattr("searchat.api.routers.dashboards.get_or_create_search_engine", lambda: FakeSearchEngine(search_results))
+    monkeypatch.setattr(
+        "searchat.api.routers.dashboards.get_dataset_retrieval",
+        lambda snapshot, search_mode: _dataset_retrieval(FakeSearchEngine(search_results)),
+    )
 
     # Prove query='*' forces keyword mode (no semantic readiness checks).
     monkeypatch.setattr("searchat.api.readiness.get_readiness", lambda: (_ for _ in ()).throw(AssertionError("readiness should not be queried")))
