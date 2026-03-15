@@ -43,10 +43,6 @@ async def _warmup_all() -> None:
         asyncio.to_thread(_warmup_duckdb_parquet),
         asyncio.to_thread(_warmup_embedded_model),
     )
-
-    from searchat.api import dependencies as deps
-
-    await asyncio.to_thread(deps._ensure_search_engine)
     await asyncio.to_thread(_warmup_semantic_components)
 
 
@@ -66,26 +62,28 @@ def _warmup_embedded_model() -> None:
     except RuntimeError:
         return
 
-    if config.llm.default_provider.lower() != "embedded":
+    llm_config = getattr(config, "llm", None)
+    default_provider = getattr(llm_config, "default_provider", None)
+    if not isinstance(default_provider, str) or default_provider.lower() != "embedded":
         readiness.set_component("embedded_model", "idle")
         return
 
     readiness.set_component("embedded_model", "loading")
     try:
-        configured = config.llm.embedded_model_path
+        configured = getattr(llm_config, "embedded_model_path", None)
         if configured:
             configured_path = Path(configured).expanduser()
             if configured_path.exists():
                 readiness.set_component("embedded_model", "ready")
                 return
 
-        if not config.llm.embedded_auto_download:
+        if not getattr(llm_config, "embedded_auto_download", False):
             raise RuntimeError(
                 "Embedded provider enabled but embedded_model_path is not set or missing. "
                 "Set [llm].embedded_model_path or run 'searchat download-model --activate'."
             )
 
-        preset = get_preset(config.llm.embedded_default_preset)
+        preset = get_preset(getattr(llm_config, "embedded_default_preset"))
         dest_path = (DEFAULT_DATA_DIR / "models" / preset.filename).resolve()
 
         if not dest_path.exists():
@@ -139,7 +137,7 @@ def _warmup_embedded_model() -> None:
             },
         )
 
-        config.llm.embedded_model_path = str(dest_path)
+        llm_config.embedded_model_path = str(dest_path)
         readiness.set_component("embedded_model", "ready")
     except DownloadInProgressError as exc:
         readiness.set_component("embedded_model", "loading", error=str(exc))

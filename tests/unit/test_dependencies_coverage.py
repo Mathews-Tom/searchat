@@ -264,6 +264,16 @@ class TestWarmupEmbeddedModel:
         deps._warmup_embedded_model()
         assert "embedded_model" not in readiness.components
 
+    def test_malformed_config_marks_embedded_model_idle(self, monkeypatch: pytest.MonkeyPatch):
+        import searchat.api.warmup as api_warmup
+
+        readiness = FakeReadiness()
+        monkeypatch.setattr(api_warmup, "get_readiness", lambda: readiness)
+        monkeypatch.setattr(deps, "_config", object())
+
+        deps._warmup_embedded_model()
+        assert readiness.components["embedded_model"] == "idle"
+
 
 # ── Initialize services with expertise/KG ────────────────────────
 

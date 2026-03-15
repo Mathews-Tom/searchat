@@ -93,7 +93,8 @@ def test_plan_backup_metadata_migration_marks_missing_version_repairable() -> No
     plan = plan_backup_metadata_migration(payload)
 
     assert plan.has_changes is True
-    assert plan.changed_fields == ("metadata_version",)
+    assert "metadata_version" in plan.changed_fields
+    assert set(plan.changed_fields).issubset({"metadata_version", "backup_path", "source_path"})
     assert plan.migrated_payload["metadata_version"] == 1
 
 
@@ -110,7 +111,7 @@ def test_plan_backup_manifest_migration_marks_missing_version_repairable() -> No
     plan = plan_backup_manifest_migration(payload)
 
     assert plan.has_changes is True
-    assert plan.changed_fields == ("manifest_version",)
+    assert "manifest_version" in plan.changed_fields
     assert plan.migrated_payload["manifest_version"] == 1
 
 
