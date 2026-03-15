@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 import pyarrow as pa
@@ -126,3 +127,41 @@ def test_storage_compatibility_repair_migrates_legacy_index_metadata(temp_search
     assert payload["chunk_size"] == 1500
     assert payload["chunk_overlap"] == 200
     assert payload["next_vector_id"] == 5
+
+
+def test_storage_compatibility_repair_migrates_legacy_dataset_bundle(temp_search_dir: Path) -> None:
+    from searchat.services.storage_health import inspect_storage_health, repair_storage_metadata
+
+    fixture = Path("tests/fixtures/storage/legacy_dataset_bundle")
+    shutil.copytree(fixture, temp_search_dir, dirs_exist_ok=True)
+
+    before = inspect_storage_health(temp_search_dir, embedding_model="all-MiniLM-L6-v2")
+    repairable_scopes = {issue.scope for issue in before.issues if issue.repairable}
+    assert {"index_metadata", "backup_index_metadata", "backup_metadata"} <= repairable_scopes
+
+    repaired = repair_storage_metadata(temp_search_dir, embedding_model="all-MiniLM-L6-v2")
+    assert repaired.repairs_applied == 3
+    assert not repaired.issues
+
+    live_payload = json.loads(
+        (temp_search_dir / "data" / "indices" / "index_metadata.json").read_text(encoding="utf-8")
+    )
+    backup_payload = json.loads(
+        (
+            temp_search_dir
+            / "backups"
+            / "legacy_full_dataset"
+            / "data"
+            / "indices"
+            / "index_metadata.json"
+        ).read_text(encoding="utf-8")
+    )
+    backup_meta = json.loads(
+        (temp_search_dir / "backups" / "legacy_full_dataset" / "backup_metadata.json").read_text(encoding="utf-8")
+    )
+
+    assert live_payload["embedding_model"] == "all-MiniLM-L6-v2"
+    assert live_payload["chunk_size"] == 1500
+    assert backup_payload["embedding_model"] == "all-MiniLM-L6-v2"
+    assert backup_payload["next_vector_id"] == 4
+    assert backup_meta["metadata_version"] == 1

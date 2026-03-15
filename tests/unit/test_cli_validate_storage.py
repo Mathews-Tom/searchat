@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -93,3 +94,22 @@ def test_validate_storage_reports_index_metadata_migration(temp_search_dir: Path
     assert result == 0
     assert "index_metadata" in captured.out
     assert "can be migrated" in captured.out
+
+
+def test_validate_storage_reports_legacy_dataset_bundle_issues(temp_search_dir: Path, capsys) -> None:
+    from searchat.cli.validate_cmd import run_validate
+
+    fixture = Path("tests/fixtures/storage/legacy_dataset_bundle")
+    shutil.copytree(fixture, temp_search_dir, dirs_exist_ok=True)
+
+    cfg = SimpleNamespace(embedding=SimpleNamespace(model="all-MiniLM-L6-v2"))
+    with (
+        patch("searchat.config.Config.load", return_value=cfg),
+        patch("searchat.config.PathResolver.get_shared_search_dir", return_value=temp_search_dir),
+    ):
+        result = run_validate(["storage"])
+
+    captured = capsys.readouterr()
+    assert result == 0
+    assert "backup dataset" in captured.out.lower()
+    assert "backup_metadata" in captured.out

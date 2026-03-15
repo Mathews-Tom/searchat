@@ -115,8 +115,12 @@ class IndexMetadata:
         )
 
 
-def read_index_metadata(search_dir: Path) -> IndexMetadata:
-    metadata_path = search_dir / "data" / "indices" / INDEX_METADATA_FILENAME
+def index_metadata_path(dataset_root: Path) -> Path:
+    return dataset_root / "data" / "indices" / INDEX_METADATA_FILENAME
+
+
+def read_index_metadata_root(dataset_root: Path) -> IndexMetadata:
+    metadata_path = index_metadata_path(dataset_root)
     if not metadata_path.exists():
         raise FileNotFoundError(
             f"Index metadata not found at {metadata_path}. "
@@ -127,11 +131,19 @@ def read_index_metadata(search_dir: Path) -> IndexMetadata:
     return IndexMetadata.from_dict(cast(dict[str, Any], data))
 
 
-def write_index_metadata(search_dir: Path, metadata: IndexMetadata) -> None:
-    metadata_path = search_dir / "data" / "indices" / INDEX_METADATA_FILENAME
+def read_index_metadata(search_dir: Path) -> IndexMetadata:
+    return read_index_metadata_root(search_dir)
+
+
+def write_index_metadata_root(dataset_root: Path, metadata: IndexMetadata) -> None:
+    metadata_path = index_metadata_path(dataset_root)
     metadata_path.parent.mkdir(parents=True, exist_ok=True)
     with open(metadata_path, "w", encoding="utf-8") as f:
         json.dump(metadata.to_dict(), f, indent=2)
+
+
+def write_index_metadata(search_dir: Path, metadata: IndexMetadata) -> None:
+    write_index_metadata_root(search_dir, metadata)
 
 
 @dataclass(frozen=True)
