@@ -1,0 +1,8 @@
+{
+  "timestamp": "20260310_000000",
+  "backup_path": "/tmp/legacy_full_dataset",
+  "source_path": "/tmp/legacy_source_dataset",
+  "file_count": 3,
+  "total_size_bytes": 10,
+  "backup_type": "manual"
+}

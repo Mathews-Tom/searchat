@@ -7,7 +7,14 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from searchat.config.constants import INDEX_METADATA_FILENAME
-from searchat.services.storage_contracts import IndexMetadata, read_index_metadata, write_index_metadata
+from searchat.services.storage_contracts import (
+    IndexMetadata,
+    index_metadata_path,
+    read_index_metadata,
+    read_index_metadata_root,
+    write_index_metadata,
+    write_index_metadata_root,
+)
 
 
 @dataclass(frozen=True)
@@ -35,10 +42,23 @@ def plan_index_metadata_migration(
     return MetadataMigrationPlan(original=metadata, migrated=migrated, changed_fields=changed)
 
 
-def read_raw_index_metadata(search_dir: Path) -> dict:
-    metadata_path = search_dir / "data" / "indices" / INDEX_METADATA_FILENAME
+def read_raw_index_metadata(dataset_root: Path) -> dict:
+    metadata_path = index_metadata_path(dataset_root)
     with open(metadata_path, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def migrate_index_metadata_root(
+    dataset_root: Path,
+    *,
+    embedding_model: str | None = None,
+    apply: bool = False,
+) -> MetadataMigrationPlan:
+    metadata = read_index_metadata_root(dataset_root)
+    plan = plan_index_metadata_migration(metadata, embedding_model=embedding_model)
+    if apply and plan.has_changes:
+        write_index_metadata_root(dataset_root, plan.migrated)
+    return plan
 
 
 def migrate_index_metadata_file(

@@ -1,0 +1,3 @@
+# Legacy dataset fixture for Wave 2A compatibility coverage.
+[search]
+mode = "compat"
