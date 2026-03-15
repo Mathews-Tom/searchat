@@ -28,6 +28,10 @@ from searchat.services.semantic_model_service import (
     build_reranking_service,
 )
 from searchat.services.retrieval_service import SemanticVectorHit
+from searchat.services.retrieval_service import (
+    RetrievalCapabilities,
+    SemanticSearchUnavailable,
+)
 from searchat.services.storage_contracts import read_index_metadata
 
 
@@ -126,15 +130,26 @@ class SearchEngine:
         with self._init_lock:
             self._ensure_reranker_loaded_locked()
 
+    def describe_capabilities(self) -> RetrievalCapabilities:
+        """Describe effective semantic and reranking capabilities."""
+        semantic_reason = self._semantic_unavailable_reason()
+        reranking_reason = self._reranking_unavailable_reason()
+        return RetrievalCapabilities(
+            semantic_available=semantic_reason is None,
+            reranking_available=reranking_reason is None,
+            semantic_reason=semantic_reason,
+            reranking_reason=reranking_reason,
+        )
+
     def find_similar_vector_hits(self, text: str, k: int) -> list[SemanticVectorHit]:
         """Return vector hits for semantic nearest-neighbor lookup."""
         self.ensure_faiss_loaded()
         if self.faiss_index is None:
-            raise RuntimeError("FAISS index not available")
+            raise SemanticSearchUnavailable("FAISS index not available")
 
         self.ensure_embedder_loaded()
         if self.embedder is None:
-            raise RuntimeError("Embedder not available")
+            raise SemanticSearchUnavailable("Embedder not available")
 
         query_embedding = np.asarray(self.embedder.encode(text), dtype=np.float32)
         distances, labels = self.faiss_index.search(  # type: ignore[call-arg,arg-type]
@@ -189,6 +204,18 @@ class SearchEngine:
             return
         if self._reranker is None:
             self._reranker = build_reranking_service(self.config)
+
+    def _semantic_unavailable_reason(self) -> str | None:
+        if not self.metadata_path.exists():
+            return "Metadata parquet not available"
+        if not self.index_path.exists():
+            return "FAISS index not available"
+        return None
+
+    def _reranking_unavailable_reason(self) -> str | None:
+        if not self.config.reranking.enabled:
+            return "Reranking is disabled"
+        return None
 
 
     def refresh_index(self) -> None:
@@ -338,13 +365,20 @@ class SearchEngine:
         try:
             if mode == SearchMode.HYBRID:
                 keyword_results = self._keyword_search(query, filters)
-                semantic_results = self._semantic_search(query, filters)
+                try:
+                    semantic_results = self._semantic_search(query, filters)
+                except SemanticSearchUnavailable as exc:
+                    self._logger.info("Semantic search unavailable, falling back to keyword mode: %s", exc)
+                    semantic_results = []
                 results = self._merge_results(keyword_results, semantic_results)
                 results = self._rerank(query, results)
+                mode_used = SearchMode.HYBRID if semantic_results else SearchMode.KEYWORD
             elif mode == SearchMode.KEYWORD:
                 results = self._keyword_search(query, filters)
+                mode_used = SearchMode.KEYWORD
             else:
                 results = self._semantic_search(query, filters)
+                mode_used = SearchMode.SEMANTIC
 
             elapsed_ms = (time.time() - start_time) * 1000
             
@@ -352,13 +386,15 @@ class SearchEngine:
                 results=results,
                 total_count=len(results),
                 search_time_ms=elapsed_ms,
-                mode_used=mode.value
+                mode_used=mode_used.value
             )
             
             # Add to cache
             self._add_to_cache(cache_key, search_result)
             
             return search_result
+        except SemanticSearchUnavailable as e:
+            raise RuntimeError(f"Search failed: {e}") from e
         except Exception as e:
             raise RuntimeError(f"Search failed: {e}") from e
     
@@ -635,7 +671,11 @@ class SearchEngine:
         if not self.config.reranking.enabled or not results:
             return results
 
-        self.ensure_reranker_loaded()
+        try:
+            self.ensure_reranker_loaded()
+        except Exception as exc:
+            self._logger.warning("Reranking unavailable, returning base ranking: %s", exc)
+            return results
         if self._reranker is None:
             return results
 
@@ -644,7 +684,11 @@ class SearchEngine:
         remainder = results[top_k:]
 
         pairs = [(query, r.snippet) for r in candidates]
-        scores = self._reranker.predict(pairs)
+        try:
+            scores = self._reranker.predict(pairs)
+        except Exception as exc:
+            self._logger.warning("Reranking failed, returning base ranking: %s", exc)
+            return results
 
         for result, score in zip(candidates, scores):
             result.score = float(score)

@@ -24,6 +24,24 @@ class SemanticVectorHit:
     distance: float
 
 
+@dataclass(frozen=True)
+class RetrievalCapabilities:
+    """Effective retrieval capabilities for a dataset-backed search service."""
+
+    semantic_available: bool
+    reranking_available: bool
+    semantic_reason: str | None = None
+    reranking_reason: str | None = None
+
+
+class SemanticSearchUnavailable(RuntimeError):
+    """Raised when semantic search is requested but semantic capability is unavailable."""
+
+
+class RerankingUnavailable(RuntimeError):
+    """Raised when reranking is requested but reranking capability is unavailable."""
+
+
 class SemanticRetrievalService(RetrievalService, Protocol):
     """Retrieval contract for callers that also need semantic readiness access."""
 
@@ -35,6 +53,9 @@ class SemanticRetrievalService(RetrievalService, Protocol):
 
     def find_similar_vector_hits(self, text: str, k: int) -> list[SemanticVectorHit]:
         """Search the semantic index for nearest-neighbor vector hits."""
+
+    def describe_capabilities(self) -> RetrievalCapabilities:
+        """Describe the current semantic and reranking capabilities."""
 
     def refresh_index(self) -> None:
         """Refresh internal retrieval caches and index structures."""
