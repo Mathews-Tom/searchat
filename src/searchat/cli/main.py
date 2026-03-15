@@ -411,6 +411,7 @@ def main():
             print("  searchat onboard [--project NAME] [--max-tokens N]")
             print("  searchat prune [--threshold FLOAT] [--domain DOMAIN] [--dry-run] [--force]")
             print("  searchat validate [--domain DOMAIN] [--project PROJECT]")
+            print("  searchat validate storage [--repair]")
             print("  searchat graph stats")
             print("  searchat graph contradictions [--domain DOMAIN] [--unresolved-only]")
             print("  searchat graph resolve <edge_id> <strategy> [--params JSON]")

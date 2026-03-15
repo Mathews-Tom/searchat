@@ -11,9 +11,15 @@ from rich.panel import Panel
 
 def run_validate(argv: list[str]) -> int:
     """Entry point for `searchat validate`."""
+    if argv and argv[0] == "storage":
+        return _run_validate_storage(argv[1:])
+
     parser = argparse.ArgumentParser(
         prog="searchat validate",
-        description="Validate expertise store health: schema, orphans, domains, distributions.",
+        description=(
+            "Validate expertise store health: schema, orphans, domains, distributions. "
+            "Use `searchat validate storage` for storage compatibility checks."
+        ),
     )
     parser.add_argument("--domain", default=None, help="Scope to a specific domain")
     parser.add_argument("--project", default=None, help="Scope to a specific project")
@@ -170,6 +176,62 @@ def run_validate(argv: list[str]) -> int:
 
     console.print("\n[bold green]Validation complete.[/bold green]")
     return 0
+
+
+def _run_validate_storage(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(
+        prog="searchat validate storage",
+        description="Validate storage metadata and backup compatibility.",
+    )
+    parser.add_argument(
+        "--repair",
+        action="store_true",
+        help="Apply safe metadata normalization for repairable storage issues.",
+    )
+    args = parser.parse_args(argv)
+
+    console = Console()
+
+    from searchat.config import Config, PathResolver
+    from searchat.services.storage_health import inspect_storage_health, repair_storage_metadata
+
+    config = Config.load()
+    search_dir = PathResolver.get_shared_search_dir(config)
+
+    report = (
+        repair_storage_metadata(search_dir, embedding_model=config.embedding.model)
+        if args.repair
+        else inspect_storage_health(search_dir, embedding_model=config.embedding.model)
+    )
+
+    title = "Storage Validation Report"
+    if args.repair:
+        title += f"\n{report.repairs_applied} repair(s) applied"
+    console.print(Panel(f"[bold]{title}[/bold]\n{search_dir}", expand=False))
+
+    if not report.issues:
+        console.print("[green]No storage compatibility issues detected.[/green]")
+        return 0
+
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("Severity")
+    table.add_column("Scope")
+    table.add_column("Path")
+    table.add_column("Repairable")
+    table.add_column("Message")
+
+    for issue in report.issues:
+        color = "red" if issue.severity == "error" else "yellow"
+        table.add_row(
+            f"[{color}]{issue.severity}[/{color}]",
+            issue.scope,
+            str(issue.path.relative_to(search_dir)) if issue.path.is_relative_to(search_dir) else str(issue.path),
+            "yes" if issue.repairable else "no",
+            issue.message,
+        )
+
+    console.print(table)
+    return 1 if any(issue.severity == "error" for issue in report.issues) else 0
 
 
 def _edit_distance(a: str, b: str) -> int:
