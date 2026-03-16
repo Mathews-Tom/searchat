@@ -158,6 +158,30 @@ def test_chat_rag_error_payload_when_component_error(client):
     assert resp.json()["status"] == "error"
 
 
+def test_chat_rag_reports_semantic_capability_error_when_components_look_ready(client):
+    readiness = Mock()
+    readiness.snapshot.return_value = Mock(
+        components={"metadata": "ready", "faiss": "ready", "embedder": "ready"}
+    )
+    retrieval_service = Mock()
+    retrieval_service.describe_capabilities.return_value = SimpleNamespace(
+        semantic_available=False,
+        reranking_available=True,
+        semantic_reason="Embedding model unavailable: all-MiniLM-L6-v2",
+        reranking_reason=None,
+    )
+
+    with patch("searchat.api.readiness.get_readiness", return_value=readiness):
+        with patch("searchat.api.routers.chat.get_search_engine", return_value=retrieval_service):
+            resp = client.post("/api/chat-rag", json={"query": "x", "model_provider": "ollama"})
+
+    assert resp.status_code == 500
+    data = resp.json()
+    assert data["status"] == "error"
+    assert data["errors"]["semantic"] == "Embedding model unavailable: all-MiniLM-L6-v2"
+    assert data["capabilities"]["semantic_available"] is False
+
+
 def test_chat_rag_value_error_returns_400(client):
     from searchat.services.llm_service import LLMServiceError
 

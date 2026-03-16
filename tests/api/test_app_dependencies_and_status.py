@@ -78,12 +78,26 @@ async def test_status_endpoint_returns_readiness_snapshot() -> None:
     payload = await get_status()
 
     assert payload["components"]["services"] == "ready"
-    assert set(payload.keys()) == {"server_started_at", "warmup_started_at", "components", "watcher", "errors"}
+    assert set(payload.keys()) == {
+        "server_started_at",
+        "warmup_started_at",
+        "components",
+        "watcher",
+        "errors",
+        "retrieval",
+    }
 
 
 def test_status_features_endpoint_returns_flags(monkeypatch: pytest.MonkeyPatch) -> None:
     from searchat.api.app import app
 
+    retrieval_service = Mock()
+    retrieval_service.describe_capabilities.return_value = SimpleNamespace(
+        semantic_available=False,
+        reranking_available=True,
+        semantic_reason="Embedding model unavailable: all-MiniLM-L6-v2",
+        reranking_reason=None,
+    )
     config = SimpleNamespace(
         analytics=SimpleNamespace(enabled=True),
         chat=SimpleNamespace(enable_rag=True, enable_citations=False),
@@ -92,6 +106,7 @@ def test_status_features_endpoint_returns_flags(monkeypatch: pytest.MonkeyPatch)
         snapshots=SimpleNamespace(enabled=True),
     )
     monkeypatch.setattr("searchat.api.routers.status.deps.get_config", lambda: config)
+    monkeypatch.setattr("searchat.api.dependencies._search_engine", retrieval_service)
 
     client = TestClient(app)
     resp = client.get("/api/status/features")
@@ -102,6 +117,33 @@ def test_status_features_endpoint_returns_flags(monkeypatch: pytest.MonkeyPatch)
     assert data["chat"]["enable_citations"] is False
     assert data["export"]["enable_pdf"] is True
     assert data["snapshots"]["enabled"] is True
+    assert data["retrieval"]["semantic_available"] is False
+    assert data["retrieval"]["semantic_reason"] == "Embedding model unavailable: all-MiniLM-L6-v2"
+
+
+@pytest.mark.asyncio
+async def test_status_endpoint_includes_retrieval_capabilities(monkeypatch: pytest.MonkeyPatch) -> None:
+    from searchat.api.routers.status import get_status
+    from searchat.api.readiness import get_readiness
+
+    get_readiness().set_component("services", "ready")
+    monkeypatch.setattr(
+        "searchat.api.dependencies._search_engine",
+        SimpleNamespace(
+            describe_capabilities=lambda: SimpleNamespace(
+                semantic_available=True,
+                reranking_available=False,
+                semantic_reason=None,
+                reranking_reason="Reranking is disabled",
+            )
+        ),
+    )
+
+    payload = await get_status()
+
+    assert payload["retrieval"]["semantic_available"] is True
+    assert payload["retrieval"]["reranking_available"] is False
+    assert payload["retrieval"]["reranking_reason"] == "Reranking is disabled"
 
 
 def test_dependencies_getters_raise_when_not_initialized() -> None:

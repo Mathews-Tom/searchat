@@ -253,6 +253,41 @@ def test_extract_patterns_embedder_not_ready(client):
     assert resp.json()["status"] == "warming"
 
 
+def test_extract_patterns_reports_semantic_capability_error_when_components_look_ready(client):
+    readiness = Mock()
+    readiness.snapshot.return_value = Mock(
+        components={
+            "metadata": "ready",
+            "faiss": "ready",
+            "embedder": "ready",
+        }
+    )
+    retrieval_service = Mock()
+    retrieval_service.describe_capabilities.return_value = Mock(
+        semantic_available=False,
+        reranking_available=True,
+        semantic_reason="Embedding model unavailable: all-MiniLM-L6-v2",
+        reranking_reason=None,
+    )
+
+    with patch("searchat.api.readiness.get_readiness", return_value=readiness):
+        with patch("searchat.api.routers.patterns.get_search_engine", return_value=retrieval_service):
+            resp = client.post(
+                "/api/patterns/extract",
+                json={
+                    "topic": "test",
+                    "max_patterns": 10,
+                    "model_provider": "ollama",
+                },
+            )
+
+    assert resp.status_code == 500
+    data = resp.json()
+    assert data["status"] == "error"
+    assert data["errors"]["semantic"] == "Embedding model unavailable: all-MiniLM-L6-v2"
+    assert data["capabilities"]["semantic_available"] is False
+
+
 def test_extract_patterns_embedded_model_not_ready(client):
     """Test pattern extraction when embedded model is required but not ready."""
     readiness = Mock()
