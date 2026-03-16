@@ -110,6 +110,34 @@ def indexing_snapshot_disabled_message() -> str:
     return "Indexing is disabled in snapshot mode"
 
 
+def resume_snapshot_disabled_message() -> str:
+    return "Resume is disabled in snapshot mode"
+
+
+def conversation_not_found_message_simple() -> str:
+    return "Conversation not found"
+
+
+def export_disabled_message(format_name: str) -> str:
+    return f"{format_name} export is disabled"
+
+
+def invalid_export_format_message() -> str:
+    return "Invalid format. Use: json, markdown, text, ipynb, or pdf"
+
+
+def bulk_export_no_ids_message() -> str:
+    return "No conversation IDs provided"
+
+
+def bulk_export_too_many_message() -> str:
+    return "Too many conversations (max 100)"
+
+
+def resume_command_not_found_message(tool_name: str) -> str:
+    return f"Failed to execute command. Make sure {tool_name} is installed and in PATH."
+
+
 def no_embeddings_for_conversation_message() -> str:
     return "No embeddings found for this conversation"
 

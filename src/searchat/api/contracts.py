@@ -462,3 +462,19 @@ def serialize_index_missing_payload(
     if time_seconds is not None:
         payload["time_seconds"] = time_seconds
     return payload
+
+
+def serialize_resume_session_payload(
+    *,
+    tool: str,
+    cwd: str | None,
+    command: str,
+    platform: str,
+) -> dict[str, Any]:
+    return {
+        "success": True,
+        "tool": tool,
+        "cwd": cwd,
+        "command": command,
+        "platform": platform,
+    }

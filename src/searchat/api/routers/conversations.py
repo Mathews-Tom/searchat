@@ -22,6 +22,7 @@ from searchat.api.models import (
     ConversationResponse,
     ResumeRequest,
 )
+from searchat.api.contracts import serialize_resume_session_payload
 from searchat.contracts.similarity import (
     serialize_similar_conversation,
     serialize_similar_conversations_payload,
@@ -30,8 +31,15 @@ from searchat.api.dataset_access import get_dataset_semantic_retrieval, get_data
 from searchat.api.warmup import invalidate_search_index
 from searchat.api.utils import detect_tool_from_path, detect_source_from_path, parse_date_filter
 from searchat.contracts.errors import (
+    bulk_export_no_ids_message,
+    bulk_export_too_many_message,
+    conversation_not_found_message_simple,
+    export_disabled_message,
+    invalid_export_format_message,
     invalid_tool_filter_message,
     no_embeddings_for_conversation_message,
+    resume_command_not_found_message,
+    resume_snapshot_disabled_message,
     snapshot_not_found_message,
 )
 import searchat.api.dependencies as deps
@@ -616,14 +624,14 @@ async def resume_session(
 ):
     """Resume a conversation session in its original tool (Claude Code or Vibe)."""
     if snapshot is not None:
-        raise HTTPException(status_code=403, detail="Resume is disabled in snapshot mode")
+        raise HTTPException(status_code=403, detail=resume_snapshot_disabled_message())
     try:
         store = deps.get_duckdb_store()
         platform_manager = get_platform_manager()
 
         conv = store.get_conversation_meta(request.conversation_id)
         if conv is None:
-            raise HTTPException(status_code=404, detail="Conversation not found")
+            raise HTTPException(status_code=404, detail=conversation_not_found_message_simple())
         file_path = conv["file_path"]
         session_id = conv["conversation_id"]
 
@@ -669,13 +677,12 @@ async def resume_session(
         # Path translation happens automatically in open_terminal_with_command
         platform_manager.open_terminal_with_command(command, cwd)
 
-        return {
-            "success": True,
-            "tool": tool,
-            "cwd": cwd,
-            "command": command,
-            "platform": platform_manager.platform
-        }
+        return serialize_resume_session_payload(
+            tool=tool,
+            cwd=cwd,
+            command=command,
+            platform=platform_manager.platform,
+        )
 
     except HTTPException:
         raise
@@ -685,7 +692,7 @@ async def resume_session(
         tool_name = locals().get('tool', 'claude/vibe')
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to execute command. Make sure {tool_name} is installed and in PATH."
+            detail=resume_command_not_found_message(tool_name)
         )
     except Exception as e:
         logger.error(f"Failed to resume session {request.conversation_id}: {e}", exc_info=True)
@@ -986,14 +993,14 @@ async def export_conversation(
         if format_lower in ("ipynb", "pdf"):
             config = deps.get_config()
             if format_lower == "ipynb" and not config.export.enable_ipynb:
-                raise HTTPException(status_code=404, detail="Notebook export is disabled")
+                raise HTTPException(status_code=404, detail=export_disabled_message("Notebook"))
             if format_lower == "pdf" and not config.export.enable_pdf:
-                raise HTTPException(status_code=404, detail="PDF export is disabled")
+                raise HTTPException(status_code=404, detail=export_disabled_message("PDF"))
 
         if format_lower not in ("json", "markdown", "text", "ipynb", "pdf"):
             raise HTTPException(
                 status_code=400,
-                detail="Invalid format. Use: json, markdown, text, ipynb, or pdf",
+                detail=invalid_export_format_message(),
             )
 
         exported = render_export(conv_response, format=format_lower)  # type: ignore[arg-type]
@@ -1032,26 +1039,26 @@ async def bulk_export_conversations(
         from datetime import datetime
 
         if not request.conversation_ids:
-            raise HTTPException(status_code=400, detail="No conversation IDs provided")
+            raise HTTPException(status_code=400, detail=bulk_export_no_ids_message())
 
         if len(request.conversation_ids) > 100:
             raise HTTPException(
                 status_code=400,
-                detail="Too many conversations (max 100)"
+                detail=bulk_export_too_many_message()
             )
 
         format_lower = request.format.lower()
         if format_lower in ("ipynb", "pdf"):
             config = deps.get_config()
             if format_lower == "ipynb" and not config.export.enable_ipynb:
-                raise HTTPException(status_code=404, detail="Notebook export is disabled")
+                raise HTTPException(status_code=404, detail=export_disabled_message("Notebook"))
             if format_lower == "pdf" and not config.export.enable_pdf:
-                raise HTTPException(status_code=404, detail="PDF export is disabled")
+                raise HTTPException(status_code=404, detail=export_disabled_message("PDF"))
 
         if format_lower not in ("json", "markdown", "text", "ipynb", "pdf"):
             raise HTTPException(
                 status_code=400,
-                detail="Invalid format. Use: json, markdown, text, ipynb, or pdf"
+                detail=invalid_export_format_message()
             )
 
         # Determine file extension
