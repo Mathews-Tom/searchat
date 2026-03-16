@@ -59,6 +59,19 @@ def serialize_statistics_payload(stats: SimpleNamespace) -> dict[str, Any]:
     }
 
 
+def serialize_conversation_payload(record: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "conversation_id": record.get("conversation_id"),
+        "project_id": record.get("project_id"),
+        "title": record.get("title"),
+        "created_at": record.get("created_at"),
+        "updated_at": record.get("updated_at"),
+        "message_count": record.get("message_count"),
+        "file_path": record.get("file_path"),
+        "messages": record.get("messages"),
+    }
+
+
 def serialize_similar_conversation(
     *,
     conversation_id: str,

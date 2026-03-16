@@ -16,6 +16,7 @@ from searchat.contracts.errors import (
     no_embeddings_for_conversation_message,
 )
 from searchat.mcp.contracts import (
+    serialize_conversation_payload,
     serialize_history_answer_payload,
     serialize_projects_payload,
     serialize_search_payload,
@@ -125,7 +126,7 @@ def get_conversation(*, conversation_id: str, search_dir: str | None = None) -> 
     if record is None:
         raise ValueError(conversation_not_found_message(conversation_id))
 
-    return _json_dumps(record)
+    return _json_dumps(serialize_conversation_payload(record))
 
 
 def list_projects(*, search_dir: str | None = None) -> str:
