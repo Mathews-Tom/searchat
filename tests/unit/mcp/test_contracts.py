@@ -110,6 +110,21 @@ def test_serialize_similar_conversations_payload_preserves_core_fields() -> None
     ]
 
 
+def test_serialize_similar_conversations_payload_preserves_empty_envelope() -> None:
+    payload = serialize_similar_conversations_payload(
+        conversation_id="conv-123",
+        title="Original conversation",
+        similar_conversations=[],
+    )
+
+    assert payload == {
+        "conversation_id": "conv-123",
+        "title": "Original conversation",
+        "similar_count": 0,
+        "similar_conversations": [],
+    }
+
+
 def test_serialize_history_answer_payload_preserves_source_shape() -> None:
     payload = serialize_history_answer_payload(answer="fallback", sources=[_search_result()])
 

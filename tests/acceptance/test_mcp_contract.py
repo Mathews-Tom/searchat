@@ -253,6 +253,36 @@ def test_find_similar_conversations_preserves_stable_similarity_contract(tmp_pat
     ]
 
 
+def test_find_similar_conversations_empty_results_preserves_full_envelope(tmp_path: Path) -> None:
+    engine = MagicMock()
+    engine.metadata_path = tmp_path / "metadata.parquet"
+    engine.conversations_glob = str(tmp_path / "*.parquet")
+    engine.find_similar_vector_hits.return_value = []
+    store = MagicMock()
+    store.get_conversation_meta.return_value = {
+        "conversation_id": "conv-123",
+        "title": "Original conversation",
+    }
+    conn = MagicMock()
+    conn.execute.return_value.fetchone.return_value = ("representative chunk",)
+    store._connect.return_value = conn
+
+    with (
+        patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+        patch("searchat.mcp.tools.build_services", return_value=(MagicMock(), engine, store)),
+    ):
+        payload = json.loads(
+            find_similar_conversations(conversation_id="conv-123", search_dir=str(tmp_path))
+        )
+
+    assert payload == {
+        "conversation_id": "conv-123",
+        "title": "Original conversation",
+        "similar_count": 0,
+        "similar_conversations": [],
+    }
+
+
 def test_mcp_tools_preserve_stable_validation_and_not_found_messages(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="^Invalid mode; expected: hybrid, semantic, keyword$"):
         search_conversations(query="contract", mode="invalid", search_dir=str(tmp_path))

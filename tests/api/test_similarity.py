@@ -246,6 +246,9 @@ def test_get_similar_conversations_empty_results(client, mock_duckdb_store, mock
 
         assert response.status_code == 200
         data = response.json()
+        assert data["conversation_id"] == "conv-123"
+        assert data["title"] == "Python Testing Tutorial"
+        assert data["similar_count"] == 0
         assert data["similar_conversations"] == []
 
 
