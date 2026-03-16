@@ -271,3 +271,53 @@ def test_projects_and_statistics_routes_preserve_stable_contracts() -> None:
         "earliest_date",
         "latest_date",
     ]
+
+
+def test_search_and_similarity_routes_preserve_stable_error_messages() -> None:
+    client = TestClient(app)
+    dataset = SimpleNamespace(
+        search_dir="/tmp/searchat",
+        snapshot_name=None,
+        retrieval_service=Mock(),
+    )
+
+    response = client.get("/api/search?q=test&mode=invalid")
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Invalid search mode"
+
+    with patch("searchat.api.routers.search.get_dataset_retrieval", return_value=dataset):
+        response = client.get("/api/search?q=test&tool=bad")
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Invalid tool filter"
+
+    with patch("searchat.api.routers.search.get_dataset_retrieval", return_value=dataset):
+        response = client.get("/api/search?q=python&highlight=true")
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Highlight provider is required"
+
+    with patch("searchat.api.routers.search.get_dataset_retrieval", return_value=dataset):
+        response = client.get("/api/search?q=python&highlight=true&highlight_provider=bad")
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Invalid highlight provider"
+
+    store = Mock()
+    store.get_conversation_meta.return_value = {
+        "conversation_id": "conv-123",
+        "title": "Conversation",
+        "project_id": "project-a",
+    }
+    conn = Mock()
+    conn.execute.return_value.fetchone.return_value = None
+    store._connect.return_value = conn
+    search_engine = Mock()
+    search_engine.metadata_path = "/tmp/meta.parquet"
+    dataset = SimpleNamespace(store=store)
+
+    with patch(
+        "searchat.api.routers.conversations.get_dataset_semantic_retrieval",
+        return_value=(dataset, search_engine),
+    ):
+        response = client.get("/api/conversation/conv-123/similar")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "No embeddings found for this conversation"

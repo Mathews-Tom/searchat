@@ -251,3 +251,26 @@ def test_find_similar_conversations_preserves_stable_similarity_contract(tmp_pat
         "similarity_score",
         "tool",
     ]
+
+
+def test_mcp_tools_preserve_stable_validation_and_not_found_messages(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="^Invalid mode; expected: hybrid, semantic, keyword$"):
+        search_conversations(query="contract", mode="invalid", search_dir=str(tmp_path))
+
+    with pytest.raises(ValueError, match="^Invalid tool; expected one of: "):
+        search_conversations(query="contract", tool="invalid", search_dir=str(tmp_path))
+
+    with pytest.raises(ValueError, match="^limit must be between 1 and 100$"):
+        search_conversations(query="contract", limit=0, search_dir=str(tmp_path))
+
+    with pytest.raises(ValueError, match="^offset must be >= 0$"):
+        search_conversations(query="contract", offset=-1, search_dir=str(tmp_path))
+
+    store = MagicMock()
+    store.get_conversation_meta.return_value = None
+    with (
+        patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+        patch("searchat.mcp.tools.build_services", return_value=(MagicMock(), MagicMock(), store)),
+    ):
+        with pytest.raises(ValueError, match=r"^Conversation not found: conv-404$"):
+            find_similar_conversations(conversation_id="conv-404", search_dir=str(tmp_path))

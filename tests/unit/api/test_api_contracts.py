@@ -11,6 +11,20 @@ from searchat.api.contracts import (
     serialize_status_payload,
     serialize_statistics_payload,
 )
+from searchat.contracts.errors import (
+    conversation_not_found_message,
+    highlight_provider_required_message,
+    invalid_highlight_provider_message,
+    invalid_mcp_mode_message,
+    invalid_mcp_tool_message,
+    invalid_search_mode_message,
+    invalid_tool_filter_message,
+    mcp_offset_message,
+    mcp_search_limit_message,
+    mcp_similarity_limit_message,
+    no_embeddings_for_conversation_message,
+    snapshot_not_found_message,
+)
 from searchat.models import SearchResult
 
 
@@ -155,3 +169,18 @@ def test_serialize_status_features_payload_preserves_feature_groups() -> None:
         "snapshots",
         "retrieval",
     ]
+
+
+def test_shared_error_contract_messages_are_stable() -> None:
+    assert invalid_search_mode_message() == "Invalid search mode"
+    assert invalid_mcp_mode_message() == "Invalid mode; expected: hybrid, semantic, keyword"
+    assert invalid_tool_filter_message() == "Invalid tool filter"
+    assert invalid_mcp_tool_message().startswith("Invalid tool; expected one of:")
+    assert highlight_provider_required_message() == "Highlight provider is required"
+    assert invalid_highlight_provider_message() == "Invalid highlight provider"
+    assert snapshot_not_found_message() == "Snapshot not found"
+    assert conversation_not_found_message("conv-123") == "Conversation not found: conv-123"
+    assert no_embeddings_for_conversation_message() == "No embeddings found for this conversation"
+    assert mcp_search_limit_message() == "limit must be between 1 and 100"
+    assert mcp_similarity_limit_message() == "limit must be between 1 and 20"
+    assert mcp_offset_message() == "offset must be >= 0"
