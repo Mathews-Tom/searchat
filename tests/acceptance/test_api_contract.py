@@ -139,3 +139,105 @@ def test_search_highlight_provider_failure_degrades_to_plain_search() -> None:
     payload = response.json()
     assert payload["highlight_terms"] is None
     assert payload["results"][0]["conversation_id"] == "conv-123"
+
+
+def test_search_route_preserves_stable_result_contract() -> None:
+    now = datetime.now()
+    retrieval_service = Mock()
+    retrieval_service.search.return_value = SearchResults(
+        results=[
+            SearchResult(
+                conversation_id="conv-123",
+                project_id="project-a",
+                title="Stable Search Result",
+                created_at=now - timedelta(days=2),
+                updated_at=now - timedelta(days=1),
+                message_count=3,
+                file_path="/home/user/.claude/conv-123.jsonl",
+                score=0.8,
+                snippet="Contract payload coverage.",
+                message_start_index=1,
+                message_end_index=2,
+            )
+        ],
+        total_count=1,
+        search_time_ms=3.0,
+        mode_used="hybrid",
+    )
+    dataset = SimpleNamespace(
+        search_dir="/tmp/searchat",
+        snapshot_name=None,
+        retrieval_service=retrieval_service,
+    )
+    config = SimpleNamespace(analytics=SimpleNamespace(enabled=False))
+
+    with patch("searchat.api.routers.search.get_dataset_retrieval", return_value=dataset):
+        with patch("searchat.api.routers.search.deps.get_config", return_value=config):
+            client = TestClient(app)
+            response = client.get("/api/search?q=contract")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert list(payload) == [
+        "results",
+        "total",
+        "search_time_ms",
+        "limit",
+        "offset",
+        "has_more",
+        "highlight_terms",
+    ]
+    assert list(payload["results"][0]) == [
+        "conversation_id",
+        "project_id",
+        "title",
+        "created_at",
+        "updated_at",
+        "message_count",
+        "file_path",
+        "snippet",
+        "score",
+        "message_start_index",
+        "message_end_index",
+        "source",
+        "tool",
+    ]
+
+
+def test_projects_and_statistics_routes_preserve_stable_contracts() -> None:
+    stats = SimpleNamespace(
+        total_conversations=10,
+        total_messages=100,
+        avg_messages=10.0,
+        total_projects=2,
+        earliest_date="2025-01-01T00:00:00",
+        latest_date="2025-06-01T00:00:00",
+    )
+    store = Mock()
+    store.list_projects.return_value = ["proj-a", "proj-b"]
+    store.get_statistics.return_value = stats
+    dataset = SimpleNamespace(snapshot_name=None, store=store, search_dir="/tmp/searchat")
+
+    with patch("searchat.api.routers.search.get_dataset_store", return_value=dataset):
+        with patch("searchat.api.routers.search.api_state.projects_cache", None):
+            client = TestClient(app)
+            projects_response = client.get("/api/projects")
+
+    with patch("searchat.api.routers.stats.get_dataset_store", return_value=dataset):
+        with patch("searchat.api.routers.stats.api_state.stats_cache", None):
+            client = TestClient(app)
+            stats_response = client.get("/api/statistics")
+
+    assert projects_response.status_code == 200
+    assert projects_response.json() == ["proj-a", "proj-b"]
+
+    assert stats_response.status_code == 200
+    stats_payload = stats_response.json()
+    assert list(stats_payload) == [
+        "total_conversations",
+        "total_messages",
+        "avg_messages",
+        "total_projects",
+        "earliest_date",
+        "latest_date",
+    ]
