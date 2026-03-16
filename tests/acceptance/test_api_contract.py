@@ -380,6 +380,52 @@ def test_dashboard_routes_preserve_stable_contracts() -> None:
     assert list(get_response.json()) == ["dashboard"]
 
 
+def test_analytics_routes_preserve_stable_contracts() -> None:
+    client = TestClient(app)
+    analytics = Mock()
+    analytics.get_stats_summary.return_value = {
+        "total_searches": 100,
+        "unique_queries": 50,
+        "avg_results": 12.5,
+        "avg_time_ms": 150.0,
+        "mode_distribution": {"hybrid": 60},
+    }
+    analytics.get_top_queries.return_value = [{"query": "python", "search_count": 3}]
+    analytics.get_dead_end_queries.return_value = [{"query": "rare", "search_count": 1}]
+    analytics.get_trends.return_value = [{"day": "2026-01-01", "searches": 3}]
+    analytics.get_agent_comparison.return_value = [{"tool_filter": "all", "searches": 10}]
+    analytics.get_topic_clusters.return_value = [{"cluster_id": 0, "searches": 10}]
+    config = SimpleNamespace(analytics=SimpleNamespace(enabled=True, retention_days=14))
+
+    with patch("searchat.api.routers.stats.deps.get_analytics_service", return_value=analytics):
+        with patch("searchat.api.routers.stats.deps.get_config", return_value=config):
+            summary_response = client.get("/api/stats/analytics/summary")
+            top_queries_response = client.get("/api/stats/analytics/top-queries")
+            trends_response = client.get("/api/stats/analytics/trends")
+            agent_response = client.get("/api/stats/analytics/agent-comparison")
+            topics_response = client.get("/api/stats/analytics/topics")
+            config_response = client.get("/api/stats/analytics/config")
+
+    assert summary_response.status_code == 200
+    assert list(summary_response.json()) == [
+        "total_searches",
+        "unique_queries",
+        "avg_results",
+        "avg_time_ms",
+        "mode_distribution",
+    ]
+    assert top_queries_response.status_code == 200
+    assert list(top_queries_response.json()) == ["queries", "days"]
+    assert trends_response.status_code == 200
+    assert list(trends_response.json()) == ["days", "points"]
+    assert agent_response.status_code == 200
+    assert list(agent_response.json()) == ["days", "tools"]
+    assert topics_response.status_code == 200
+    assert list(topics_response.json()) == ["days", "clusters"]
+    assert config_response.status_code == 200
+    assert list(config_response.json()) == ["enabled", "retention_days"]
+
+
 def test_search_and_similarity_routes_preserve_stable_error_messages() -> None:
     client = TestClient(app)
     dataset = SimpleNamespace(

@@ -4,6 +4,11 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 
 from searchat.api.contracts import (
+    serialize_analytics_agent_comparison_payload,
+    serialize_analytics_config_payload,
+    serialize_analytics_queries_payload,
+    serialize_analytics_topics_payload,
+    serialize_analytics_trends_payload,
     serialize_dashboard_mutation_payload,
     serialize_dashboard_payload,
     serialize_dashboard_render_payload,
@@ -24,6 +29,7 @@ from searchat.api.contracts import (
     serialize_statistics_payload,
 )
 from searchat.contracts.errors import (
+    analytics_active_dataset_only_message,
     dashboard_not_found_message,
     dashboards_disabled_message,
     bookmark_not_found_message,
@@ -36,6 +42,7 @@ from searchat.contracts.errors import (
     invalid_saved_query_mode_message,
     invalid_saved_query_tool_filter_message,
     invalid_tool_filter_message,
+    internal_server_error_message,
     mcp_offset_message,
     mcp_search_limit_message,
     mcp_similarity_limit_message,
@@ -283,6 +290,34 @@ def test_serialize_dashboard_payloads_preserve_dashboard_shapes() -> None:
     }
 
 
+def test_serialize_analytics_payloads_preserve_shapes() -> None:
+    query = {"query": "python", "search_count": 3}
+    point = {"day": "2026-01-01", "searches": 3}
+    tool = {"tool_filter": "all", "searches": 10}
+    cluster = {"cluster_id": 0, "searches": 10}
+
+    assert serialize_analytics_queries_payload(queries=[query], days=7) == {
+        "queries": [query],
+        "days": 7,
+    }
+    assert serialize_analytics_config_payload(enabled=True, retention_days=14) == {
+        "enabled": True,
+        "retention_days": 14,
+    }
+    assert serialize_analytics_trends_payload(days=30, points=[point]) == {
+        "days": 30,
+        "points": [point],
+    }
+    assert serialize_analytics_agent_comparison_payload(days=30, tools=[tool]) == {
+        "days": 30,
+        "tools": [tool],
+    }
+    assert serialize_analytics_topics_payload(days=30, clusters=[cluster]) == {
+        "days": 30,
+        "clusters": [cluster],
+    }
+
+
 def test_shared_error_contract_messages_are_stable() -> None:
     assert invalid_search_mode_message() == "Invalid search mode"
     assert invalid_mcp_mode_message() == "Invalid mode; expected: hybrid, semantic, keyword"
@@ -296,6 +331,8 @@ def test_shared_error_contract_messages_are_stable() -> None:
     assert saved_query_not_found_message() == "Saved query not found"
     assert dashboards_disabled_message() == "Dashboards are disabled"
     assert dashboard_not_found_message() == "Dashboard not found"
+    assert analytics_active_dataset_only_message() == "Analytics is available only for the active dataset"
+    assert internal_server_error_message() == "Internal server error"
     assert saved_query_missing_message("q-1") == "Saved query q-1 not found"
     assert saved_query_invalid_message("q-1") == "Saved query q-1 is invalid"
     assert invalid_saved_query_mode_message() == "Invalid search mode in saved query"
