@@ -6,6 +6,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Query
 
 import searchat.api.dependencies as deps
+from searchat.api.contracts import serialize_statistics_payload
 from searchat.api import state as api_state
 from searchat.api.dataset_access import get_dataset_store
 
@@ -25,25 +26,11 @@ async def get_statistics(snapshot: str | None = Query(None, description="Backup 
 
     if snapshot_name is not None:
         stats = store.get_statistics()
-        return {
-            "total_conversations": stats.total_conversations,
-            "total_messages": stats.total_messages,
-            "avg_messages": stats.avg_messages,
-            "total_projects": stats.total_projects,
-            "earliest_date": stats.earliest_date,
-            "latest_date": stats.latest_date,
-        }
+        return serialize_statistics_payload(stats)
 
     if api_state.stats_cache is None:
         stats = store.get_statistics()
-        api_state.stats_cache = {
-            "total_conversations": stats.total_conversations,
-            "total_messages": stats.total_messages,
-            "avg_messages": stats.avg_messages,
-            "total_projects": stats.total_projects,
-            "earliest_date": stats.earliest_date,
-            "latest_date": stats.latest_date,
-        }
+        api_state.stats_cache = serialize_statistics_payload(stats)
     return api_state.stats_cache
 
 

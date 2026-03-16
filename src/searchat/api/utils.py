@@ -264,23 +264,9 @@ def sort_results(results: list[SearchResult], sort_by: str) -> list[SearchResult
 
 def search_result_to_response(r: SearchResult) -> object:
     """Convert a SearchResult domain object to a SearchResultResponse dict."""
-    from searchat.api.models import SearchResultResponse
+    from searchat.api.contracts import serialize_search_result
 
-    return SearchResultResponse(
-        conversation_id=r.conversation_id,
-        project_id=r.project_id,
-        title=r.title,
-        created_at=r.created_at.isoformat(),
-        updated_at=r.updated_at.isoformat(),
-        message_count=r.message_count,
-        file_path=r.file_path,
-        snippet=r.snippet,
-        score=r.score,
-        message_start_index=r.message_start_index,
-        message_end_index=r.message_end_index,
-        source=detect_source_from_path(r.file_path),
-        tool=detect_tool_from_path(r.file_path),
-    )
+    return serialize_search_result(r)
 
 
 def ensure_code_index_has_symbol_columns(conn, parquet_glob: str) -> None:

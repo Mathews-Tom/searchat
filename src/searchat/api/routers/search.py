@@ -5,6 +5,7 @@ from functools import lru_cache
 
 from fastapi import APIRouter, Query, HTTPException
 
+from searchat.api.contracts import serialize_projects_payload, serialize_search_payload
 from searchat.models import SearchMode, SearchFilters
 from searchat.services.highlight_service import extract_highlight_terms
 from searchat.services.llm_service import LLMServiceError
@@ -13,7 +14,6 @@ from searchat.api.utils import (
     parse_date_filter,
     validate_tool,
     sort_results,
-    search_result_to_response,
     ensure_code_index_has_symbol_columns,
     rows_to_code_results,
 )
@@ -226,17 +226,14 @@ async def search(
         total_results = len(sorted_results)
         paginated_results = sorted_results[offset:offset + limit]
 
-        response_results = [search_result_to_response(r) for r in paginated_results]
-
-        return {
-            "results": response_results,
-            "total": total_results,
-            "search_time_ms": results.search_time_ms,
-            "limit": limit,
-            "offset": offset,
-            "has_more": (offset + limit) < total_results,
-            "highlight_terms": highlight_terms,
-        }
+        return serialize_search_payload(
+            results=paginated_results,
+            total=total_results,
+            search_time_ms=results.search_time_ms,
+            limit=limit,
+            offset=offset,
+            highlight_terms=highlight_terms,
+        )
 
     except HTTPException:
         raise
@@ -252,10 +249,10 @@ async def get_projects(snapshot: str | None = Query(None, description="Backup sn
     store = dataset.store
 
     if snapshot_name is not None:
-        return store.list_projects()
+        return serialize_projects_payload(store.list_projects())
 
     if api_state.projects_cache is None:
-        api_state.projects_cache = store.list_projects()
+        api_state.projects_cache = serialize_projects_payload(store.list_projects())
     return api_state.projects_cache
 
 
