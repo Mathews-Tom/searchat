@@ -13,6 +13,7 @@ from searchat.api.contracts import (
     serialize_docs_summary_payload,
     serialize_agent_config_payload,
     serialize_index_missing_payload,
+    serialize_resume_session_payload,
     serialize_shutdown_blocked_payload,
     serialize_shutdown_payload,
     serialize_watcher_status_payload,
@@ -50,9 +51,14 @@ from searchat.contracts.errors import (
     dashboard_not_found_message,
     dashboards_disabled_message,
     bookmark_not_found_message,
+    bulk_export_no_ids_message,
+    bulk_export_too_many_message,
+    conversation_not_found_message_simple,
     conversation_not_found_message,
+    export_disabled_message,
     highlight_provider_required_message,
     invalid_highlight_provider_message,
+    invalid_export_format_message,
     invalid_mcp_mode_message,
     invalid_mcp_tool_message,
     invalid_search_mode_message,
@@ -66,6 +72,8 @@ from searchat.contracts.errors import (
     mcp_similarity_limit_message,
     no_embeddings_for_conversation_message,
     reindex_blocked_message,
+    resume_command_not_found_message,
+    resume_snapshot_disabled_message,
     saved_query_not_found_message,
     saved_query_invalid_message,
     saved_query_missing_message,
@@ -495,6 +503,19 @@ def test_serialize_admin_and_indexing_payloads_preserve_shapes() -> None:
         "time_seconds",
     ]
 
+    assert serialize_resume_session_payload(
+        tool="claude",
+        cwd="/tmp/project",
+        command="claude --resume conv-1",
+        platform="darwin",
+    ) == {
+        "success": True,
+        "tool": "claude",
+        "cwd": "/tmp/project",
+        "command": "claude --resume conv-1",
+        "platform": "darwin",
+    }
+
 
 def test_shared_error_contract_messages_are_stable() -> None:
     assert invalid_search_mode_message() == "Invalid search mode"
@@ -519,6 +540,14 @@ def test_shared_error_contract_messages_are_stable() -> None:
     assert tech_docs_disabled_message() == "Tech docs generator is disabled"
     assert reindex_blocked_message().startswith("BLOCKED: Reindexing disabled")
     assert indexing_snapshot_disabled_message() == "Indexing is disabled in snapshot mode"
+    assert resume_snapshot_disabled_message() == "Resume is disabled in snapshot mode"
+    assert conversation_not_found_message_simple() == "Conversation not found"
+    assert export_disabled_message("Notebook") == "Notebook export is disabled"
+    assert export_disabled_message("PDF") == "PDF export is disabled"
+    assert invalid_export_format_message() == "Invalid format. Use: json, markdown, text, ipynb, or pdf"
+    assert bulk_export_no_ids_message() == "No conversation IDs provided"
+    assert bulk_export_too_many_message() == "Too many conversations (max 100)"
+    assert resume_command_not_found_message("claude") == "Failed to execute command. Make sure claude is installed and in PATH."
     assert saved_query_missing_message("q-1") == "Saved query q-1 not found"
     assert saved_query_invalid_message("q-1") == "Saved query q-1 is invalid"
     assert invalid_saved_query_mode_message() == "Invalid search mode in saved query"

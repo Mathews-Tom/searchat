@@ -44,6 +44,7 @@ def test_export_ipynb_disabled_returns_404(client, export_config_disabled):
             resp = client.get("/api/conversation/conv-123/export?format=ipynb")
 
     assert resp.status_code == 404
+    assert resp.json()["detail"] == "Notebook export is disabled"
 
 
 def test_export_ipynb_enabled_returns_valid_notebook(client, export_config_enabled):
@@ -90,6 +91,7 @@ def test_export_pdf_disabled_returns_404(client, export_config_disabled):
             resp = client.get("/api/conversation/conv-123/export?format=pdf")
 
     assert resp.status_code == 404
+    assert resp.json()["detail"] == "PDF export is disabled"
 
 
 def test_export_pdf_enabled_returns_pdf_bytes(client, export_config_enabled):
@@ -124,3 +126,4 @@ def test_bulk_export_ipynb_disabled_returns_404(client, export_config_disabled):
             json={"conversation_ids": ["conv-1"], "format": "ipynb"},
         )
     assert resp.status_code == 404
+    assert resp.json()["detail"] == "Notebook export is disabled"

@@ -601,6 +601,34 @@ def test_admin_and_indexing_routes_preserve_stable_contracts() -> None:
     ]
 
 
+def test_resume_and_export_routes_preserve_stable_contracts() -> None:
+    client = TestClient(app)
+    store = Mock()
+    store.get_conversation_meta.return_value = {
+        "conversation_id": "conv-1",
+        "file_path": "/tmp/conv-1.jsonl",
+    }
+    platform_manager = Mock()
+    platform_manager.platform = "darwin"
+    platform_manager.normalize_path.return_value = "/tmp/project"
+
+    with patch("searchat.api.routers.conversations.deps.get_duckdb_store", return_value=store):
+        with patch("searchat.api.routers.conversations.get_platform_manager", return_value=platform_manager):
+            with patch(
+                "searchat.api.routers.conversations.read_file_async",
+                return_value='{"type":"user","cwd":"/tmp/project","message":{"content":"hi"}}\n',
+            ):
+                resume_response = client.post("/api/resume", json={"conversation_id": "conv-1"})
+
+    assert resume_response.status_code == 200
+    assert list(resume_response.json()) == ["success", "tool", "cwd", "command", "platform"]
+
+    with patch("searchat.api.routers.conversations.get_conversation", return_value=SimpleNamespace()):
+        export_response = client.get("/api/conversation/conv-1/export?format=xml")
+    assert export_response.status_code == 400
+    assert export_response.json()["detail"] == "Invalid format. Use: json, markdown, text, ipynb, or pdf"
+
+
 def test_search_and_similarity_routes_preserve_stable_error_messages() -> None:
     client = TestClient(app)
     dataset = SimpleNamespace(

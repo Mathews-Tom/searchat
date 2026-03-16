@@ -976,6 +976,7 @@ class TestResumeSessionEndpoint:
                 assert response.status_code == 200
                 data = response.json()
 
+                assert list(data) == ["success", "tool", "cwd", "command", "platform"]
                 assert data["success"] is True
                 assert data["tool"] == "claude"
                 assert data["cwd"] == "/home/user/project"
@@ -1019,6 +1020,7 @@ class TestResumeSessionEndpoint:
                 assert response.status_code == 200
                 data = response.json()
 
+                assert list(data) == ["success", "tool", "cwd", "command", "platform"]
                 assert data["success"] is True
                 assert data["tool"] == "vibe"
                 assert data["cwd"] == "/home/user/vibe-project"
@@ -1031,7 +1033,7 @@ class TestResumeSessionEndpoint:
                 response = client.post("/api/resume", json={"conversation_id": "nonexistent"})
 
                 assert response.status_code == 404
-                assert "not found" in response.json()["detail"]
+                assert response.json()["detail"] == "Conversation not found"
 
     def test_resume_unknown_format(self, client, mock_duckdb_store, mock_platform_manager, tmp_path):
         """Test error for unknown conversation format."""
@@ -1072,6 +1074,7 @@ class TestResumeSessionEndpoint:
                 assert response.status_code == 200
                 data = response.json()
 
+                assert list(data) == ["success", "tool", "cwd", "command", "platform"]
                 # Path should be normalized
                 assert data["cwd"] == "C:\\Users\\Test\\project"
                 mock_platform_manager.normalize_path.assert_called_once_with("/mnt/c/Users/Test/project")
@@ -1098,6 +1101,7 @@ class TestResumeSessionEndpoint:
                 assert response.status_code == 200
                 data = response.json()
 
+                assert list(data) == ["success", "tool", "cwd", "command", "platform"]
                 # cwd should be None
                 assert data["cwd"] is None
                 # Should still open terminal
