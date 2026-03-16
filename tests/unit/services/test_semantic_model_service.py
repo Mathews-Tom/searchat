@@ -3,6 +3,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from searchat.services.semantic_model_service import (
+    EmbeddingModelUnavailable,
+    RerankingModelUnavailable,
     build_embedding_service,
     build_reranking_service,
 )
@@ -57,3 +59,49 @@ def test_build_reranking_service_uses_configured_model(monkeypatch):
 
     assert service is not None
     assert calls == {"model_name": "cross-encoder/ms-marco-MiniLM-L-6-v2"}
+
+
+def test_build_embedding_service_wraps_load_failures(monkeypatch):
+    def _boom(*args, **kwargs):
+        raise RuntimeError("model load failed")
+
+    monkeypatch.setattr(
+        "sentence_transformers.SentenceTransformer",
+        _boom,
+    )
+
+    config = SimpleNamespace(
+        embedding=SimpleNamespace(
+            model="all-MiniLM-L6-v2",
+            get_device=lambda: "cpu",
+        )
+    )
+
+    try:
+        build_embedding_service(config)
+        raise AssertionError("expected EmbeddingModelUnavailable")
+    except EmbeddingModelUnavailable as exc:
+        assert str(exc) == "Embedding model unavailable: all-MiniLM-L6-v2"
+
+
+def test_build_reranking_service_wraps_load_failures(monkeypatch):
+    def _boom(*args, **kwargs):
+        raise RuntimeError("model load failed")
+
+    monkeypatch.setattr(
+        "sentence_transformers.CrossEncoder",
+        _boom,
+        raising=False,
+    )
+
+    config = SimpleNamespace(
+        reranking=SimpleNamespace(
+            model="cross-encoder/ms-marco-MiniLM-L-6-v2",
+        )
+    )
+
+    try:
+        build_reranking_service(config)
+        raise AssertionError("expected RerankingModelUnavailable")
+    except RerankingModelUnavailable as exc:
+        assert str(exc) == "Reranking model unavailable: cross-encoder/ms-marco-MiniLM-L-6-v2"

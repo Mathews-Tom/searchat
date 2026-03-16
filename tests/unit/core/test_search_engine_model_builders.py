@@ -17,6 +17,10 @@ from searchat.config.constants import (
 from searchat.core.search_engine import SearchEngine
 from searchat.models import SearchFilters, SearchMode, SearchResult
 from searchat.services.retrieval_service import SemanticSearchUnavailable
+from searchat.services.semantic_model_service import (
+    EmbeddingModelUnavailable,
+    RerankingModelUnavailable,
+)
 
 
 def _prepare_search_dir(search_dir: Path, cfg: Config) -> None:
@@ -201,6 +205,72 @@ def test_search_engine_describe_capabilities_reflects_config_and_index(temp_sear
     assert capabilities.semantic_reason is None
     assert capabilities.reranking_available is False
     assert capabilities.reranking_reason == "Reranking is disabled"
+
+
+@pytest.mark.unit
+def test_search_engine_describe_capabilities_reflects_embedder_load_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    temp_search_dir: Path,
+):
+    cfg = Config.load()
+    _prepare_search_dir(temp_search_dir, cfg)
+
+    monkeypatch.setattr(
+        "searchat.core.search_engine.build_embedding_service",
+        lambda _config: (_ for _ in ()).throw(
+            EmbeddingModelUnavailable(f"Embedding model unavailable: {cfg.embedding.model}")
+        ),
+    )
+
+    engine = SearchEngine(temp_search_dir, cfg)
+
+    with pytest.raises(SemanticSearchUnavailable, match="Embedding model unavailable:"):
+        engine.ensure_embedder_loaded()
+
+    capabilities = engine.describe_capabilities()
+    assert capabilities.semantic_available is False
+    assert capabilities.semantic_reason == f"Embedding model unavailable: {cfg.embedding.model}"
+
+
+@pytest.mark.unit
+def test_search_engine_describe_capabilities_reflects_reranker_load_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    temp_search_dir: Path,
+):
+    cfg = Config.load()
+    cfg.reranking.enabled = True
+    _prepare_search_dir(temp_search_dir, cfg)
+
+    monkeypatch.setattr(
+        "searchat.core.search_engine.build_reranking_service",
+        lambda _config: (_ for _ in ()).throw(
+            RerankingModelUnavailable(f"Reranking model unavailable: {cfg.reranking.model}")
+        ),
+    )
+
+    engine = SearchEngine(temp_search_dir, cfg)
+
+    now = datetime.now(timezone.utc)
+    results = [
+        SearchResult(
+            conversation_id="conv-1",
+            project_id="p",
+            title="Title 1",
+            created_at=now,
+            updated_at=now,
+            message_count=1,
+            file_path="/tmp/1.jsonl",
+            score=0.8,
+            snippet="first snippet",
+        )
+    ]
+
+    reranked = engine._rerank("query text", results)
+    assert [result.conversation_id for result in reranked] == ["conv-1"]
+
+    capabilities = engine.describe_capabilities()
+    assert capabilities.reranking_available is False
+    assert capabilities.reranking_reason == f"Reranking model unavailable: {cfg.reranking.model}"
 
 
 @pytest.mark.unit
