@@ -862,7 +862,7 @@ class TestGetConversationEndpoint:
             response = client.get("/api/conversation/nonexistent")
 
             assert response.status_code == 404
-            assert "not found in index" in response.json()["detail"]
+            assert response.json()["detail"] == "Conversation not found in index"
 
     def test_get_conversation_file_not_found(self, client, mock_duckdb_store):
         """Test error when conversation file doesn't exist."""
@@ -871,7 +871,10 @@ class TestGetConversationEndpoint:
             response = client.get("/api/conversation/conv-1")
 
             assert response.status_code == 404
-            assert "file not found" in response.json()["detail"].lower()
+            assert response.json()["detail"] == (
+                "Conversation file not found. The file may have been moved or deleted: "
+                "/home/user/.claude/conv-1.jsonl"
+            )
 
     def test_get_conversation_invalid_json(self, client, mock_duckdb_store, tmp_path):
         """Test error handling for invalid JSON in conversation file."""
@@ -887,7 +890,7 @@ class TestGetConversationEndpoint:
             response = client.get("/api/conversation/conv-1")
 
             assert response.status_code == 500
-            assert "invalid JSON" in response.json()["detail"]
+            assert response.json()["detail"] == "Failed to parse conversation file (invalid JSON)"
 
     def test_get_conversation_with_list_content(self, client, mock_duckdb_store, tmp_path):
         """Test handling of content as list (text blocks)."""
@@ -1172,6 +1175,7 @@ async def test_conversation_diff_rejects_invalid_target_id_type() -> None:
     with pytest.raises(HTTPException) as excinfo:
         await conv_router.get_conversation_diff("conv-1", target_id=123)  # type: ignore[arg-type]
     assert excinfo.value.status_code == 400
+    assert excinfo.value.detail == "Invalid target conversation id"
 
 
 @pytest.mark.asyncio
@@ -1211,5 +1215,41 @@ async def test_conversation_diff_computes_added_removed_counts(monkeypatch: pyte
         source_start=0,
         source_end=1,
     )
+    assert list(payload) == [
+        "source_conversation_id",
+        "target_conversation_id",
+        "summary",
+        "added",
+        "removed",
+        "unchanged",
+    ]
     assert payload["summary"]["added"] >= 1
     assert payload["summary"]["removed"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_get_conversation_code_preserves_stable_payload(monkeypatch: pytest.MonkeyPatch) -> None:
+    from searchat.api.routers import conversations as conv_router
+    from searchat.api.models import ConversationMessage
+
+    conversation = SimpleNamespace(
+        title="Code review",
+        messages=[
+            ConversationMessage(
+                role="assistant",
+                content="```python\nprint('hi')\n```",
+                timestamp="2026-03-16T00:00:00Z",
+            )
+        ],
+    )
+
+    async def _fake_get_conversation(conversation_id: str, snapshot=None):
+        return conversation
+
+    monkeypatch.setattr(conv_router, "get_conversation", _fake_get_conversation)
+
+    payload = await conv_router.get_conversation_code("conv-1")
+
+    assert list(payload) == ["conversation_id", "title", "total_blocks", "code_blocks"]
+    assert payload["conversation_id"] == "conv-1"
+    assert payload["total_blocks"] == 1

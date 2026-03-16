@@ -629,6 +629,58 @@ def test_resume_and_export_routes_preserve_stable_contracts() -> None:
     assert export_response.json()["detail"] == "Invalid format. Use: json, markdown, text, ipynb, or pdf"
 
 
+def test_conversation_detail_code_and_diff_routes_preserve_stable_contracts() -> None:
+    client = TestClient(app)
+
+    store = Mock()
+    store.get_conversation_meta.return_value = None
+
+    dataset = SimpleNamespace(store=store, snapshot_name=None)
+
+    with patch("searchat.api.routers.conversations.get_dataset_store", return_value=dataset):
+        detail_response = client.get("/api/conversation/missing")
+
+    assert detail_response.status_code == 404
+    assert detail_response.json()["detail"] == "Conversation not found in index"
+
+    with patch(
+        "searchat.api.routers.conversations.get_conversation",
+        return_value=SimpleNamespace(
+            title="Code sample",
+            messages=[
+                SimpleNamespace(
+                    role="assistant",
+                    content="```python\nprint('hi')\n```",
+                    timestamp="2026-03-16T00:00:00Z",
+                )
+            ],
+        ),
+    ):
+        code_response = client.get("/api/conversation/conv-1/code")
+
+    assert code_response.status_code == 200
+    assert list(code_response.json()) == ["conversation_id", "title", "total_blocks", "code_blocks"]
+
+    with patch(
+        "searchat.api.routers.conversations.get_conversation",
+        side_effect=[
+            SimpleNamespace(messages=[SimpleNamespace(role="user", content="a", timestamp="")]),
+            SimpleNamespace(messages=[SimpleNamespace(role="user", content="b", timestamp="")]),
+        ],
+    ):
+        diff_response = client.get("/api/conversation/conv-1/diff?target_id=conv-2")
+
+    assert diff_response.status_code == 200
+    assert list(diff_response.json()) == [
+        "source_conversation_id",
+        "target_conversation_id",
+        "summary",
+        "added",
+        "removed",
+        "unchanged",
+    ]
+
+
 def test_search_and_similarity_routes_preserve_stable_error_messages() -> None:
     client = TestClient(app)
     dataset = SimpleNamespace(

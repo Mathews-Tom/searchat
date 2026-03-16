@@ -10,6 +10,8 @@ from searchat.api.contracts import (
     serialize_backup_restore_payload,
     serialize_backup_summary_fallback,
     serialize_backups_payload,
+    serialize_conversation_code_payload,
+    serialize_conversation_diff_payload,
     serialize_docs_summary_payload,
     serialize_agent_config_payload,
     serialize_index_missing_payload,
@@ -53,6 +55,12 @@ from searchat.contracts.errors import (
     bookmark_not_found_message,
     bulk_export_no_ids_message,
     bulk_export_too_many_message,
+    conversation_encoding_error_message,
+    conversation_file_missing_message,
+    conversation_file_missing_with_record_message,
+    conversation_invalid_json_message,
+    conversation_not_found_in_index_message,
+    conversation_not_found_in_snapshot_message,
     conversation_not_found_message_simple,
     conversation_not_found_message,
     export_disabled_message,
@@ -64,6 +72,7 @@ from searchat.contracts.errors import (
     invalid_search_mode_message,
     invalid_saved_query_mode_message,
     invalid_saved_query_tool_filter_message,
+    invalid_target_conversation_id_message,
     invalid_tool_filter_message,
     indexing_snapshot_disabled_message,
     internal_server_error_message,
@@ -71,6 +80,7 @@ from searchat.contracts.errors import (
     mcp_search_limit_message,
     mcp_similarity_limit_message,
     no_embeddings_for_conversation_message,
+    no_similar_conversation_found_message,
     reindex_blocked_message,
     resume_command_not_found_message,
     resume_snapshot_disabled_message,
@@ -78,6 +88,7 @@ from searchat.contracts.errors import (
     saved_query_invalid_message,
     saved_query_missing_message,
     snapshot_not_found_message,
+    target_conversation_not_found_message,
     tech_docs_disabled_message,
 )
 from searchat.models import SearchResult
@@ -516,6 +527,31 @@ def test_serialize_admin_and_indexing_payloads_preserve_shapes() -> None:
         "platform": "darwin",
     }
 
+    code_payload = serialize_conversation_code_payload(
+        conversation_id="conv-1",
+        title="Code blocks",
+        code_blocks=[{"message_index": 0, "language": "python", "code": "print('hi')"}],
+    )
+    assert list(code_payload) == ["conversation_id", "title", "total_blocks", "code_blocks"]
+    assert code_payload["total_blocks"] == 1
+
+    diff_payload = serialize_conversation_diff_payload(
+        source_conversation_id="conv-1",
+        target_conversation_id="conv-2",
+        added=["new line"],
+        removed=["old line"],
+        unchanged=["same line"],
+    )
+    assert list(diff_payload) == [
+        "source_conversation_id",
+        "target_conversation_id",
+        "summary",
+        "added",
+        "removed",
+        "unchanged",
+    ]
+    assert diff_payload["summary"] == {"added": 1, "removed": 1, "unchanged": 1}
+
 
 def test_shared_error_contract_messages_are_stable() -> None:
     assert invalid_search_mode_message() == "Invalid search mode"
@@ -542,6 +578,16 @@ def test_shared_error_contract_messages_are_stable() -> None:
     assert indexing_snapshot_disabled_message() == "Indexing is disabled in snapshot mode"
     assert resume_snapshot_disabled_message() == "Resume is disabled in snapshot mode"
     assert conversation_not_found_message_simple() == "Conversation not found"
+    assert conversation_not_found_in_index_message() == "Conversation not found in index"
+    assert conversation_not_found_in_snapshot_message() == "Conversation not found in snapshot"
+    assert conversation_file_missing_with_record_message("/tmp/missing.jsonl").endswith(
+        "The file may have been moved or deleted: /tmp/missing.jsonl"
+    )
+    assert conversation_file_missing_message("/tmp/missing.jsonl") == (
+        "Conversation file not found. The file may have been moved or deleted: /tmp/missing.jsonl"
+    )
+    assert conversation_invalid_json_message() == "Failed to parse conversation file (invalid JSON)"
+    assert conversation_encoding_error_message() == "Failed to read conversation file (encoding error)"
     assert export_disabled_message("Notebook") == "Notebook export is disabled"
     assert export_disabled_message("PDF") == "PDF export is disabled"
     assert invalid_export_format_message() == "Invalid format. Use: json, markdown, text, ipynb, or pdf"
@@ -553,6 +599,9 @@ def test_shared_error_contract_messages_are_stable() -> None:
     assert invalid_saved_query_mode_message() == "Invalid search mode in saved query"
     assert invalid_saved_query_tool_filter_message() == "Invalid tool filter in saved query"
     assert no_embeddings_for_conversation_message() == "No embeddings found for this conversation"
+    assert no_similar_conversation_found_message() == "No similar conversation found"
+    assert target_conversation_not_found_message() == "Target conversation not found"
+    assert invalid_target_conversation_id_message() == "Invalid target conversation id"
     assert mcp_search_limit_message() == "limit must be between 1 and 100"
     assert mcp_similarity_limit_message() == "limit must be between 1 and 20"
     assert mcp_offset_message() == "offset must be >= 0"
