@@ -99,6 +99,17 @@ def tech_docs_disabled_message() -> str:
     return "Tech docs generator is disabled"
 
 
+def reindex_blocked_message() -> str:
+    return (
+        "BLOCKED: Reindexing disabled to protect irreplaceable conversation data. "
+        "Source JSONLs are missing - rebuilding would cause data loss."
+    )
+
+
+def indexing_snapshot_disabled_message() -> str:
+    return "Indexing is disabled in snapshot mode"
+
+
 def no_embeddings_for_conversation_message() -> str:
     return "No embeddings found for this conversation"
 

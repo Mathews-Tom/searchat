@@ -398,3 +398,67 @@ def serialize_agent_config_payload(
         "pattern_count": pattern_count,
         "project_filter": project_filter,
     }
+
+
+def serialize_watcher_status_payload(
+    *,
+    running: bool,
+    watched_directories: list[str],
+    indexed_since_start: int,
+    last_update: str | None,
+) -> dict[str, Any]:
+    return {
+        "running": running,
+        "watched_directories": watched_directories,
+        "indexed_since_start": indexed_since_start,
+        "last_update": last_update,
+    }
+
+
+def serialize_shutdown_blocked_payload(
+    *,
+    operation: str,
+    files_total: int,
+    elapsed_seconds: float,
+    message: str,
+) -> dict[str, Any]:
+    return {
+        "success": False,
+        "indexing_in_progress": True,
+        "operation": operation,
+        "files_total": files_total,
+        "elapsed_seconds": elapsed_seconds,
+        "message": message,
+    }
+
+
+def serialize_shutdown_payload(*, forced: bool, message: str) -> dict[str, Any]:
+    return {
+        "success": True,
+        "forced": forced,
+        "message": message,
+    }
+
+
+def serialize_index_missing_payload(
+    *,
+    new_conversations: int,
+    failed_conversations: int,
+    empty_conversations: int,
+    total_files: int,
+    already_indexed: int,
+    message: str,
+    time_seconds: float | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "success": True,
+        "new_conversations": new_conversations,
+        "failed_conversations": failed_conversations,
+        "empty_conversations": empty_conversations,
+        "total_files": total_files,
+        "already_indexed": already_indexed,
+        "message": message,
+    }
+    if time_seconds is not None:
+        payload["time_seconds"] = time_seconds
+    return payload
