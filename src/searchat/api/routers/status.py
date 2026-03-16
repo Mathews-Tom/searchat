@@ -6,6 +6,7 @@ from fastapi import APIRouter
 
 import searchat.api.dependencies as deps
 from searchat.api.readiness import get_readiness
+from searchat.api.utils import get_retrieval_capabilities_snapshot
 
 
 router = APIRouter()
@@ -24,6 +25,7 @@ async def get_status():
         "components": snap.components,
         "watcher": snap.watcher,
         "errors": snap.errors,
+        "retrieval": get_retrieval_capabilities_snapshot(),
     }
 
 
@@ -50,4 +52,5 @@ async def get_features():
         "snapshots": {
             "enabled": config.snapshots.enabled,
         },
+        "retrieval": get_retrieval_capabilities_snapshot(),
     }

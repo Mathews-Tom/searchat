@@ -29,7 +29,7 @@ async def chat(
     provider = validate_provider(request.model_provider)
 
     extra = ["embedded_model"] if provider == "embedded" else None
-    not_ready = check_semantic_readiness(extra)
+    not_ready = check_semantic_readiness(extra, retrieval_service=get_search_engine)
     if not_ready is not None:
         return not_ready
 
@@ -68,7 +68,7 @@ async def chat_rag(
     provider = validate_provider(request.model_provider)
 
     extra = ["embedded_model"] if provider == "embedded" else None
-    not_ready = check_semantic_readiness(extra)
+    not_ready = check_semantic_readiness(extra, retrieval_service=get_search_engine)
     if not_ready is not None:
         return not_ready
 
