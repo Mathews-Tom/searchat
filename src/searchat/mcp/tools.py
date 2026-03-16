@@ -8,6 +8,7 @@ from searchat.config import Config, PathResolver
 from searchat.config.constants import VALID_TOOL_NAMES, RAG_SYSTEM_PROMPT
 from searchat.contracts.errors import (
     conversation_not_found_message,
+    invalid_model_provider_message,
     invalid_mcp_mode_message,
     invalid_mcp_tool_message,
     mcp_offset_message,
@@ -82,6 +83,17 @@ def parse_tool(tool: str | None) -> str | None:
         return None
     if value not in VALID_TOOL_NAMES:
         raise ValueError(invalid_mcp_tool_message())
+    return value
+
+
+def parse_generation_provider(provider: str | None) -> str | None:
+    if provider is None:
+        return None
+    value = provider.lower().strip()
+    if not value:
+        return None
+    if value not in {"openai", "ollama", "embedded"}:
+        raise ValueError(invalid_model_provider_message())
     return value
 
 
@@ -278,12 +290,13 @@ def ask_about_history(
     model_name: str | None = None,
     search_dir: str | None = None,
 ) -> str:
+    provider_value = parse_generation_provider(model_provider)
     dataset_dir = resolve_dataset(search_dir)
     config, engine, _store = build_services(dataset_dir)
 
     target = resolve_generation_target(
         config.llm,
-        provider=model_provider,
+        provider=provider_value,
         model_name=model_name,
     )
 
@@ -350,12 +363,13 @@ def extract_patterns(
     """
     from searchat.services.pattern_mining import extract_patterns as _extract_patterns
 
+    provider_value = parse_generation_provider(model_provider)
     dataset_dir = resolve_dataset(search_dir)
     config, engine, _store = build_services(dataset_dir)
 
     target = resolve_generation_target(
         config.llm,
-        provider=model_provider,
+        provider=provider_value,
         model_name=model_name,
     )
 
@@ -576,12 +590,13 @@ def generate_agent_config(
     if format not in ("claude.md", "copilot-instructions.md", "cursorrules"):
         raise ValueError("format must be one of: claude.md, copilot-instructions.md, cursorrules")
 
+    provider_value = parse_generation_provider(model_provider)
     dataset_dir = resolve_dataset(search_dir)
     config, engine, _store = build_services(dataset_dir)
 
     target = resolve_generation_target(
         config.llm,
-        provider=model_provider,
+        provider=provider_value,
         model_name=model_name,
     )
 

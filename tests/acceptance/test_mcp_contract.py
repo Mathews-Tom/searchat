@@ -336,3 +336,14 @@ def test_mcp_tools_preserve_stable_validation_and_not_found_messages(tmp_path: P
     ):
         with pytest.raises(ValueError, match=r"^Conversation not found: conv-404$"):
             find_similar_conversations(conversation_id="conv-404", search_dir=str(tmp_path))
+
+    with patch("searchat.mcp.tools.build_services", side_effect=AssertionError("should not build")):
+        with pytest.raises(
+            ValueError,
+            match=r"^model_provider must be 'openai', 'ollama', or 'embedded'\.$",
+        ):
+            ask_about_history(
+                question="What changed?",
+                model_provider="azure",
+                search_dir=str(tmp_path),
+            )

@@ -345,14 +345,11 @@ class TestGenerateAgentConfig:
     def test_invalid_provider_raises(self, tmp_path: Path):
         from searchat.mcp.tools import generate_agent_config
 
-        cfg = MagicMock()
-        cfg.llm.default_provider = "openai"
-
-        with (
-            patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
-            patch("searchat.mcp.tools.build_services", return_value=(cfg, MagicMock(), MagicMock())),
-        ):
-            with pytest.raises(ValueError, match="model_provider must be"):
+        with patch("searchat.mcp.tools.build_services", side_effect=AssertionError("should not build")):
+            with pytest.raises(
+                ValueError,
+                match="model_provider must be 'openai', 'ollama', or 'embedded'.",
+            ):
                 generate_agent_config(model_provider="azure")
 
     def test_returns_json_with_content(self, tmp_path: Path):
@@ -378,3 +375,25 @@ class TestGenerateAgentConfig:
         assert parsed["format"] == "claude.md"
         assert parsed["pattern_count"] == 1
         assert "content" in parsed
+
+
+class TestProviderValidation:
+    def test_ask_about_history_invalid_provider_fails_fast(self):
+        from searchat.mcp.tools import ask_about_history
+
+        with patch("searchat.mcp.tools.build_services", side_effect=AssertionError("should not build")):
+            with pytest.raises(
+                ValueError,
+                match="model_provider must be 'openai', 'ollama', or 'embedded'.",
+            ):
+                ask_about_history(question="What changed?", model_provider="azure")
+
+    def test_extract_patterns_invalid_provider_fails_fast(self):
+        from searchat.mcp.tools import extract_patterns
+
+        with patch("searchat.mcp.tools.build_services", side_effect=AssertionError("should not build")):
+            with pytest.raises(
+                ValueError,
+                match="model_provider must be 'openai', 'ollama', or 'embedded'.",
+            ):
+                extract_patterns(topic="testing", model_provider="azure")
