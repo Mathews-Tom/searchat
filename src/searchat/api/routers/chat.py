@@ -29,7 +29,7 @@ async def chat(
     provider = validate_provider(request.model_provider)
 
     extra = ["embedded_model"] if provider == "embedded" else None
-    not_ready = check_semantic_readiness(extra)
+    not_ready = check_semantic_readiness(extra, retrieval_service=get_search_engine)
     if not_ready is not None:
         return not_ready
 
@@ -66,15 +66,16 @@ async def chat_rag(
     if snapshot is not None:
         raise HTTPException(status_code=403, detail="Chat is disabled in snapshot mode")
     provider = validate_provider(request.model_provider)
+    config = get_config()
+    chat_config = getattr(config, "chat", None)
+    if getattr(chat_config, "enable_rag", True) is False:
+        raise HTTPException(status_code=404, detail="RAG chat endpoint is disabled.")
 
     extra = ["embedded_model"] if provider == "embedded" else None
-    not_ready = check_semantic_readiness(extra)
+    not_ready = check_semantic_readiness(extra, retrieval_service=get_search_engine)
     if not_ready is not None:
         return not_ready
 
-    config = get_config()
-    if not config.chat.enable_rag:
-        raise HTTPException(status_code=404, detail="RAG chat endpoint is disabled.")
     retrieval_service = get_search_engine()
     try:
         generation = generate_rag_response(

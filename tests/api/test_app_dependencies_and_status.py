@@ -4,9 +4,10 @@ import asyncio
 import importlib
 import os
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -77,12 +78,26 @@ async def test_status_endpoint_returns_readiness_snapshot() -> None:
     payload = await get_status()
 
     assert payload["components"]["services"] == "ready"
-    assert set(payload.keys()) == {"server_started_at", "warmup_started_at", "components", "watcher", "errors"}
+    assert set(payload.keys()) == {
+        "server_started_at",
+        "warmup_started_at",
+        "components",
+        "watcher",
+        "errors",
+        "retrieval",
+    }
 
 
 def test_status_features_endpoint_returns_flags(monkeypatch: pytest.MonkeyPatch) -> None:
     from searchat.api.app import app
 
+    retrieval_service = Mock()
+    retrieval_service.describe_capabilities.return_value = SimpleNamespace(
+        semantic_available=False,
+        reranking_available=True,
+        semantic_reason="Embedding model unavailable: all-MiniLM-L6-v2",
+        reranking_reason=None,
+    )
     config = SimpleNamespace(
         analytics=SimpleNamespace(enabled=True),
         chat=SimpleNamespace(enable_rag=True, enable_citations=False),
@@ -91,6 +106,7 @@ def test_status_features_endpoint_returns_flags(monkeypatch: pytest.MonkeyPatch)
         snapshots=SimpleNamespace(enabled=True),
     )
     monkeypatch.setattr("searchat.api.routers.status.deps.get_config", lambda: config)
+    monkeypatch.setattr("searchat.api.dependencies._search_engine", retrieval_service)
 
     client = TestClient(app)
     resp = client.get("/api/status/features")
@@ -101,6 +117,33 @@ def test_status_features_endpoint_returns_flags(monkeypatch: pytest.MonkeyPatch)
     assert data["chat"]["enable_citations"] is False
     assert data["export"]["enable_pdf"] is True
     assert data["snapshots"]["enabled"] is True
+    assert data["retrieval"]["semantic_available"] is False
+    assert data["retrieval"]["semantic_reason"] == "Embedding model unavailable: all-MiniLM-L6-v2"
+
+
+@pytest.mark.asyncio
+async def test_status_endpoint_includes_retrieval_capabilities(monkeypatch: pytest.MonkeyPatch) -> None:
+    from searchat.api.routers.status import get_status
+    from searchat.api.readiness import get_readiness
+
+    get_readiness().set_component("services", "ready")
+    monkeypatch.setattr(
+        "searchat.api.dependencies._search_engine",
+        SimpleNamespace(
+            describe_capabilities=lambda: SimpleNamespace(
+                semantic_available=True,
+                reranking_available=False,
+                semantic_reason=None,
+                reranking_reason="Reranking is disabled",
+            )
+        ),
+    )
+
+    payload = await get_status()
+
+    assert payload["retrieval"]["semantic_available"] is True
+    assert payload["retrieval"]["reranking_available"] is False
+    assert payload["retrieval"]["reranking_reason"] == "Reranking is disabled"
 
 
 def test_dependencies_getters_raise_when_not_initialized() -> None:
@@ -615,6 +658,60 @@ def test_chat_returns_503_on_generate_llm_error(monkeypatch: pytest.MonkeyPatch)
     resp = client.post("/api/chat", json={"query": "hello", "model_provider": "openai"})
     assert resp.status_code == 503
     assert resp.json()["detail"] == "nope"
+
+
+def test_chat_generation_outage_returns_archival_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    from searchat.api.app import app
+    from searchat.api.readiness import get_readiness
+    from searchat.models import SearchResult, SearchResults
+    from searchat.services.llm_service import LLMServiceError
+
+    readiness = get_readiness()
+    readiness.set_component("metadata", "ready")
+    readiness.set_component("faiss", "ready")
+    readiness.set_component("embedder", "ready")
+
+    now = datetime.now()
+    retrieval_service = Mock()
+    retrieval_service.search.return_value = SearchResults(
+        results=[
+            SearchResult(
+                conversation_id="test-conv-123",
+                project_id="test-project",
+                title="Test Conversation",
+                created_at=now - timedelta(days=3),
+                updated_at=now - timedelta(days=1),
+                message_count=10,
+                file_path="/home/user/.claude/projects/test/project/conv.jsonl",
+                score=0.95,
+                snippet="Snippet text",
+                message_start_index=2,
+                message_end_index=6,
+            )
+        ],
+        total_count=1,
+        search_time_ms=5.0,
+        mode_used="hybrid",
+    )
+
+    config = SimpleNamespace(
+        llm=SimpleNamespace(
+            default_provider="ollama",
+            openai_model="gpt-4.1-mini",
+            ollama_model="llama3",
+        )
+    )
+    monkeypatch.setattr("searchat.api.routers.chat.get_config", lambda: config)
+    monkeypatch.setattr("searchat.api.routers.chat.get_search_engine", lambda: retrieval_service)
+
+    with patch("searchat.services.chat_service.build_generation_service") as mock_builder:
+        mock_builder.return_value.stream_completion.side_effect = LLMServiceError("nope")
+
+        client = TestClient(app)
+        resp = client.post("/api/chat", json={"query": "hello", "model_provider": "openai"})
+
+    assert resp.status_code == 200
+    assert resp.text.startswith("Generation is temporarily unavailable.")
 
 
 def test_chat_returns_500_on_generate_unexpected_error(monkeypatch: pytest.MonkeyPatch) -> None:

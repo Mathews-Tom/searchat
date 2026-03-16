@@ -13,11 +13,13 @@ from searchat.mcp.tools import (
     _json_default,
     _json_dumps,
     build_services,
+    find_similar_conversations,
     parse_mode,
     parse_tool,
     resolve_dataset,
 )
 from searchat.models import SearchMode
+from searchat.services.retrieval_service import SemanticVectorHit
 
 
 class TestJsonDefault:
@@ -238,6 +240,79 @@ class TestGetStatistics:
         parsed = json.loads(result)
         assert parsed["total_conversations"] == 10
         assert parsed["total_projects"] == 2
+
+
+class TestFindSimilarConversations:
+    def test_routes_vector_hits_through_retrieval_contract(self, tmp_path: Path):
+        fake_engine = MagicMock()
+        fake_engine.metadata_path = tmp_path / "metadata.parquet"
+        fake_engine.conversations_glob = str(tmp_path / "*.parquet")
+        fake_engine.find_similar_vector_hits.return_value = [
+            SemanticVectorHit(vector_id=100, distance=0.15),
+            SemanticVectorHit(vector_id=200, distance=0.25),
+        ]
+
+        fake_store = MagicMock()
+        fake_store.get_conversation_meta.return_value = {
+            "conversation_id": "conv-123",
+            "title": "Python Testing Tutorial",
+        }
+        fake_conn = MagicMock()
+        fake_conn.execute.return_value.fetchone.return_value = ("representative chunk",)
+        fake_conn.execute.return_value.fetchall.return_value = [
+            (
+                "conv-456",
+                "project-a",
+                "Advanced Python Testing",
+                "2026-01-20T10:00:00",
+                "2026-01-28T10:00:00",
+                15,
+                "/tmp/conv-456.jsonl",
+                0.15,
+            )
+        ]
+        fake_store._connect.return_value = fake_conn
+
+        with (
+            patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+            patch(
+                "searchat.mcp.tools.build_services",
+                return_value=(MagicMock(), fake_engine, fake_store),
+            ),
+        ):
+            result = find_similar_conversations(conversation_id="conv-123", search_dir=str(tmp_path), limit=3)
+
+        parsed = json.loads(result)
+        assert parsed["conversation_id"] == "conv-123"
+        assert len(parsed["similar_conversations"]) == 1
+        fake_engine.find_similar_vector_hits.assert_called_once_with(
+            "Python Testing Tutorial representative chunk",
+            13,
+        )
+
+    def test_propagates_semantic_capability_failures(self, tmp_path: Path):
+        fake_engine = MagicMock()
+        fake_engine.metadata_path = tmp_path / "metadata.parquet"
+        fake_engine.find_similar_vector_hits.side_effect = RuntimeError("FAISS index not available")
+
+        fake_store = MagicMock()
+        fake_store.get_conversation_meta.return_value = {
+            "conversation_id": "conv-123",
+            "title": "Python Testing Tutorial",
+        }
+        fake_conn = MagicMock()
+        fake_conn.execute.return_value.fetchone.return_value = ("representative chunk",)
+        fake_store._connect.return_value = fake_conn
+
+        with (
+            patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+            patch(
+                "searchat.mcp.tools.build_services",
+                return_value=(MagicMock(), fake_engine, fake_store),
+            ),
+        ):
+            with pytest.raises(RuntimeError, match="FAISS index not available"):
+                find_similar_conversations(conversation_id="conv-123", search_dir=str(tmp_path))
 
 
 class TestGenerateAgentConfig:

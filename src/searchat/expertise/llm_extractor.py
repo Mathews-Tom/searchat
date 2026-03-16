@@ -9,7 +9,13 @@ from searchat.expertise.models import (
     ExpertiseSeverity,
     ExpertiseType,
 )
-from searchat.services.llm_service import LLMService, LLMServiceError
+from searchat.services.llm_service import (
+    GenerationService,
+    GenerationTarget,
+    LLMServiceError,
+    build_generation_service,
+    resolve_generation_target,
+)
 
 EXTRACTION_PROMPT = """\
 Analyze this AI coding conversation and extract structured expertise records.
@@ -43,10 +49,14 @@ class LLMExtractor:
         llm_config: LLMConfig,
         provider: str | None = None,
         model: str | None = None,
+        generation_service: GenerationService | None = None,
     ) -> None:
-        self._llm = LLMService(llm_config)
-        self._provider = provider or llm_config.default_provider
-        self._model = model
+        self._llm = generation_service or build_generation_service(llm_config)
+        self._target: GenerationTarget = resolve_generation_target(
+            llm_config,
+            provider=provider,
+            model_name=model,
+        )
 
     def extract(
         self,
@@ -62,13 +72,13 @@ class LLMExtractor:
         try:
             raw = self._llm.completion(
                 messages=messages,
-                provider=self._provider,
-                model_name=self._model,
+                provider=self._target.provider,
+                model_name=self._target.model_name,
                 temperature=0.2,
             )
         except LLMServiceError as exc:
             raise ExtractionError(
-                f"LLM provider '{self._provider}' unavailable: {exc}. "
+                f"LLM provider '{self._target.provider}' unavailable: {exc}. "
                 "Ensure the provider is configured and reachable."
             ) from exc
 

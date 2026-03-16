@@ -158,6 +158,51 @@ def test_chat_rag_error_payload_when_component_error(client):
     assert resp.json()["status"] == "error"
 
 
+def test_chat_rag_reports_semantic_capability_error_when_components_look_ready(client):
+    readiness = Mock()
+    readiness.snapshot.return_value = Mock(
+        components={"metadata": "ready", "faiss": "ready", "embedder": "ready"}
+    )
+    retrieval_service = Mock()
+    retrieval_service.describe_capabilities.return_value = SimpleNamespace(
+        semantic_available=False,
+        reranking_available=True,
+        semantic_reason="Embedding model unavailable: all-MiniLM-L6-v2",
+        reranking_reason=None,
+    )
+
+    with patch("searchat.api.readiness.get_readiness", return_value=readiness):
+        with patch("searchat.api.routers.chat.get_search_engine", return_value=retrieval_service):
+            resp = client.post("/api/chat-rag", json={"query": "x", "model_provider": "ollama"})
+
+    assert resp.status_code == 500
+    data = resp.json()
+    assert data["status"] == "error"
+    assert data["errors"]["semantic"] == "Embedding model unavailable: all-MiniLM-L6-v2"
+    assert data["capabilities"]["semantic_available"] is False
+
+
+def test_chat_rag_fails_closed_when_capability_inspection_errors(client):
+    readiness = Mock()
+    readiness.snapshot.return_value = Mock(
+        components={"metadata": "ready", "faiss": "ready", "embedder": "ready"}
+    )
+
+    with patch("searchat.api.readiness.get_readiness", return_value=readiness):
+        with patch(
+            "searchat.api.routers.chat.get_search_engine",
+            side_effect=RuntimeError("service registry unavailable"),
+        ):
+            resp = client.post("/api/chat-rag", json={"query": "x", "model_provider": "ollama"})
+
+    assert resp.status_code == 500
+    data = resp.json()
+    assert data["status"] == "error"
+    assert data["errors"]["semantic"] == (
+        "Retrieval capability inspection failed: service registry unavailable"
+    )
+
+
 def test_chat_rag_value_error_returns_400(client):
     from searchat.services.llm_service import LLMServiceError
 
@@ -187,6 +232,53 @@ def test_chat_rag_llm_error_returns_503(client):
 
     assert resp.status_code == 503
     assert resp.json()["detail"] == "nope"
+
+
+def test_chat_rag_generation_outage_returns_archival_fallback(client):
+    from searchat.models import SearchResults
+    from searchat.services.llm_service import LLMServiceError
+
+    now = datetime.now()
+    result = SearchResult(
+        conversation_id="test-conv-123",
+        project_id="test-project",
+        title="Test Conversation",
+        created_at=now - timedelta(days=3),
+        updated_at=now - timedelta(days=1),
+        message_count=10,
+        file_path="/home/user/.claude/projects/test/project/conv.jsonl",
+        score=0.95,
+        snippet="Snippet text",
+        message_start_index=2,
+        message_end_index=6,
+    )
+
+    retrieval_service = Mock()
+    retrieval_service.search.return_value = SearchResults(
+        results=[result],
+        total_count=1,
+        search_time_ms=5.0,
+        mode_used="hybrid",
+    )
+
+    config = Mock()
+    config.chat = Mock(enable_rag=True, enable_citations=True)
+    config.llm = SimpleNamespace(
+        default_provider="ollama",
+        openai_model="gpt-4.1-mini",
+        ollama_model="llama3",
+    )
+
+    with patch("searchat.api.routers.chat.get_config", return_value=config):
+        with patch("searchat.api.routers.chat.get_search_engine", return_value=retrieval_service):
+            with patch("searchat.services.chat_service.build_generation_service") as mock_builder:
+                mock_builder.return_value.completion.side_effect = LLMServiceError("nope")
+                resp = client.post("/api/chat-rag", json={"query": "x", "model_provider": "ollama"})
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["answer"].startswith("Generation is temporarily unavailable.")
+    assert data["sources"][0]["conversation_id"] == "test-conv-123"
 
 
 def test_chat_rag_unexpected_error_returns_500(client):

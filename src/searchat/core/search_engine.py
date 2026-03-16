@@ -21,6 +21,20 @@ from searchat.models import (
 from searchat.core.query_parser import QueryParser
 from searchat.config import Config
 from searchat.config.constants import FTS_STEMMER, FTS_STOPWORDS, QUERY_SYNONYMS
+from searchat.services.semantic_model_service import (
+    EmbeddingService,
+    EmbeddingModelUnavailable,
+    RerankingService,
+    RerankingModelUnavailable,
+    build_embedding_service,
+    build_reranking_service,
+)
+from searchat.services.retrieval_service import SemanticVectorHit
+from searchat.services.retrieval_service import (
+    RetrievalCapabilities,
+    RerankingUnavailable,
+    SemanticSearchUnavailable,
+)
 from searchat.services.storage_contracts import read_index_metadata
 
 
@@ -32,7 +46,7 @@ class SearchEngine:
     def __init__(self, search_dir: Path, config: Config | None = None):
         self.search_dir = search_dir
         self.faiss_index: faiss.Index | None = None
-        self.embedder: SentenceTransformer | None = None
+        self.embedder: SentenceTransformer | EmbeddingService | None = None
         self.query_parser = QueryParser()
 
         self._init_lock = Lock()
@@ -79,7 +93,10 @@ class SearchEngine:
             self._logger.warning("Failed to set DuckDB memory limit: %s", exc)
 
         # Reranker (lazy loaded)
-        self._reranker = None
+        self._reranker: RerankingService | None = None
+        self._faiss_runtime_reason: str | None = None
+        self._semantic_runtime_reason: str | None = None
+        self._reranking_runtime_reason: str | None = None
 
         # Build persistent table + FTS index (best-effort at init)
         self._fts_ready = False
@@ -114,6 +131,44 @@ class SearchEngine:
             self._ensure_faiss_loaded_locked()
             self._ensure_embedder_loaded_locked()
 
+    def ensure_reranker_loaded(self) -> None:
+        """Ensure the reranker model is loaded when reranking is enabled."""
+        with self._init_lock:
+            self._ensure_reranker_loaded_locked()
+
+    def describe_capabilities(self) -> RetrievalCapabilities:
+        """Describe effective semantic and reranking capabilities."""
+        semantic_reason = self._semantic_unavailable_reason()
+        reranking_reason = self._reranking_unavailable_reason()
+        return RetrievalCapabilities(
+            semantic_available=semantic_reason is None,
+            reranking_available=reranking_reason is None,
+            semantic_reason=semantic_reason,
+            reranking_reason=reranking_reason,
+        )
+
+    def find_similar_vector_hits(self, text: str, k: int) -> list[SemanticVectorHit]:
+        """Return vector hits for semantic nearest-neighbor lookup."""
+        self.ensure_faiss_loaded()
+        if self.faiss_index is None:
+            raise SemanticSearchUnavailable("FAISS index not available")
+
+        self.ensure_embedder_loaded()
+        if self.embedder is None:
+            raise SemanticSearchUnavailable("Embedder not available")
+
+        query_embedding = np.asarray(self.embedder.encode(text), dtype=np.float32)
+        distances, labels = self.faiss_index.search(  # type: ignore[call-arg,arg-type]
+            query_embedding.reshape(1, -1),
+            k,
+        )
+
+        valid_mask = labels[0] >= 0
+        return [
+            SemanticVectorHit(vector_id=int(vector_id), distance=float(distance))
+            for vector_id, distance in zip(labels[0][valid_mask], distances[0][valid_mask])
+        ]
+
 
     def _ensure_metadata_ready_locked(self) -> None:
         self._validate_keyword_files()
@@ -134,24 +189,65 @@ class SearchEngine:
             )
 
         if self.faiss_index is None:
-            if getattr(self.config.performance, "faiss_mmap", False):
-                try:
-                    flags = faiss.IO_FLAG_MMAP | faiss.IO_FLAG_READ_ONLY
-                except Exception as e:
-                    raise RuntimeError("FAISS mmap flags are not supported by this build") from e
-                self.faiss_index = faiss.read_index(str(self.index_path), flags)
-            else:
-                self.faiss_index = faiss.read_index(str(self.index_path))
+            try:
+                if getattr(self.config.performance, "faiss_mmap", False):
+                    try:
+                        flags = faiss.IO_FLAG_MMAP | faiss.IO_FLAG_READ_ONLY
+                    except Exception as exc:
+                        raise SemanticSearchUnavailable(
+                            "FAISS mmap flags are not supported by this build"
+                        ) from exc
+                    self.faiss_index = faiss.read_index(str(self.index_path), flags)
+                else:
+                    self.faiss_index = faiss.read_index(str(self.index_path))
+                self._faiss_runtime_reason = None
+            except SemanticSearchUnavailable as exc:
+                self._faiss_runtime_reason = str(exc)
+                raise
+            except Exception as exc:
+                self._faiss_runtime_reason = f"FAISS index unavailable: {exc}"
+                raise SemanticSearchUnavailable(self._faiss_runtime_reason) from exc
 
 
     def _ensure_embedder_loaded_locked(self) -> None:
         self._validate_index_metadata()
 
         if self.embedder is None:
-            device = self.config.embedding.get_device()
-            from sentence_transformers import SentenceTransformer
+            try:
+                self.embedder = build_embedding_service(self.config)
+                self._semantic_runtime_reason = None
+            except EmbeddingModelUnavailable as exc:
+                self._semantic_runtime_reason = str(exc)
+                raise SemanticSearchUnavailable(str(exc)) from exc
 
-            self.embedder = SentenceTransformer(self.config.embedding.model, device=device)
+    def _ensure_reranker_loaded_locked(self) -> None:
+        if not self.config.reranking.enabled:
+            return
+        if self._reranker is None:
+            try:
+                self._reranker = build_reranking_service(self.config)
+                self._reranking_runtime_reason = None
+            except RerankingModelUnavailable as exc:
+                self._reranking_runtime_reason = str(exc)
+                raise RerankingUnavailable(str(exc)) from exc
+
+    def _semantic_unavailable_reason(self) -> str | None:
+        if not self.metadata_path.exists():
+            return "Metadata parquet not available"
+        if not self.index_path.exists():
+            return "FAISS index not available"
+        if self.faiss_index is None and self._faiss_runtime_reason is not None:
+            return self._faiss_runtime_reason
+        if self.embedder is None and self._semantic_runtime_reason is not None:
+            return self._semantic_runtime_reason
+        return None
+
+    def _reranking_unavailable_reason(self) -> str | None:
+        if not self.config.reranking.enabled:
+            return "Reranking is disabled"
+        if self._reranker is None and self._reranking_runtime_reason is not None:
+            return self._reranking_runtime_reason
+        return None
 
 
     def refresh_index(self) -> None:
@@ -159,6 +255,9 @@ class SearchEngine:
         with self._init_lock:
             self.result_cache.clear()
             self.faiss_index = None
+            self._faiss_runtime_reason = None
+            self._semantic_runtime_reason = None
+            self._reranking_runtime_reason = None
             try:
                 self._build_fts_table()
                 self._fts_ready = True
@@ -301,13 +400,20 @@ class SearchEngine:
         try:
             if mode == SearchMode.HYBRID:
                 keyword_results = self._keyword_search(query, filters)
-                semantic_results = self._semantic_search(query, filters)
+                try:
+                    semantic_results = self._semantic_search(query, filters)
+                except SemanticSearchUnavailable as exc:
+                    self._logger.info("Semantic search unavailable, falling back to keyword mode: %s", exc)
+                    semantic_results = []
                 results = self._merge_results(keyword_results, semantic_results)
                 results = self._rerank(query, results)
+                mode_used = SearchMode.HYBRID if semantic_results else SearchMode.KEYWORD
             elif mode == SearchMode.KEYWORD:
                 results = self._keyword_search(query, filters)
+                mode_used = SearchMode.KEYWORD
             else:
                 results = self._semantic_search(query, filters)
+                mode_used = SearchMode.SEMANTIC
 
             elapsed_ms = (time.time() - start_time) * 1000
             
@@ -315,13 +421,15 @@ class SearchEngine:
                 results=results,
                 total_count=len(results),
                 search_time_ms=elapsed_ms,
-                mode_used=mode.value
+                mode_used=mode_used.value
             )
             
             # Add to cache
             self._add_to_cache(cache_key, search_result)
             
             return search_result
+        except SemanticSearchUnavailable as e:
+            raise RuntimeError(f"Search failed: {e}") from e
         except Exception as e:
             raise RuntimeError(f"Search failed: {e}") from e
     
@@ -417,24 +525,10 @@ class SearchEngine:
         return results
     
     def _semantic_search(self, query: str, filters: SearchFilters | None) -> list[SearchResult]:
-        self.ensure_faiss_loaded()
-        self.ensure_embedder_loaded()
-        embedder = self.embedder
-        faiss_index = self.faiss_index
-        if embedder is None or faiss_index is None:
-            raise RuntimeError("Search engine not initialized")
-
-        query_embedding = np.asarray(embedder.encode(query), dtype=np.float32)
-        
         k = 100
-        # Use the stable Python binding signature: search(x, k) -> (D, I).
-        # Some FAISS index wrappers don't expose the 4-arg C++ signature.
-        distances, labels = faiss_index.search(query_embedding.reshape(1, -1), k)  # type: ignore[call-arg,arg-type]
-        
-        valid_mask = labels[0] >= 0
         hits = []
-        for vector_id, distance, order in zip(labels[0][valid_mask], distances[0][valid_mask], np.arange(len(labels[0]))[valid_mask]):
-            hits.append((int(vector_id), float(distance), int(order)))
+        for order, hit in enumerate(self.find_similar_vector_hits(query, k)):
+            hits.append((hit.vector_id, hit.distance, order))
 
         if not hits:
             return []
@@ -612,16 +706,24 @@ class SearchEngine:
         if not self.config.reranking.enabled or not results:
             return results
 
+        try:
+            self.ensure_reranker_loaded()
+        except Exception as exc:
+            self._logger.warning("Reranking unavailable, returning base ranking: %s", exc)
+            return results
         if self._reranker is None:
-            from sentence_transformers import CrossEncoder
-            self._reranker = CrossEncoder(self.config.reranking.model)
+            return results
 
         top_k = min(self.config.reranking.top_k, len(results))
         candidates = results[:top_k]
         remainder = results[top_k:]
 
         pairs = [(query, r.snippet) for r in candidates]
-        scores = self._reranker.predict(pairs)
+        try:
+            scores = self._reranker.predict(pairs)
+        except Exception as exc:
+            self._logger.warning("Reranking failed, returning base ranking: %s", exc)
+            return results
 
         for result, score in zip(candidates, scores):
             result.score = float(score)

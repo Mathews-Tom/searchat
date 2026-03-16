@@ -13,6 +13,10 @@ from searchat.models import SearchResult
 VALID_PROVIDERS: frozenset[str] = frozenset({"openai", "ollama", "embedded"})
 
 
+class RetrievalCapabilitiesUnavailable(RuntimeError):
+    """Raised when retrieval capabilities cannot be inspected for a semantic-gated request."""
+
+
 def detect_tool_from_path(file_path: str) -> str:
     """
     Detect tool type from a conversation file path.
@@ -148,6 +152,7 @@ def validate_provider(provider: str) -> str:
 
 def check_semantic_readiness(
     extra_components: list[str] | None = None,
+    retrieval_service=None,
 ) -> JSONResponse | None:
     """Check if semantic search components are ready.
 
@@ -170,7 +175,79 @@ def check_semantic_readiness(
         _warmup.trigger_search_engine_warmup()
         return JSONResponse(status_code=503, content=_readiness_mod.warming_payload())
 
+    try:
+        capabilities = _get_retrieval_capabilities(retrieval_service, fail_closed=True)
+    except RetrievalCapabilitiesUnavailable as exc:
+        payload = _readiness_mod.error_payload()
+        errors = dict(payload["errors"])
+        errors["semantic"] = str(exc)
+        payload["errors"] = errors
+        return JSONResponse(status_code=500, content=payload)
+
+    if capabilities is not None and not capabilities.semantic_available:
+        payload = _readiness_mod.error_payload()
+        errors = dict(payload["errors"])
+        if capabilities.semantic_reason:
+            errors["semantic"] = capabilities.semantic_reason
+        payload["errors"] = errors
+        payload["capabilities"] = {
+            "semantic_available": capabilities.semantic_available,
+            "reranking_available": capabilities.reranking_available,
+            "semantic_reason": capabilities.semantic_reason,
+            "reranking_reason": capabilities.reranking_reason,
+        }
+        return JSONResponse(status_code=500, content=payload)
+
     return None
+
+
+def get_retrieval_capabilities_snapshot() -> dict[str, object] | None:
+    """Best-effort retrieval capability snapshot for status endpoints."""
+    try:
+        capabilities = _get_retrieval_capabilities()
+    except RetrievalCapabilitiesUnavailable:
+        return None
+    if capabilities is None:
+        return None
+    return {
+        "semantic_available": capabilities.semantic_available,
+        "reranking_available": capabilities.reranking_available,
+        "semantic_reason": capabilities.semantic_reason,
+        "reranking_reason": capabilities.reranking_reason,
+    }
+
+
+def _get_retrieval_capabilities(retrieval_service=None, *, fail_closed: bool = False):
+    """Return retrieval capabilities when a semantic retrieval service is available."""
+    service = retrieval_service
+    if service is None:
+        import searchat.api.dependencies as deps
+
+        service = getattr(deps, "_search_engine", None)
+        if service is None:
+            return None
+    elif callable(service):
+        try:
+            service = service()
+        except Exception as exc:
+            if fail_closed:
+                raise RetrievalCapabilitiesUnavailable(
+                    f"Retrieval capability inspection failed: {exc}"
+                ) from exc
+            return None
+
+    describe = getattr(service, "describe_capabilities", None)
+    if not callable(describe):
+        return None
+
+    try:
+        return describe()
+    except Exception as exc:
+        if fail_closed:
+            raise RetrievalCapabilitiesUnavailable(
+                f"Retrieval capability inspection failed: {exc}"
+            ) from exc
+        return None
 
 
 def sort_results(results: list[SearchResult], sort_by: str) -> list[SearchResult]:

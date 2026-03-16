@@ -66,9 +66,9 @@ class TestExtractHighlightTerms:
         config = SimpleNamespace(llm=llm_config)
 
         with patch(
-            "searchat.services.highlight_service.LLMService"
-        ) as MockLLMService:
-            mock_instance = MockLLMService.return_value
+            "searchat.services.highlight_service.build_generation_service"
+        ) as mock_builder:
+            mock_instance = mock_builder.return_value
             mock_instance.completion.return_value = '["python", "async", "coroutines"]'
 
             result = extract_highlight_terms(

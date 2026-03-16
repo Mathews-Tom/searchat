@@ -747,7 +747,7 @@ class TestSearchEndpoint:
         assert second.json()["highlight_terms"] == ["foo"]
         assert extract.call_count == 1
 
-    def test_search_highlight_llm_error_returns_503(self, client, mock_search_engine):
+    def test_search_highlight_llm_error_degrades_to_plain_search(self, client, mock_search_engine):
         from searchat.api.routers import search as search_router
 
         search_router._cached_highlight.cache_clear()
@@ -762,11 +762,32 @@ class TestSearchEndpoint:
                     'searchat.api.routers.search.extract_highlight_terms',
                     side_effect=search_router.LLMServiceError("nope"),
                 ):
-                        resp = client.get(
-                            "/api/search?q=python&highlight=true&highlight_provider=openai"
-                        )
-        assert resp.status_code == 503
-        assert resp.json()["detail"] == "nope"
+                    resp = client.get(
+                        "/api/search?q=python&highlight=true&highlight_provider=openai"
+                    )
+        assert resp.status_code == 200
+        assert resp.json()["highlight_terms"] is None
+
+    def test_search_highlight_invalid_llm_output_degrades_to_plain_search(self, client, mock_search_engine):
+        from searchat.api.routers import search as search_router
+
+        search_router._cached_highlight.cache_clear()
+
+        config = SimpleNamespace(analytics=SimpleNamespace(enabled=False))
+        with patch(
+            'searchat.api.routers.search.get_dataset_retrieval',
+            return_value=make_retrieval_context(mock_search_engine),
+        ):
+            with patch('searchat.api.routers.search.deps.get_config', return_value=config):
+                with patch(
+                    'searchat.api.routers.search.extract_highlight_terms',
+                    side_effect=ValueError("bad json"),
+                ):
+                    resp = client.get(
+                        "/api/search?q=python&highlight=true&highlight_provider=openai"
+                    )
+        assert resp.status_code == 200
+        assert resp.json()["highlight_terms"] is None
 
 
 @pytest.mark.unit

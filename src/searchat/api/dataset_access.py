@@ -49,7 +49,7 @@ def get_dataset_retrieval(
     elif search_mode == SearchMode.KEYWORD:
         retrieval_service = deps.get_or_create_search_engine()
     else:
-        not_ready = check_semantic_readiness()
+        not_ready = check_semantic_readiness(retrieval_service=deps.get_search_engine)
         if not_ready is not None:
             raise _DatasetNotReady(not_ready)
         retrieval_service = deps.get_search_engine()

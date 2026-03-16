@@ -66,6 +66,12 @@ def semantic_components_ready():
         yield
 
 
+@pytest.fixture(autouse=True)
+def pattern_retrieval_service():
+    with patch("searchat.api.routers.patterns.get_search_engine", return_value=Mock()):
+        yield
+
+
 def test_extract_patterns_success_ollama(client, mock_patterns):
     """Test successful pattern extraction with ollama provider."""
     config = Mock()
@@ -245,6 +251,73 @@ def test_extract_patterns_embedder_not_ready(client):
 
     assert resp.status_code == 503
     assert resp.json()["status"] == "warming"
+
+
+def test_extract_patterns_reports_semantic_capability_error_when_components_look_ready(client):
+    readiness = Mock()
+    readiness.snapshot.return_value = Mock(
+        components={
+            "metadata": "ready",
+            "faiss": "ready",
+            "embedder": "ready",
+        }
+    )
+    retrieval_service = Mock()
+    retrieval_service.describe_capabilities.return_value = Mock(
+        semantic_available=False,
+        reranking_available=True,
+        semantic_reason="Embedding model unavailable: all-MiniLM-L6-v2",
+        reranking_reason=None,
+    )
+
+    with patch("searchat.api.readiness.get_readiness", return_value=readiness):
+        with patch("searchat.api.routers.patterns.get_search_engine", return_value=retrieval_service):
+            resp = client.post(
+                "/api/patterns/extract",
+                json={
+                    "topic": "test",
+                    "max_patterns": 10,
+                    "model_provider": "ollama",
+                },
+            )
+
+    assert resp.status_code == 500
+    data = resp.json()
+    assert data["status"] == "error"
+    assert data["errors"]["semantic"] == "Embedding model unavailable: all-MiniLM-L6-v2"
+    assert data["capabilities"]["semantic_available"] is False
+
+
+def test_extract_patterns_fails_closed_when_capability_inspection_errors(client):
+    readiness = Mock()
+    readiness.snapshot.return_value = Mock(
+        components={
+            "metadata": "ready",
+            "faiss": "ready",
+            "embedder": "ready",
+        }
+    )
+
+    with patch("searchat.api.readiness.get_readiness", return_value=readiness):
+        with patch(
+            "searchat.api.routers.patterns.get_search_engine",
+            side_effect=RuntimeError("service registry unavailable"),
+        ):
+            resp = client.post(
+                "/api/patterns/extract",
+                json={
+                    "topic": "test",
+                    "max_patterns": 10,
+                    "model_provider": "ollama",
+                },
+            )
+
+    assert resp.status_code == 500
+    data = resp.json()
+    assert data["status"] == "error"
+    assert data["errors"]["semantic"] == (
+        "Retrieval capability inspection failed: service registry unavailable"
+    )
 
 
 def test_extract_patterns_embedded_model_not_ready(client):

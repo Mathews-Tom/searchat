@@ -8,11 +8,9 @@ from searchat.api.utils import detect_tool_from_path
 from searchat.config import Config, PathResolver
 from searchat.config.constants import VALID_TOOL_NAMES, RAG_SYSTEM_PROMPT
 from searchat.models import SearchFilters, SearchMode
-from searchat.services.llm_service import LLMService
+from searchat.services.llm_service import build_generation_service, resolve_generation_target
 from searchat.services.retrieval_service import SemanticRetrievalService, build_retrieval_service
 from searchat.services.storage_service import StorageService, build_storage_service
-
-from typing import cast, Any
 
 
 def _json_default(value: object) -> str:
@@ -169,11 +167,6 @@ def find_similar_conversations(
     if not conv_meta:
         raise ValueError(f"Conversation not found: {conversation_id}")
 
-    engine.ensure_faiss_loaded()
-    engine.ensure_embedder_loaded()
-    if engine.faiss_index is None or engine.embedder is None:
-        raise RuntimeError("Semantic components not available")
-
     con = store._connect()
     try:
         row = con.execute(
@@ -194,18 +187,10 @@ def find_similar_conversations(
 
     chunk_text = row[0]
     representative_text = f"{conv_meta['title']} {chunk_text}"
-
-    import numpy as np
-
-    query_embedding = np.asarray(engine.embedder.encode(representative_text), dtype=np.float32)
-    k = limit + 10
-    faiss_index = cast(Any, engine.faiss_index)
-    distances, labels = faiss_index.search(query_embedding.reshape(1, -1), k)
-
-    valid_mask = labels[0] >= 0
-    hits: list[tuple[int, float]] = []
-    for vid, distance in zip(labels[0][valid_mask], distances[0][valid_mask]):
-        hits.append((int(vid), float(distance)))
+    hits = [
+        (hit.vector_id, hit.distance)
+        for hit in engine.find_similar_vector_hits(representative_text, limit + 10)
+    ]
 
     if not hits:
         return _json_dumps({"conversation_id": conversation_id, "similar_conversations": []})
@@ -303,9 +288,11 @@ def ask_about_history(
     dataset_dir = resolve_dataset(search_dir)
     config, engine, _store = build_services(dataset_dir)
 
-    provider = (model_provider or config.llm.default_provider or "ollama").lower().strip()
-    if provider not in ("openai", "ollama", "embedded"):
-        raise ValueError("model_provider must be one of: openai, ollama, embedded")
+    target = resolve_generation_target(
+        config.llm,
+        provider=model_provider,
+        model_name=model_name,
+    )
 
     results = engine.search(question, mode=SearchMode.HYBRID, filters=SearchFilters())
     top_results = results.results[:8]
@@ -335,8 +322,12 @@ def ask_about_history(
         {"role": "user", "content": question},
     ]
 
-    llm = LLMService(config.llm)
-    answer = llm.completion(messages=messages, provider=provider, model_name=model_name)
+    llm = build_generation_service(config.llm)
+    answer = llm.completion(
+        messages=messages,
+        provider=target.provider,
+        model_name=target.model_name,
+    )
 
     payload: dict[str, object] = {"answer": answer}
     if include_sources:
@@ -372,18 +363,21 @@ def extract_patterns(
     from searchat.services.pattern_mining import extract_patterns as _extract_patterns
 
     dataset_dir = resolve_dataset(search_dir)
-    config, _engine, _store = build_services(dataset_dir)
+    config, engine, _store = build_services(dataset_dir)
 
-    provider = (model_provider or config.llm.default_provider or "ollama").lower().strip()
-    if provider not in ("openai", "ollama", "embedded"):
-        raise ValueError("model_provider must be one of: openai, ollama, embedded")
+    target = resolve_generation_target(
+        config.llm,
+        provider=model_provider,
+        model_name=model_name,
+    )
 
     patterns = _extract_patterns(
         topic=topic,
         max_patterns=max_patterns,
-        model_provider=provider,
-        model_name=model_name,
+        model_provider=target.provider,
+        model_name=target.model_name,
         config=config,
+        retrieval_service=engine,
     )
 
     return _json_dumps({
@@ -595,18 +589,21 @@ def generate_agent_config(
         raise ValueError("format must be one of: claude.md, copilot-instructions.md, cursorrules")
 
     dataset_dir = resolve_dataset(search_dir)
-    config, _engine, _store = build_services(dataset_dir)
+    config, engine, _store = build_services(dataset_dir)
 
-    provider = (model_provider or config.llm.default_provider or "ollama").lower().strip()
-    if provider not in ("openai", "ollama", "embedded"):
-        raise ValueError("model_provider must be one of: openai, ollama, embedded")
+    target = resolve_generation_target(
+        config.llm,
+        provider=model_provider,
+        model_name=model_name,
+    )
 
     patterns = _extract_patterns(
         topic=project_filter,
         max_patterns=15,
-        model_provider=provider,
-        model_name=model_name,
+        model_provider=target.provider,
+        model_name=target.model_name,
         config=config,
+        retrieval_service=engine,
     )
 
     pattern_lines: list[str] = []

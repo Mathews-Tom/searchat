@@ -14,6 +14,12 @@ def client():
     return TestClient(app)
 
 
+@pytest.fixture(autouse=True)
+def agent_config_retrieval_service():
+    with patch("searchat.api.routers.docs.deps.get_search_engine", return_value=Mock()):
+        yield
+
+
 @pytest.fixture
 def mock_patterns():
     """Sample extracted patterns for testing."""

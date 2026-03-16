@@ -23,7 +23,11 @@ def _make_config(tmp_path: Path, *, analytics_enabled: bool = True) -> Mock:
     config.paths = Mock()
     config.paths.search_directory = str(tmp_path / ".searchat")
     config.analytics = SimpleNamespace(enabled=analytics_enabled, retention_days=30)
-    config.llm = object()
+    config.llm = SimpleNamespace(
+        default_provider="ollama",
+        openai_model="gpt-4.1-mini",
+        ollama_model="llama3",
+    )
     return config
 
 
@@ -95,7 +99,11 @@ def test_rag_internal_overhead_under_200ms(tmp_path: Path, monkeypatch: pytest.M
 
     import searchat.services.chat_service as chat_service
 
-    monkeypatch.setattr(chat_service.LLMService, "completion", lambda _self, **_kwargs: "ok")
+    monkeypatch.setattr(
+        chat_service,
+        "build_generation_service",
+        lambda _config: SimpleNamespace(completion=lambda **_kwargs: "ok"),
+    )
 
     start = time.perf_counter()
     gen = generate_rag_response(

@@ -69,10 +69,11 @@ def test_find_similar_conversations_returns_payload(indexed_dataset: Path) -> No
 
 
 def test_ask_about_history_includes_sources_when_enabled(indexed_dataset: Path, monkeypatch) -> None:
-    def fake_completion(self, *, messages, provider, model_name=None, temperature=None, max_tokens=None):  # noqa: ANN001
-        return "ok"
-
-    monkeypatch.setattr("searchat.services.llm_service.LLMService.completion", fake_completion)
+    monkeypatch.setattr(
+        mcp_tools,
+        "build_generation_service",
+        lambda _config: type("_GenerationService", (), {"completion": staticmethod(lambda **_kwargs: "ok")})(),
+    )
 
     payload = json.loads(
         mcp_tools.ask_about_history(question="What was the code?", include_sources=True, search_dir=str(indexed_dataset))

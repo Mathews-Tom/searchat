@@ -7,6 +7,9 @@ from unittest.mock import patch
 import pytest
 
 from searchat.services.llm_service import (
+    build_generation_service,
+    resolve_generation_target,
+    GenerationTarget,
     LLMService,
     LLMServiceError,
     _extract_chunk_text,
@@ -137,6 +140,31 @@ def test_resolve_model_empty_raises(llm_config: SimpleNamespace):
     s = LLMService(llm_config)
     with pytest.raises(ValueError, match="must be provided or configured"):
         s._resolve_model("openai", None)
+
+
+def test_build_generation_service_returns_llm_service(llm_config: SimpleNamespace):
+    service = build_generation_service(llm_config)
+    assert isinstance(service, LLMService)
+
+
+def test_resolve_generation_target_defaults_provider_and_prefixes_ollama(llm_config: SimpleNamespace):
+    target = resolve_generation_target(llm_config, provider=None, model_name=None)
+    assert target == GenerationTarget(provider="ollama", model_name="ollama/llama3")
+
+
+def test_resolve_generation_target_uses_openai_override(llm_config: SimpleNamespace):
+    target = resolve_generation_target(llm_config, provider="openai", model_name="gpt-5")
+    assert target == GenerationTarget(provider="openai", model_name="gpt-5")
+
+
+def test_resolve_generation_target_embedded_passthrough(llm_config: SimpleNamespace):
+    target = resolve_generation_target(llm_config, provider="embedded", model_name="model.gguf")
+    assert target == GenerationTarget(provider="embedded", model_name="model.gguf")
+
+
+def test_resolve_generation_target_rejects_invalid_provider(llm_config: SimpleNamespace):
+    with pytest.raises(ValueError, match="model_provider must be"):
+        resolve_generation_target(llm_config, provider="azure", model_name=None)
 
 
 # ── _wrap_error() ──────────────────────────────────────────────────
