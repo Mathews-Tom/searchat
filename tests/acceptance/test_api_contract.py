@@ -43,6 +43,36 @@ def test_status_features_exposes_retrieval_capability_snapshot() -> None:
     }
 
 
+def test_status_route_preserves_control_plane_contract() -> None:
+    retrieval_service = Mock()
+    retrieval_service.describe_capabilities.return_value = SimpleNamespace(
+        semantic_available=True,
+        reranking_available=False,
+        semantic_reason=None,
+        reranking_reason="Reranking disabled",
+    )
+    with patch("searchat.api.dependencies._search_engine", retrieval_service):
+        client = TestClient(app)
+        response = client.get("/api/status")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert list(payload) == [
+        "server_started_at",
+        "warmup_started_at",
+        "components",
+        "watcher",
+        "errors",
+        "retrieval",
+    ]
+    assert payload["retrieval"] == {
+        "semantic_available": True,
+        "reranking_available": False,
+        "semantic_reason": None,
+        "reranking_reason": "Reranking disabled",
+    }
+
+
 def test_chat_rag_generation_outage_returns_grounded_fallback_with_sources() -> None:
     readiness = Mock()
     readiness.snapshot.return_value = Mock(

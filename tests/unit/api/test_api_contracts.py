@@ -5,7 +5,10 @@ from types import SimpleNamespace
 
 from searchat.api.contracts import (
     serialize_projects_payload,
+    serialize_readiness_payload,
     serialize_search_payload,
+    serialize_status_features_payload,
+    serialize_status_payload,
     serialize_statistics_payload,
 )
 from searchat.models import SearchResult
@@ -88,4 +91,67 @@ def test_serialize_statistics_payload_preserves_stable_keys() -> None:
         "total_projects",
         "earliest_date",
         "latest_date",
+    ]
+
+
+def test_serialize_readiness_payload_preserves_control_plane_keys() -> None:
+    payload = serialize_readiness_payload(
+        status="warming",
+        warmup_started_at="2026-03-16T00:00:00+00:00",
+        components={"metadata": "loading"},
+        watcher="disabled",
+        errors={},
+        retry_after_ms=500,
+    )
+
+    assert list(payload) == [
+        "status",
+        "warmup_started_at",
+        "components",
+        "watcher",
+        "errors",
+        "retry_after_ms",
+    ]
+
+
+def test_serialize_status_payload_preserves_status_keys() -> None:
+    payload = serialize_status_payload(
+        server_started_at="2026-03-16T00:00:00+00:00",
+        warmup_started_at=None,
+        components={"services": "ready"},
+        watcher="running",
+        errors={},
+        retrieval={"semantic_available": True},
+    )
+
+    assert list(payload) == [
+        "server_started_at",
+        "warmup_started_at",
+        "components",
+        "watcher",
+        "errors",
+        "retrieval",
+    ]
+
+
+def test_serialize_status_features_payload_preserves_feature_groups() -> None:
+    payload = serialize_status_features_payload(
+        analytics_enabled=True,
+        chat_enable_rag=True,
+        chat_enable_citations=False,
+        export_enable_ipynb=False,
+        export_enable_pdf=True,
+        export_enable_tech_docs=False,
+        dashboards_enabled=True,
+        snapshots_enabled=True,
+        retrieval={"semantic_available": False},
+    )
+
+    assert list(payload) == [
+        "analytics",
+        "chat",
+        "export",
+        "dashboards",
+        "snapshots",
+        "retrieval",
     ]
