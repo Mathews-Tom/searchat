@@ -4,9 +4,16 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from searchat.api.utils import detect_tool_from_path
 from searchat.config import Config, PathResolver
 from searchat.config.constants import VALID_TOOL_NAMES, RAG_SYSTEM_PROMPT
+from searchat.mcp.contracts import (
+    serialize_history_answer_payload,
+    serialize_projects_payload,
+    serialize_search_payload,
+    serialize_similar_conversation,
+    serialize_similar_conversations_payload,
+    serialize_statistics_payload,
+)
 from searchat.models import SearchFilters, SearchMode
 from searchat.services.llm_service import (
     LLMServiceError,
@@ -95,31 +102,7 @@ def search_conversations(
         filters.tool = tool_value
 
     results = engine.search(query, mode=parse_mode(mode), filters=filters)
-
-    sliced = results.results[offset : offset + limit]
-    payload = {
-        "results": [
-            {
-                "conversation_id": r.conversation_id,
-                "project_id": r.project_id,
-                "title": r.title,
-                "created_at": r.created_at,
-                "updated_at": r.updated_at,
-                "message_count": r.message_count,
-                "file_path": r.file_path,
-                "snippet": r.snippet,
-                "score": r.score,
-                "message_start_index": r.message_start_index,
-                "message_end_index": r.message_end_index,
-            }
-            for r in sliced
-        ],
-        "total": len(results.results),
-        "limit": limit,
-        "offset": offset,
-        "mode_used": results.mode_used,
-        "search_time_ms": results.search_time_ms,
-    }
+    payload = serialize_search_payload(results, limit=limit, offset=offset)
     return _json_dumps(payload)
 
 
@@ -137,23 +120,14 @@ def get_conversation(*, conversation_id: str, search_dir: str | None = None) -> 
 def list_projects(*, search_dir: str | None = None) -> str:
     dataset_dir = resolve_dataset(search_dir)
     _config, _engine, store = build_services(dataset_dir)
-    return _json_dumps({"projects": store.list_projects()})
+    return _json_dumps(serialize_projects_payload(store.list_projects()))
 
 
 def get_statistics(*, search_dir: str | None = None) -> str:
     dataset_dir = resolve_dataset(search_dir)
     _config, _engine, store = build_services(dataset_dir)
     stats = store.get_statistics()
-    return _json_dumps(
-        {
-            "total_conversations": stats.total_conversations,
-            "total_messages": stats.total_messages,
-            "avg_messages": stats.avg_messages,
-            "total_projects": stats.total_projects,
-            "earliest_date": stats.earliest_date,
-            "latest_date": stats.latest_date,
-        }
-    )
+    return _json_dumps(serialize_statistics_payload(stats))
 
 
 def find_similar_conversations(
@@ -256,29 +230,25 @@ def find_similar_conversations(
         file_path,
         distance,
     ) in rows:
-        score = 1.0 / (1.0 + float(distance))
-        created_at_str = created_at if isinstance(created_at, str) else created_at.isoformat()
-        updated_at_str = updated_at if isinstance(updated_at, str) else updated_at.isoformat()
         similar.append(
-            {
-                "conversation_id": sim_id,
-                "project_id": project_id,
-                "title": title,
-                "created_at": created_at_str,
-                "updated_at": updated_at_str,
-                "message_count": message_count,
-                "similarity_score": round(score, 3),
-                "tool": detect_tool_from_path(file_path),
-            }
+            serialize_similar_conversation(
+                conversation_id=sim_id,
+                project_id=project_id,
+                title=title,
+                created_at=created_at,
+                updated_at=updated_at,
+                message_count=message_count,
+                file_path=file_path,
+                distance=distance,
+            )
         )
 
     return _json_dumps(
-        {
-            "conversation_id": conversation_id,
-            "title": conv_meta.get("title"),
-            "similar_count": len(similar),
-            "similar_conversations": similar,
-        }
+        serialize_similar_conversations_payload(
+            conversation_id=conversation_id,
+            title=conv_meta.get("title"),
+            similar_conversations=similar,
+        )
     )
 
 
@@ -302,10 +272,12 @@ def ask_about_history(
     results = engine.search(question, mode=SearchMode.HYBRID, filters=SearchFilters())
     top_results = results.results[:8]
     if not top_results:
-        payload: dict[str, object] = {"answer": "I cannot find the information in the archives."}
-        if include_sources:
-            payload["sources"] = []
-        return _json_dumps(payload)
+        return _json_dumps(
+            serialize_history_answer_payload(
+                answer="I cannot find the information in the archives.",
+                sources=[] if include_sources else None,
+            )
+        )
 
     context_lines: list[str] = []
     for idx, r in enumerate(top_results, start=1):
@@ -337,22 +309,12 @@ def ask_about_history(
     except LLMServiceError:
         answer = build_grounded_fallback_answer(top_results)
 
-    payload: dict[str, object] = {"answer": answer}
-    if include_sources:
-        payload["sources"] = [
-            {
-                "conversation_id": r.conversation_id,
-                "project_id": r.project_id,
-                "title": r.title,
-                "score": r.score,
-                "snippet": r.snippet,
-                "message_start_index": r.message_start_index,
-                "message_end_index": r.message_end_index,
-                "tool": detect_tool_from_path(r.file_path),
-            }
-            for r in top_results
-        ]
-    return _json_dumps(payload)
+    return _json_dumps(
+        serialize_history_answer_payload(
+            answer=answer,
+            sources=top_results if include_sources else None,
+        )
+    )
 
 
 def extract_patterns(
