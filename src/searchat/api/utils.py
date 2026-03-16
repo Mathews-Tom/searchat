@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 
 from searchat.config.constants import VALID_TOOL_NAMES
 from searchat.contracts.errors import (
+    invalid_model_provider_message,
     invalid_tool_filter_message,
     snapshot_not_found_message,
 )
@@ -149,7 +150,7 @@ def validate_provider(provider: str) -> str:
     if value not in VALID_PROVIDERS:
         raise HTTPException(
             status_code=400,
-            detail="model_provider must be 'openai', 'ollama', or 'embedded'.",
+            detail=invalid_model_provider_message(),
         )
     return value
 

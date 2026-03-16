@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from searchat.config.settings import LLMConfig
+from searchat.contracts.errors import invalid_model_provider_message
 from searchat.models import SearchResult
 
 VALID_GENERATION_PROVIDERS: frozenset[str] = frozenset({"openai", "ollama", "embedded"})
@@ -216,10 +217,10 @@ def resolve_generation_target(
     """Resolve provider and model selection into a normalized generation target."""
     provider_value = (provider or getattr(config, "default_provider", None) or "ollama")
     if not isinstance(provider_value, str):
-        raise ValueError("model_provider must be 'openai', 'ollama', or 'embedded'.")
+        raise ValueError(invalid_model_provider_message())
     provider_value = provider_value.lower().strip()
     if provider_value not in VALID_GENERATION_PROVIDERS:
-        raise ValueError("model_provider must be 'openai', 'ollama', or 'embedded'.")
+        raise ValueError(invalid_model_provider_message())
 
     if provider_value == "embedded":
         return GenerationTarget(provider=provider_value, model_name=model_name)

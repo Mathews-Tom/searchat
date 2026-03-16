@@ -27,6 +27,10 @@ def invalid_highlight_provider_message() -> str:
     return "Invalid highlight provider"
 
 
+def invalid_model_provider_message() -> str:
+    return "model_provider must be 'openai', 'ollama', or 'embedded'."
+
+
 def snapshot_not_found_message() -> str:
     return "Snapshot not found"
 

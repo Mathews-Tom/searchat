@@ -66,6 +66,7 @@ from searchat.contracts.errors import (
     export_disabled_message,
     highlight_provider_required_message,
     invalid_highlight_provider_message,
+    invalid_model_provider_message,
     invalid_export_format_message,
     invalid_mcp_mode_message,
     invalid_mcp_tool_message,
@@ -560,6 +561,7 @@ def test_shared_error_contract_messages_are_stable() -> None:
     assert invalid_mcp_tool_message().startswith("Invalid tool; expected one of:")
     assert highlight_provider_required_message() == "Highlight provider is required"
     assert invalid_highlight_provider_message() == "Invalid highlight provider"
+    assert invalid_model_provider_message() == "model_provider must be 'openai', 'ollama', or 'embedded'."
     assert snapshot_not_found_message() == "Snapshot not found"
     assert conversation_not_found_message("conv-123") == "Conversation not found: conv-123"
     assert bookmark_not_found_message("conv-123") == "Bookmark for conversation conv-123 not found"
