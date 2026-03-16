@@ -22,6 +22,10 @@ from searchat.api.models import (
     ConversationResponse,
     ResumeRequest,
 )
+from searchat.contracts.similarity import (
+    serialize_similar_conversation,
+    serialize_similar_conversations_payload,
+)
 from searchat.api.dataset_access import get_dataset_semantic_retrieval, get_dataset_store
 from searchat.api.warmup import invalidate_search_index
 from searchat.api.utils import detect_tool_from_path, detect_source_from_path, parse_date_filter
@@ -808,10 +812,11 @@ async def get_similar_conversations(
             ]
 
             if not hits:
-                return {
-                    'conversation_id': conversation_id,
-                    'similar_conversations': []
-                }
+                return serialize_similar_conversations_payload(
+                    conversation_id=conversation_id,
+                    title=conv_meta["title"],
+                    similar_conversations=[],
+                )
 
             # Query metadata and conversations to get details
             values_clause = ", ".join(["(?, ?)"] * len(hits))
@@ -872,30 +877,24 @@ async def get_similar_conversations(
             file_path,
             distance,
         ) in rows:
-            # Calculate similarity score (inverse of distance)
-            score = 1.0 / (1.0 + float(distance))
+            similar_conversations.append(
+                serialize_similar_conversation(
+                    conversation_id=sim_conv_id,
+                    project_id=project_id,
+                    title=title,
+                    created_at=created_at,
+                    updated_at=updated_at,
+                    message_count=message_count,
+                    tool=detect_tool_from_path(file_path),
+                    distance=distance,
+                )
+            )
 
-            # Handle both string and datetime types for timestamps
-            created_at_str = created_at if isinstance(created_at, str) else created_at.isoformat()
-            updated_at_str = updated_at if isinstance(updated_at, str) else updated_at.isoformat()
-
-            similar_conversations.append({
-                'conversation_id': sim_conv_id,
-                'project_id': project_id,
-                'title': title,
-                'created_at': created_at_str,
-                'updated_at': updated_at_str,
-                'message_count': message_count,
-                'similarity_score': round(score, 3),
-                'tool': detect_tool_from_path(file_path)
-            })
-
-        return {
-            'conversation_id': conversation_id,
-            'title': conv_meta['title'],
-            'similar_count': len(similar_conversations),
-            'similar_conversations': similar_conversations
-        }
+        return serialize_similar_conversations_payload(
+            conversation_id=conversation_id,
+            title=conv_meta["title"],
+            similar_conversations=similar_conversations,
+        )
 
     except HTTPException:
         raise

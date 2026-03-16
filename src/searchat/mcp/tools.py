@@ -183,7 +183,13 @@ def find_similar_conversations(
     ]
 
     if not hits:
-        return _json_dumps({"conversation_id": conversation_id, "similar_conversations": []})
+        return _json_dumps(
+            serialize_similar_conversations_payload(
+                conversation_id=conversation_id,
+                title=conv_meta.get("title"),
+                similar_conversations=[],
+            )
+        )
 
     values_clause = ", ".join(["(?, ?)"] * len(hits))
     params: list[object] = []
