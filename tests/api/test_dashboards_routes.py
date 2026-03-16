@@ -107,22 +107,27 @@ def test_dashboards_crud_flow(client, monkeypatch):
 
     created = client.post("/api/dashboards", json=payload)
     assert created.status_code == 200
+    assert list(created.json()) == ["success", "dashboard"]
     dashboard_id = created.json()["dashboard"]["id"]
 
     listing = client.get("/api/dashboards")
     assert listing.status_code == 200
+    assert list(listing.json()) == ["total", "dashboards"]
     assert listing.json()["total"] == 1
 
     fetched = client.get(f"/api/dashboards/{dashboard_id}")
     assert fetched.status_code == 200
+    assert list(fetched.json()) == ["dashboard"]
     assert fetched.json()["dashboard"]["name"] == "Daily Ops"
 
     updated = client.put(f"/api/dashboards/{dashboard_id}", json={"name": "Daily Ops v2"})
     assert updated.status_code == 200
+    assert list(updated.json()) == ["success", "dashboard"]
     assert updated.json()["dashboard"]["name"] == "Daily Ops v2"
 
     deleted = client.delete(f"/api/dashboards/{dashboard_id}")
     assert deleted.status_code == 200
+    assert list(deleted.json()) == ["success"]
 
     listing_after = client.get("/api/dashboards")
     assert listing_after.status_code == 200
@@ -188,6 +193,7 @@ def test_dashboards_render_flow(client, monkeypatch):
     response = client.get(f"/api/dashboards/{dashboard['id']}/render")
     assert response.status_code == 200
     data = response.json()
+    assert list(data) == ["dashboard", "widgets"]
     assert data["dashboard"]["id"] == dashboard["id"]
     assert data["widgets"][0]["results"][0]["conversation_id"] == "conv-1"
 

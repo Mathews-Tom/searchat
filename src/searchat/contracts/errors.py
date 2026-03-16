@@ -43,6 +43,30 @@ def saved_query_not_found_message() -> str:
     return "Saved query not found"
 
 
+def dashboards_disabled_message() -> str:
+    return "Dashboards are disabled"
+
+
+def dashboard_not_found_message() -> str:
+    return "Dashboard not found"
+
+
+def saved_query_missing_message(query_id: object) -> str:
+    return f"Saved query {query_id} not found"
+
+
+def saved_query_invalid_message(query_id: object) -> str:
+    return f"Saved query {query_id} is invalid"
+
+
+def invalid_saved_query_mode_message() -> str:
+    return "Invalid search mode in saved query"
+
+
+def invalid_saved_query_tool_filter_message() -> str:
+    return "Invalid tool filter in saved query"
+
+
 def no_embeddings_for_conversation_message() -> str:
     return "No embeddings found for this conversation"
 

@@ -4,6 +4,10 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 
 from searchat.api.contracts import (
+    serialize_dashboard_mutation_payload,
+    serialize_dashboard_payload,
+    serialize_dashboard_render_payload,
+    serialize_dashboards_payload,
     serialize_bookmark_mutation_payload,
     serialize_bookmark_payload,
     serialize_bookmark_status_payload,
@@ -20,6 +24,8 @@ from searchat.api.contracts import (
     serialize_statistics_payload,
 )
 from searchat.contracts.errors import (
+    dashboard_not_found_message,
+    dashboards_disabled_message,
     bookmark_not_found_message,
     conversation_not_found_message,
     highlight_provider_required_message,
@@ -27,12 +33,16 @@ from searchat.contracts.errors import (
     invalid_mcp_mode_message,
     invalid_mcp_tool_message,
     invalid_search_mode_message,
+    invalid_saved_query_mode_message,
+    invalid_saved_query_tool_filter_message,
     invalid_tool_filter_message,
     mcp_offset_message,
     mcp_search_limit_message,
     mcp_similarity_limit_message,
     no_embeddings_for_conversation_message,
     saved_query_not_found_message,
+    saved_query_invalid_message,
+    saved_query_missing_message,
     snapshot_not_found_message,
 )
 from searchat.models import SearchResult
@@ -247,6 +257,32 @@ def test_serialize_saved_query_payloads_preserve_saved_query_shapes() -> None:
     assert serialize_success_flag_payload() == {"success": True}
 
 
+def test_serialize_dashboard_payloads_preserve_dashboard_shapes() -> None:
+    dashboard = {
+        "id": "d-123",
+        "name": "Daily Ops",
+        "layout": {"widgets": [{"query_id": "q-1"}]},
+    }
+    widget = {
+        "id": "w-1",
+        "results": [],
+    }
+
+    assert serialize_dashboards_payload([dashboard]) == {
+        "total": 1,
+        "dashboards": [dashboard],
+    }
+    assert serialize_dashboard_payload(dashboard) == {"dashboard": dashboard}
+    assert serialize_dashboard_mutation_payload(dashboard) == {
+        "success": True,
+        "dashboard": dashboard,
+    }
+    assert serialize_dashboard_render_payload(dashboard=dashboard, widgets=[widget]) == {
+        "dashboard": dashboard,
+        "widgets": [widget],
+    }
+
+
 def test_shared_error_contract_messages_are_stable() -> None:
     assert invalid_search_mode_message() == "Invalid search mode"
     assert invalid_mcp_mode_message() == "Invalid mode; expected: hybrid, semantic, keyword"
@@ -258,6 +294,12 @@ def test_shared_error_contract_messages_are_stable() -> None:
     assert conversation_not_found_message("conv-123") == "Conversation not found: conv-123"
     assert bookmark_not_found_message("conv-123") == "Bookmark for conversation conv-123 not found"
     assert saved_query_not_found_message() == "Saved query not found"
+    assert dashboards_disabled_message() == "Dashboards are disabled"
+    assert dashboard_not_found_message() == "Dashboard not found"
+    assert saved_query_missing_message("q-1") == "Saved query q-1 not found"
+    assert saved_query_invalid_message("q-1") == "Saved query q-1 is invalid"
+    assert invalid_saved_query_mode_message() == "Invalid search mode in saved query"
+    assert invalid_saved_query_tool_filter_message() == "Invalid tool filter in saved query"
     assert no_embeddings_for_conversation_message() == "No embeddings found for this conversation"
     assert mcp_search_limit_message() == "limit must be between 1 and 100"
     assert mcp_similarity_limit_message() == "limit must be between 1 and 20"

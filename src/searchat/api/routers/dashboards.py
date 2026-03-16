@@ -9,12 +9,27 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from searchat.config.constants import VALID_TOOL_NAMES
+from searchat.api.contracts import (
+    serialize_dashboard_mutation_payload,
+    serialize_dashboard_payload,
+    serialize_dashboard_render_payload,
+    serialize_dashboards_payload,
+    serialize_success_flag_payload,
+)
 import searchat.api.dependencies as deps
 from searchat.api.dataset_access import _DatasetNotReady, get_dataset_retrieval
 from searchat.api.utils import (
     parse_date_filter,
     sort_results,
     search_result_to_response,
+)
+from searchat.contracts.errors import (
+    dashboard_not_found_message,
+    dashboards_disabled_message,
+    invalid_saved_query_mode_message,
+    invalid_saved_query_tool_filter_message,
+    saved_query_invalid_message,
+    saved_query_missing_message,
 )
 from searchat.models import SearchFilters, SearchMode
 
@@ -56,12 +71,12 @@ class DashboardUpdateRequest(BaseModel):
 async def list_dashboards():
     config = deps.get_config()
     if not config.dashboards.enabled:
-        raise HTTPException(status_code=404, detail="Dashboards are disabled")
+        raise HTTPException(status_code=404, detail=dashboards_disabled_message())
 
     try:
         service = deps.get_dashboards_service()
         dashboards = service.list_dashboards()
-        return {"total": len(dashboards), "dashboards": dashboards}
+        return serialize_dashboards_payload(dashboards)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -70,12 +85,12 @@ async def list_dashboards():
 async def create_dashboard(request: DashboardCreateRequest):
     config = deps.get_config()
     if not config.dashboards.enabled:
-        raise HTTPException(status_code=404, detail="Dashboards are disabled")
+        raise HTTPException(status_code=404, detail=dashboards_disabled_message())
 
     try:
         service = deps.get_dashboards_service()
         dashboard = service.create_dashboard(request.model_dump())
-        return {"success": True, "dashboard": dashboard}
+        return serialize_dashboard_mutation_payload(dashboard)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
@@ -86,14 +101,14 @@ async def create_dashboard(request: DashboardCreateRequest):
 async def get_dashboard(dashboard_id: str):
     config = deps.get_config()
     if not config.dashboards.enabled:
-        raise HTTPException(status_code=404, detail="Dashboards are disabled")
+        raise HTTPException(status_code=404, detail=dashboards_disabled_message())
 
     try:
         service = deps.get_dashboards_service()
         dashboard = service.get_dashboard(dashboard_id)
         if dashboard is None:
-            raise HTTPException(status_code=404, detail="Dashboard not found")
-        return {"dashboard": dashboard}
+            raise HTTPException(status_code=404, detail=dashboard_not_found_message())
+        return serialize_dashboard_payload(dashboard)
     except HTTPException:
         raise
     except Exception as exc:
@@ -104,15 +119,15 @@ async def get_dashboard(dashboard_id: str):
 async def update_dashboard(dashboard_id: str, request: DashboardUpdateRequest):
     config = deps.get_config()
     if not config.dashboards.enabled:
-        raise HTTPException(status_code=404, detail="Dashboards are disabled")
+        raise HTTPException(status_code=404, detail=dashboards_disabled_message())
 
     try:
         service = deps.get_dashboards_service()
         updates = {k: v for k, v in request.model_dump().items() if v is not None}
         dashboard = service.update_dashboard(dashboard_id, updates)
         if dashboard is None:
-            raise HTTPException(status_code=404, detail="Dashboard not found")
-        return {"success": True, "dashboard": dashboard}
+            raise HTTPException(status_code=404, detail=dashboard_not_found_message())
+        return serialize_dashboard_mutation_payload(dashboard)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except HTTPException:
@@ -125,14 +140,14 @@ async def update_dashboard(dashboard_id: str, request: DashboardUpdateRequest):
 async def delete_dashboard(dashboard_id: str):
     config = deps.get_config()
     if not config.dashboards.enabled:
-        raise HTTPException(status_code=404, detail="Dashboards are disabled")
+        raise HTTPException(status_code=404, detail=dashboards_disabled_message())
 
     try:
         service = deps.get_dashboards_service()
         removed = service.delete_dashboard(dashboard_id)
         if not removed:
-            raise HTTPException(status_code=404, detail="Dashboard not found")
-        return {"success": True}
+            raise HTTPException(status_code=404, detail=dashboard_not_found_message())
+        return serialize_success_flag_payload()
     except HTTPException:
         raise
     except Exception as exc:
@@ -143,13 +158,13 @@ async def delete_dashboard(dashboard_id: str):
 async def export_dashboard(dashboard_id: str):
     config = deps.get_config()
     if not config.dashboards.enabled:
-        raise HTTPException(status_code=404, detail="Dashboards are disabled")
+        raise HTTPException(status_code=404, detail=dashboards_disabled_message())
 
     try:
         service = deps.get_dashboards_service()
         dashboard = service.get_dashboard(dashboard_id)
         if dashboard is None:
-            raise HTTPException(status_code=404, detail="Dashboard not found")
+            raise HTTPException(status_code=404, detail=dashboard_not_found_message())
         content = json.dumps(dashboard, indent=2).encode("utf-8")
         return Response(
             content=content,
@@ -168,14 +183,14 @@ async def export_dashboard(dashboard_id: str):
 async def render_dashboard(dashboard_id: str):
     config = deps.get_config()
     if not config.dashboards.enabled:
-        raise HTTPException(status_code=404, detail="Dashboards are disabled")
+        raise HTTPException(status_code=404, detail=dashboards_disabled_message())
 
     try:
         dashboards_service = deps.get_dashboards_service()
         saved_queries = deps.get_saved_queries_service()
         dashboard = dashboards_service.get_dashboard(dashboard_id)
         if dashboard is None:
-            raise HTTPException(status_code=404, detail="Dashboard not found")
+            raise HTTPException(status_code=404, detail=dashboard_not_found_message())
 
         widgets = _ensure_widgets(dashboard)
         widget_requests: list[dict[str, Any]] = []
@@ -185,11 +200,11 @@ async def render_dashboard(dashboard_id: str):
             query_id = widget.get("query_id")
             query = saved_queries.get_query(query_id) if isinstance(query_id, str) else None
             if query is None:
-                raise HTTPException(status_code=400, detail=f"Saved query {query_id} not found")
+                raise HTTPException(status_code=400, detail=saved_query_missing_message(query_id))
 
             query_text = query.get("query")
             if not isinstance(query_text, str):
-                raise HTTPException(status_code=400, detail=f"Saved query {query_id} is invalid")
+                raise HTTPException(status_code=400, detail=saved_query_invalid_message(query_id))
 
             mode = _parse_mode(query.get("mode"))
             if query_text.strip() == "*":
@@ -241,10 +256,10 @@ async def render_dashboard(dashboard_id: str):
                 }
             )
 
-        return {
-            "dashboard": dashboard,
-            "widgets": rendered_widgets,
-        }
+        return serialize_dashboard_render_payload(
+            dashboard=dashboard,
+            widgets=rendered_widgets,
+        )
     except HTTPException:
         raise
     except ValueError as exc:
@@ -268,7 +283,7 @@ def _parse_mode(mode_value: Any) -> SearchMode:
     try:
         return SearchMode(mode_str)
     except Exception as exc:
-        raise HTTPException(status_code=400, detail="Invalid search mode in saved query") from exc
+        raise HTTPException(status_code=400, detail=invalid_saved_query_mode_message()) from exc
 
 
 def _build_filters(filters_value: Any) -> SearchFilters:
@@ -284,7 +299,7 @@ def _build_filters(filters_value: Any) -> SearchFilters:
     if isinstance(tool, str) and tool:
         tool_value = tool.lower()
         if tool_value not in VALID_TOOL_NAMES:
-            raise ValueError("Invalid tool filter in saved query")
+            raise ValueError(invalid_saved_query_tool_filter_message())
         filters.tool = tool_value
 
     date = filters_value.get("date") if isinstance(filters_value.get("date"), str) else None
@@ -301,4 +316,3 @@ def _normalize_sort_by(filters_value: Any) -> str:
         if isinstance(sort_by, str) and sort_by:
             return sort_by
     return "relevance"
-

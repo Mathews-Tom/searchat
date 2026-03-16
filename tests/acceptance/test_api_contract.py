@@ -341,6 +341,45 @@ def test_saved_state_routes_preserve_stable_contracts() -> None:
     ]
 
 
+def test_dashboard_routes_preserve_stable_contracts() -> None:
+    client = TestClient(app)
+    config = SimpleNamespace(dashboards=SimpleNamespace(enabled=True))
+    dashboard = {
+        "id": "d-123",
+        "name": "Daily Ops",
+        "description": None,
+        "queries": ["q-1"],
+        "layout": {"widgets": [{"id": "w-1", "query_id": "q-1"}]},
+        "refresh_interval": None,
+        "created_at": "2026-03-16T00:00:00+00:00",
+        "updated_at": "2026-03-16T00:00:00+00:00",
+    }
+    dashboards_service = Mock()
+    dashboards_service.list_dashboards.return_value = [dashboard]
+
+    with patch("searchat.api.routers.dashboards.deps.get_config", return_value=config):
+        with patch("searchat.api.routers.dashboards.deps.get_dashboards_service", return_value=dashboards_service):
+            list_response = client.get("/api/dashboards")
+            dashboards_service.get_dashboard.return_value = dashboard
+            get_response = client.get("/api/dashboards/d-123")
+
+    assert list_response.status_code == 200
+    assert list(list_response.json()) == ["total", "dashboards"]
+    assert list(list_response.json()["dashboards"][0]) == [
+        "id",
+        "name",
+        "description",
+        "queries",
+        "layout",
+        "refresh_interval",
+        "created_at",
+        "updated_at",
+    ]
+
+    assert get_response.status_code == 200
+    assert list(get_response.json()) == ["dashboard"]
+
+
 def test_search_and_similarity_routes_preserve_stable_error_messages() -> None:
     client = TestClient(app)
     dataset = SimpleNamespace(

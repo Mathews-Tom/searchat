@@ -198,3 +198,32 @@ def serialize_saved_query_mutation_payload(query: dict[str, Any]) -> dict[str, A
 
 def serialize_success_flag_payload() -> dict[str, Any]:
     return {"success": True}
+
+
+def serialize_dashboards_payload(dashboards: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "total": len(dashboards),
+        "dashboards": dashboards,
+    }
+
+
+def serialize_dashboard_payload(dashboard: dict[str, Any]) -> dict[str, Any]:
+    return {"dashboard": dashboard}
+
+
+def serialize_dashboard_mutation_payload(dashboard: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "success": True,
+        "dashboard": dashboard,
+    }
+
+
+def serialize_dashboard_render_payload(
+    *,
+    dashboard: dict[str, Any],
+    widgets: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "dashboard": dashboard,
+        "widgets": widgets,
+    }
