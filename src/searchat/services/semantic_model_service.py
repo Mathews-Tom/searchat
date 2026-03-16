@@ -6,6 +6,14 @@ from typing import Any, Protocol
 from searchat.config import Config
 
 
+class EmbeddingModelUnavailable(RuntimeError):
+    """Raised when the configured embedding model cannot be constructed."""
+
+
+class RerankingModelUnavailable(RuntimeError):
+    """Raised when the configured reranking model cannot be constructed."""
+
+
 class EmbeddingService(Protocol):
     """Protocol for semantic embedding models."""
 
@@ -22,16 +30,26 @@ class RerankingService(Protocol):
 
 def build_embedding_service(config: Config) -> EmbeddingService:
     """Build the configured embedding model."""
-    from sentence_transformers import SentenceTransformer
+    try:
+        from sentence_transformers import SentenceTransformer
 
-    return SentenceTransformer(
-        config.embedding.model,
-        device=config.embedding.get_device(),
-    )
+        return SentenceTransformer(
+            config.embedding.model,
+            device=config.embedding.get_device(),
+        )
+    except Exception as exc:
+        raise EmbeddingModelUnavailable(
+            f"Embedding model unavailable: {config.embedding.model}"
+        ) from exc
 
 
 def build_reranking_service(config: Config) -> RerankingService:
     """Build the configured reranking model."""
-    from sentence_transformers import CrossEncoder
+    try:
+        from sentence_transformers import CrossEncoder
 
-    return CrossEncoder(config.reranking.model)
+        return CrossEncoder(config.reranking.model)
+    except Exception as exc:
+        raise RerankingModelUnavailable(
+            f"Reranking model unavailable: {config.reranking.model}"
+        ) from exc

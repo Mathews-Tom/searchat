@@ -23,13 +23,16 @@ from searchat.config import Config
 from searchat.config.constants import FTS_STEMMER, FTS_STOPWORDS, QUERY_SYNONYMS
 from searchat.services.semantic_model_service import (
     EmbeddingService,
+    EmbeddingModelUnavailable,
     RerankingService,
+    RerankingModelUnavailable,
     build_embedding_service,
     build_reranking_service,
 )
 from searchat.services.retrieval_service import SemanticVectorHit
 from searchat.services.retrieval_service import (
     RetrievalCapabilities,
+    RerankingUnavailable,
     SemanticSearchUnavailable,
 )
 from searchat.services.storage_contracts import read_index_metadata
@@ -91,6 +94,8 @@ class SearchEngine:
 
         # Reranker (lazy loaded)
         self._reranker: RerankingService | None = None
+        self._semantic_runtime_reason: str | None = None
+        self._reranking_runtime_reason: str | None = None
 
         # Build persistent table + FTS index (best-effort at init)
         self._fts_ready = False
@@ -197,24 +202,38 @@ class SearchEngine:
         self._validate_index_metadata()
 
         if self.embedder is None:
-            self.embedder = build_embedding_service(self.config)
+            try:
+                self.embedder = build_embedding_service(self.config)
+                self._semantic_runtime_reason = None
+            except EmbeddingModelUnavailable as exc:
+                self._semantic_runtime_reason = str(exc)
+                raise SemanticSearchUnavailable(str(exc)) from exc
 
     def _ensure_reranker_loaded_locked(self) -> None:
         if not self.config.reranking.enabled:
             return
         if self._reranker is None:
-            self._reranker = build_reranking_service(self.config)
+            try:
+                self._reranker = build_reranking_service(self.config)
+                self._reranking_runtime_reason = None
+            except RerankingModelUnavailable as exc:
+                self._reranking_runtime_reason = str(exc)
+                raise RerankingUnavailable(str(exc)) from exc
 
     def _semantic_unavailable_reason(self) -> str | None:
         if not self.metadata_path.exists():
             return "Metadata parquet not available"
         if not self.index_path.exists():
             return "FAISS index not available"
+        if self.embedder is None and self._semantic_runtime_reason is not None:
+            return self._semantic_runtime_reason
         return None
 
     def _reranking_unavailable_reason(self) -> str | None:
         if not self.config.reranking.enabled:
             return "Reranking is disabled"
+        if self._reranker is None and self._reranking_runtime_reason is not None:
+            return self._reranking_runtime_reason
         return None
 
 
