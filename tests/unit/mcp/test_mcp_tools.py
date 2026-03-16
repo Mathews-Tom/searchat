@@ -7,6 +7,7 @@ import pytest
 
 import searchat.mcp.tools as mcp_tools
 from searchat.config import PathResolver
+from searchat.services.llm_service import LLMServiceError
 
 
 @pytest.fixture
@@ -80,5 +81,28 @@ def test_ask_about_history_includes_sources_when_enabled(indexed_dataset: Path, 
     )
 
     assert payload["answer"] == "ok"
+    assert isinstance(payload["sources"], list)
+    assert len(payload["sources"]) >= 1
+
+
+def test_ask_about_history_generation_outage_returns_grounded_fallback(
+    indexed_dataset: Path, monkeypatch
+) -> None:
+    class _GenerationService:
+        @staticmethod
+        def completion(**_kwargs):
+            raise LLMServiceError("provider down")
+
+    monkeypatch.setattr(mcp_tools, "build_generation_service", lambda _config: _GenerationService())
+
+    payload = json.loads(
+        mcp_tools.ask_about_history(
+            question="What was the code?",
+            include_sources=True,
+            search_dir=str(indexed_dataset),
+        )
+    )
+
+    assert payload["answer"].startswith("Generation is temporarily unavailable.")
     assert isinstance(payload["sources"], list)
     assert len(payload["sources"]) >= 1

@@ -6,8 +6,10 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from searchat.config.settings import LLMConfig
+from searchat.models import SearchResult
 
 VALID_GENERATION_PROVIDERS: frozenset[str] = frozenset({"openai", "ollama", "embedded"})
+FALLBACK_SOURCE_LIMIT = 3
 
 
 class LLMServiceError(RuntimeError):
@@ -236,6 +238,21 @@ def resolve_generation_target(
         resolved = f"ollama/{resolved}"
 
     return GenerationTarget(provider=provider_value, model_name=resolved)
+
+
+def build_grounded_fallback_answer(
+    results: list[SearchResult],
+    *,
+    source_limit: int = FALLBACK_SOURCE_LIMIT,
+) -> str:
+    """Return deterministic archival context when generation is unavailable."""
+    lines = [
+        "Generation is temporarily unavailable. Relevant archived context:",
+    ]
+    for idx, result in enumerate(results[:source_limit], start=1):
+        snippet = result.snippet.strip() or "No snippet available."
+        lines.append(f"{idx}. {result.title}: {snippet}")
+    return "\n".join(lines)
 
 
 def _extract_chunk_text(chunk: Any) -> str:
