@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 
 from searchat.mcp.contracts import (
+    serialize_conversation_payload,
     serialize_history_answer_payload,
     serialize_search_payload,
     serialize_similar_conversation,
@@ -78,6 +79,33 @@ def test_serialize_statistics_payload_preserves_summary_keys() -> None:
         "earliest_date": "2025-01-01",
         "latest_date": "2025-06-01",
     }
+
+
+def test_serialize_conversation_payload_preserves_stable_keys() -> None:
+    payload = serialize_conversation_payload(
+        {
+            "conversation_id": "conv-123",
+            "project_id": "project-a",
+            "title": "Testing archive",
+            "created_at": "2026-03-16T00:00:00+00:00",
+            "updated_at": "2026-03-17T00:00:00+00:00",
+            "message_count": 2,
+            "file_path": "/tmp/conv-123.jsonl",
+            "messages": [{"role": "user", "content": "hi"}],
+            "ignored": "extra",
+        }
+    )
+
+    assert list(payload) == [
+        "conversation_id",
+        "project_id",
+        "title",
+        "created_at",
+        "updated_at",
+        "message_count",
+        "file_path",
+        "messages",
+    ]
 
 
 def test_serialize_similar_conversations_payload_preserves_core_fields() -> None:

@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from searchat.mcp.tools import ask_about_history, extract_patterns, find_similar_conversations
+from searchat.mcp.tools import ask_about_history, extract_patterns, find_similar_conversations, get_conversation
 from searchat.models import SearchResult, SearchResults
 from searchat.services.llm_service import LLMServiceError
 from searchat.mcp.tools import get_statistics, list_projects, search_conversations
@@ -148,6 +148,38 @@ def test_project_and_statistics_tools_preserve_stable_top_level_contracts(tmp_pa
         "total_projects",
         "earliest_date",
         "latest_date",
+    ]
+
+
+def test_get_conversation_preserves_stable_payload_contract(tmp_path: Path) -> None:
+    store = MagicMock()
+    store.get_conversation_record.return_value = {
+        "conversation_id": "conv-123",
+        "project_id": "project-a",
+        "title": "Contract conversation",
+        "created_at": "2026-01-20T10:00:00+00:00",
+        "updated_at": "2026-01-21T10:00:00+00:00",
+        "message_count": 2,
+        "file_path": "/tmp/conv-123.jsonl",
+        "messages": [{"role": "user", "content": "hello"}],
+        "ignored": "extra",
+    }
+
+    with (
+        patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+        patch("searchat.mcp.tools.build_services", return_value=(MagicMock(), MagicMock(), store)),
+    ):
+        payload = json.loads(get_conversation(conversation_id="conv-123", search_dir=str(tmp_path)))
+
+    assert list(payload) == [
+        "conversation_id",
+        "project_id",
+        "title",
+        "created_at",
+        "updated_at",
+        "message_count",
+        "file_path",
+        "messages",
     ]
 
 

@@ -187,7 +187,17 @@ class TestGetConversation:
         from searchat.mcp.tools import get_conversation
 
         fake_store = MagicMock()
-        fake_store.get_conversation_record.return_value = {"id": "abc", "title": "Test"}
+        fake_store.get_conversation_record.return_value = {
+            "conversation_id": "abc",
+            "project_id": "project-a",
+            "title": "Test",
+            "created_at": "2026-03-16T00:00:00+00:00",
+            "updated_at": "2026-03-16T00:00:00+00:00",
+            "message_count": 1,
+            "file_path": "/tmp/abc.jsonl",
+            "messages": [{"role": "user", "content": "hi"}],
+            "ignored": "extra",
+        }
 
         with (
             patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
@@ -196,7 +206,17 @@ class TestGetConversation:
             result = get_conversation(conversation_id="abc")
 
         parsed = json.loads(result)
-        assert parsed["id"] == "abc"
+        assert list(parsed) == [
+            "conversation_id",
+            "project_id",
+            "title",
+            "created_at",
+            "updated_at",
+            "message_count",
+            "file_path",
+            "messages",
+        ]
+        assert parsed["conversation_id"] == "abc"
 
 
 class TestListProjects:
