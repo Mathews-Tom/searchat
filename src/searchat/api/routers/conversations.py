@@ -25,6 +25,11 @@ from searchat.api.models import (
 from searchat.api.dataset_access import get_dataset_semantic_retrieval, get_dataset_store
 from searchat.api.warmup import invalidate_search_index
 from searchat.api.utils import detect_tool_from_path, detect_source_from_path, parse_date_filter
+from searchat.contracts.errors import (
+    invalid_tool_filter_message,
+    no_embeddings_for_conversation_message,
+    snapshot_not_found_message,
+)
 import searchat.api.dependencies as deps
 
 from searchat.services.export_service import export_conversation as render_export
@@ -48,8 +53,8 @@ def _resolve_dataset(snapshot: str | None) -> tuple[Path, str | None]:
         return deps.resolve_dataset_search_dir(snapshot)
     except ValueError as exc:
         msg = str(exc)
-        if msg == "Snapshot not found":
-            raise HTTPException(status_code=404, detail="Snapshot not found") from exc
+        if msg == snapshot_not_found_message():
+            raise HTTPException(status_code=404, detail=snapshot_not_found_message()) from exc
         raise HTTPException(status_code=400, detail=msg) from exc
 
 
@@ -378,7 +383,7 @@ async def get_all_conversations(
         if tool:
             tool_value = tool.lower()
             if tool_value not in VALID_TOOL_NAMES:
-                raise HTTPException(status_code=400, detail="Invalid tool filter")
+                raise HTTPException(status_code=400, detail=invalid_tool_filter_message())
             tool = tool_value
 
         count_kwargs: dict = {
@@ -790,7 +795,7 @@ async def get_similar_conversations(
             if not result:
                 raise HTTPException(
                     status_code=404,
-                    detail="No embeddings found for this conversation"
+                    detail=no_embeddings_for_conversation_message()
                 )
 
             chunk_text = result[0]

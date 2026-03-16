@@ -1,0 +1,51 @@
+from __future__ import annotations
+
+from searchat.config.constants import VALID_TOOL_NAMES
+
+
+def invalid_search_mode_message() -> str:
+    return "Invalid search mode"
+
+
+def invalid_mcp_mode_message() -> str:
+    return "Invalid mode; expected: hybrid, semantic, keyword"
+
+
+def invalid_tool_filter_message() -> str:
+    return "Invalid tool filter"
+
+
+def invalid_mcp_tool_message() -> str:
+    return f"Invalid tool; expected one of: {', '.join(sorted(VALID_TOOL_NAMES))}"
+
+
+def highlight_provider_required_message() -> str:
+    return "Highlight provider is required"
+
+
+def invalid_highlight_provider_message() -> str:
+    return "Invalid highlight provider"
+
+
+def snapshot_not_found_message() -> str:
+    return "Snapshot not found"
+
+
+def conversation_not_found_message(conversation_id: str) -> str:
+    return f"Conversation not found: {conversation_id}"
+
+
+def no_embeddings_for_conversation_message() -> str:
+    return "No embeddings found for this conversation"
+
+
+def mcp_search_limit_message() -> str:
+    return "limit must be between 1 and 100"
+
+
+def mcp_similarity_limit_message() -> str:
+    return "limit must be between 1 and 20"
+
+
+def mcp_offset_message() -> str:
+    return "offset must be >= 0"

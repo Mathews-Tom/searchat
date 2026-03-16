@@ -8,6 +8,10 @@ from fastapi import HTTPException
 from fastapi.responses import JSONResponse
 
 from searchat.config.constants import VALID_TOOL_NAMES
+from searchat.contracts.errors import (
+    invalid_tool_filter_message,
+    snapshot_not_found_message,
+)
 from searchat.models import SearchResult
 
 VALID_PROVIDERS: frozenset[str] = frozenset({"openai", "ollama", "embedded"})
@@ -126,8 +130,8 @@ def resolve_dataset(snapshot: str | None) -> tuple[Path, str | None]:
         return deps.resolve_dataset_search_dir(snapshot)
     except ValueError as exc:
         msg = str(exc)
-        if msg == "Snapshot not found":
-            raise HTTPException(status_code=404, detail="Snapshot not found") from exc
+        if msg == snapshot_not_found_message():
+            raise HTTPException(status_code=404, detail=snapshot_not_found_message()) from exc
         raise HTTPException(status_code=400, detail=msg) from exc
 
 
@@ -135,7 +139,7 @@ def validate_tool(tool: str) -> str:
     """Validate and normalize a tool filter value. Returns lowered value."""
     tool_value = tool.lower()
     if tool_value not in VALID_TOOL_NAMES:
-        raise HTTPException(status_code=400, detail="Invalid tool filter")
+        raise HTTPException(status_code=400, detail=invalid_tool_filter_message())
     return tool_value
 
 

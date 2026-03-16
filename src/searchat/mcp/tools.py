@@ -6,6 +6,15 @@ from pathlib import Path
 
 from searchat.config import Config, PathResolver
 from searchat.config.constants import VALID_TOOL_NAMES, RAG_SYSTEM_PROMPT
+from searchat.contracts.errors import (
+    conversation_not_found_message,
+    invalid_mcp_mode_message,
+    invalid_mcp_tool_message,
+    mcp_offset_message,
+    mcp_search_limit_message,
+    mcp_similarity_limit_message,
+    no_embeddings_for_conversation_message,
+)
 from searchat.mcp.contracts import (
     serialize_history_answer_payload,
     serialize_projects_payload,
@@ -61,7 +70,7 @@ def parse_mode(mode: str) -> SearchMode:
         return SearchMode.SEMANTIC
     if value == "keyword":
         return SearchMode.KEYWORD
-    raise ValueError("Invalid mode; expected: hybrid, semantic, keyword")
+    raise ValueError(invalid_mcp_mode_message())
 
 
 def parse_tool(tool: str | None) -> str | None:
@@ -71,7 +80,7 @@ def parse_tool(tool: str | None) -> str | None:
     if not value:
         return None
     if value not in VALID_TOOL_NAMES:
-        raise ValueError(f"Invalid tool; expected one of: {', '.join(sorted(VALID_TOOL_NAMES))}")
+        raise ValueError(invalid_mcp_tool_message())
     return value
 
 
@@ -86,9 +95,12 @@ def search_conversations(
     search_dir: str | None = None,
 ) -> str:
     if limit < 1 or limit > 100:
-        raise ValueError("limit must be between 1 and 100")
+        raise ValueError(mcp_search_limit_message())
     if offset < 0:
-        raise ValueError("offset must be >= 0")
+        raise ValueError(mcp_offset_message())
+
+    mode_value = parse_mode(mode)
+    tool_value = parse_tool(tool)
 
     dataset_dir = resolve_dataset(search_dir)
     _config, engine, _store = build_services(dataset_dir)
@@ -97,11 +109,10 @@ def search_conversations(
     if project_id:
         filters.project_ids = [project_id]
 
-    tool_value = parse_tool(tool)
     if tool_value is not None:
         filters.tool = tool_value
 
-    results = engine.search(query, mode=parse_mode(mode), filters=filters)
+    results = engine.search(query, mode=mode_value, filters=filters)
     payload = serialize_search_payload(results, limit=limit, offset=offset)
     return _json_dumps(payload)
 
@@ -112,7 +123,7 @@ def get_conversation(*, conversation_id: str, search_dir: str | None = None) -> 
 
     record = store.get_conversation_record(conversation_id)
     if record is None:
-        raise ValueError(f"Conversation not found: {conversation_id}")
+        raise ValueError(conversation_not_found_message(conversation_id))
 
     return _json_dumps(record)
 
@@ -137,14 +148,14 @@ def find_similar_conversations(
     search_dir: str | None = None,
 ) -> str:
     if limit < 1 or limit > 20:
-        raise ValueError("limit must be between 1 and 20")
+        raise ValueError(mcp_similarity_limit_message())
 
     dataset_dir = resolve_dataset(search_dir)
     _config, engine, store = build_services(dataset_dir)
 
     conv_meta = store.get_conversation_meta(conversation_id)
     if not conv_meta:
-        raise ValueError(f"Conversation not found: {conversation_id}")
+        raise ValueError(conversation_not_found_message(conversation_id))
 
     con = store._connect()
     try:
@@ -162,7 +173,7 @@ def find_similar_conversations(
         con.close()
 
     if row is None:
-        raise ValueError("No embeddings found for this conversation")
+        raise ValueError(no_embeddings_for_conversation_message())
 
     chunk_text = row[0]
     representative_text = f"{conv_meta['title']} {chunk_text}"

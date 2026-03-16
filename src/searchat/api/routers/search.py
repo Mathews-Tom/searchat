@@ -6,6 +6,11 @@ from functools import lru_cache
 from fastapi import APIRouter, Query, HTTPException
 
 from searchat.api.contracts import serialize_projects_payload, serialize_search_payload
+from searchat.contracts.errors import (
+    highlight_provider_required_message,
+    invalid_highlight_provider_message,
+    invalid_search_mode_message,
+)
 from searchat.models import SearchMode, SearchFilters
 from searchat.services.highlight_service import extract_highlight_terms
 from searchat.services.llm_service import LLMServiceError
@@ -171,7 +176,7 @@ async def search(
             "keyword": SearchMode.KEYWORD,
         }
         if mode not in mode_map:
-            raise HTTPException(status_code=400, detail="Invalid search mode")
+            raise HTTPException(status_code=400, detail=invalid_search_mode_message())
         search_mode = mode_map[mode]
 
         if q.strip() == "*":
@@ -199,10 +204,10 @@ async def search(
         highlight_terms = None
         if highlight and len(q.strip()) >= 4 and mode != "keyword":
             if highlight_provider is None:
-                raise HTTPException(status_code=400, detail="Highlight provider is required")
+                raise HTTPException(status_code=400, detail=highlight_provider_required_message())
             provider = highlight_provider.lower()
             if provider not in ("openai", "ollama"):
-                raise HTTPException(status_code=400, detail="Invalid highlight provider")
+                raise HTTPException(status_code=400, detail=invalid_highlight_provider_message())
             highlight_terms = _resolve_highlight_terms(
                 str(search_dir), q, provider, highlight_model
             )
