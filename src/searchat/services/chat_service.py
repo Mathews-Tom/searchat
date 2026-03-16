@@ -11,6 +11,7 @@ from searchat.config.constants import RAG_SYSTEM_PROMPT
 from searchat.models import SearchMode, SearchFilters, SearchResult
 from searchat.services.llm_service import (
     LLMServiceError,
+    build_grounded_fallback_answer,
     build_generation_service,
     resolve_generation_target,
 )
@@ -29,7 +30,6 @@ class ChatSession:
 _sessions: dict[str, ChatSession] = {}
 _SESSION_TTL = 1800  # 30 minutes
 _MAX_TURNS = 10  # Sliding window of turn pairs
-_FALLBACK_SOURCE_LIMIT = 3
 
 
 def get_or_create_session(session_id: str | None) -> ChatSession:
@@ -106,7 +106,7 @@ def generate_answer_stream(
         except LLMServiceError:
             if chunks:
                 raise
-            fallback_answer = _build_generation_unavailable_fallback(top_results)
+            fallback_answer = build_grounded_fallback_answer(top_results)
             chunks.append(fallback_answer)
             yield fallback_answer
         # After streaming completes, update session
@@ -176,7 +176,7 @@ def generate_rag_response(
             max_tokens=max_tokens,
         )
     except LLMServiceError:
-        answer = _build_generation_unavailable_fallback(top_results)
+        answer = build_grounded_fallback_answer(top_results)
 
     session.messages.append({"role": "user", "content": query})
     session.messages.append({"role": "assistant", "content": answer})
@@ -247,14 +247,3 @@ def _format_context(results: list[SearchResult]) -> str:
             ]
         )
     return "\n".join(lines).strip()
-
-
-def _build_generation_unavailable_fallback(results: list[SearchResult]) -> str:
-    """Return a deterministic fallback when grounded context exists but generation is unavailable."""
-    lines = [
-        "Generation is temporarily unavailable. Relevant archived context:",
-    ]
-    for idx, result in enumerate(results[:_FALLBACK_SOURCE_LIMIT], start=1):
-        snippet = result.snippet.strip() or "No snippet available."
-        lines.append(f"{idx}. {result.title}: {snippet}")
-    return "\n".join(lines)
