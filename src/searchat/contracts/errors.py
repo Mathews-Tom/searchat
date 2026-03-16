@@ -67,6 +67,14 @@ def invalid_saved_query_tool_filter_message() -> str:
     return "Invalid tool filter in saved query"
 
 
+def analytics_active_dataset_only_message() -> str:
+    return "Analytics is available only for the active dataset"
+
+
+def internal_server_error_message() -> str:
+    return "Internal server error"
+
+
 def no_embeddings_for_conversation_message() -> str:
     return "No embeddings found for this conversation"
 

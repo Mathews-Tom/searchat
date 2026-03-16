@@ -227,3 +227,58 @@ def serialize_dashboard_render_payload(
         "dashboard": dashboard,
         "widgets": widgets,
     }
+
+
+def serialize_analytics_queries_payload(
+    *,
+    queries: list[dict[str, Any]],
+    days: int,
+) -> dict[str, Any]:
+    return {
+        "queries": queries,
+        "days": days,
+    }
+
+
+def serialize_analytics_config_payload(
+    *,
+    enabled: bool,
+    retention_days: int,
+) -> dict[str, Any]:
+    return {
+        "enabled": enabled,
+        "retention_days": retention_days,
+    }
+
+
+def serialize_analytics_trends_payload(
+    *,
+    days: int,
+    points: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "days": days,
+        "points": points,
+    }
+
+
+def serialize_analytics_agent_comparison_payload(
+    *,
+    days: int,
+    tools: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "days": days,
+        "tools": tools,
+    }
+
+
+def serialize_analytics_topics_payload(
+    *,
+    days: int,
+    clusters: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "days": days,
+        "clusters": clusters,
+    }
