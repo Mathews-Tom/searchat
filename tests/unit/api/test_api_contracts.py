@@ -4,6 +4,12 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 
 from searchat.api.contracts import (
+    serialize_backup_chain_payload,
+    serialize_backup_delete_payload,
+    serialize_backup_mutation_payload,
+    serialize_backup_restore_payload,
+    serialize_backup_summary_fallback,
+    serialize_backups_payload,
     serialize_analytics_agent_comparison_payload,
     serialize_analytics_config_payload,
     serialize_analytics_queries_payload,
@@ -30,6 +36,11 @@ from searchat.api.contracts import (
 )
 from searchat.contracts.errors import (
     analytics_active_dataset_only_message,
+    backup_chain_resolution_unavailable_message,
+    backup_not_found_message,
+    backup_operations_disabled_message,
+    backup_summary_unavailable_message,
+    backup_validation_unavailable_message,
     dashboard_not_found_message,
     dashboards_disabled_message,
     bookmark_not_found_message,
@@ -318,6 +329,69 @@ def test_serialize_analytics_payloads_preserve_shapes() -> None:
     }
 
 
+def test_serialize_backup_payloads_preserve_shapes() -> None:
+    backup = {
+        "backup_path": "/backups/backup_20250120_100000",
+        "timestamp": "20250120_100000",
+        "file_count": 5,
+        "total_size_mb": 10.5,
+    }
+
+    assert serialize_backup_mutation_payload(
+        backup=backup,
+        message="Backup created: backup_20250120_100000",
+    ) == {
+        "success": True,
+        "backup": backup,
+        "message": "Backup created: backup_20250120_100000",
+    }
+    assert serialize_backup_chain_payload(
+        backup_name="backup_20250120_100000",
+        chain=["backup_20250120_090000", "backup_20250120_100000"],
+        valid=False,
+        errors=["missing parent"],
+    ) == {
+        "backup_name": "backup_20250120_100000",
+        "chain": ["backup_20250120_090000", "backup_20250120_100000"],
+        "chain_length": 2,
+        "valid": False,
+        "errors": ["missing parent"],
+    }
+
+    summary = serialize_backup_summary_fallback(
+        name="backup_20250120_100000",
+        chain_length=1,
+        valid=False,
+        errors=[],
+    )
+    assert list(summary) == [
+        "name",
+        "backup_mode",
+        "encrypted",
+        "parent_name",
+        "chain_length",
+        "snapshot_browsable",
+        "has_manifest",
+        "valid",
+        "errors",
+    ]
+    assert serialize_backups_payload(backups=[summary], backup_directory="/backups") == {
+        "backups": [summary],
+        "total": 1,
+        "backup_directory": "/backups",
+    }
+    assert serialize_backup_restore_payload(restored_from="backup_20250120_100000") == {
+        "success": True,
+        "restored_from": "backup_20250120_100000",
+        "message": "Successfully restored from backup: backup_20250120_100000",
+    }
+    assert serialize_backup_delete_payload(deleted="backup_20250120_100000") == {
+        "success": True,
+        "deleted": "backup_20250120_100000",
+        "message": "Backup deleted: backup_20250120_100000",
+    }
+
+
 def test_shared_error_contract_messages_are_stable() -> None:
     assert invalid_search_mode_message() == "Invalid search mode"
     assert invalid_mcp_mode_message() == "Invalid mode; expected: hybrid, semantic, keyword"
@@ -333,6 +407,11 @@ def test_shared_error_contract_messages_are_stable() -> None:
     assert dashboard_not_found_message() == "Dashboard not found"
     assert analytics_active_dataset_only_message() == "Analytics is available only for the active dataset"
     assert internal_server_error_message() == "Internal server error"
+    assert backup_operations_disabled_message() == "Backup operations are disabled in snapshot mode"
+    assert backup_validation_unavailable_message() == "Backup validation is not available"
+    assert backup_chain_resolution_unavailable_message() == "Backup chain resolution is not available"
+    assert backup_not_found_message("backup-1") == "Backup not found: backup-1"
+    assert backup_summary_unavailable_message() == "Backup summary unavailable"
     assert saved_query_missing_message("q-1") == "Saved query q-1 not found"
     assert saved_query_invalid_message("q-1") == "Saved query q-1 is invalid"
     assert invalid_saved_query_mode_message() == "Invalid search mode in saved query"

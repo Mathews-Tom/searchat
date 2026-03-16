@@ -221,9 +221,8 @@ class TestCreateBackupEndpoint:
             assert response.status_code == 200
             data = response.json()
 
+            assert list(data) == ["success", "backup", "message"]
             assert data["success"] is True
-            assert "backup" in data
-            assert "message" in data
             assert "Backup created" in data["message"]
 
             mock_backup_manager.create_backup.assert_called_once_with(backup_name=None, encrypted=False)
@@ -257,6 +256,7 @@ class TestCreateIncrementalBackupEndpoint:
 
         assert resp.status_code == 200
         data = resp.json()
+        assert list(data) == ["success", "backup", "message"]
         assert data["success"] is True
         assert "backup" in data
         mock_backup_manager.create_incremental_backup.assert_called_once_with(
@@ -264,6 +264,14 @@ class TestCreateIncrementalBackupEndpoint:
             backup_name=None,
             encrypted=False,
         )
+
+    def test_create_incremental_backup_rejects_snapshot_mode(self, client, mock_backup_manager):
+        with patch('searchat.api.routers.backup.get_backup_manager', return_value=mock_backup_manager):
+            resp = client.post(
+                "/api/backup/incremental/create?parent=backup_20250120_100000&snapshot=backup_20250101_000000"
+            )
+        assert resp.status_code == 403
+        assert resp.json()["detail"] == "Backup operations are disabled in snapshot mode"
 
 
 @pytest.mark.unit
@@ -278,9 +286,7 @@ class TestListBackupsEndpoint:
             assert response.status_code == 200
             data = response.json()
 
-            assert "backups" in data
-            assert "total" in data
-            assert "backup_directory" in data
+            assert list(data) == ["backups", "total", "backup_directory"]
             assert data["total"] == 1
             assert len(data["backups"]) == 1
             assert data["backups"][0]["valid"] is True
@@ -349,11 +355,19 @@ class TestValidateBackupEndpoint:
             resp = client.get("/api/backup/validate/backup_20250120_100000")
         assert resp.status_code == 200
         data = resp.json()
+        assert list(data) == ["backup_name", "valid", "errors"]
         assert data["valid"] is True
         mock_backup_manager.validate_backup_artifact.assert_called_once_with(
             "backup_20250120_100000",
             verify_hashes=False,
         )
+
+    def test_validate_backup_reports_unavailable_contract(self, client):
+        manager = SimpleNamespace(backup_dir=Path("/backups"))
+        with patch('searchat.api.routers.backup.get_backup_manager', return_value=manager):
+            resp = client.get("/api/backup/validate/backup_20250120_100000")
+        assert resp.status_code == 500
+        assert resp.json()["detail"] == "Backup validation is not available"
 
 
 @pytest.mark.unit
@@ -373,12 +387,20 @@ class TestGetBackupChainEndpoint:
 
         assert resp.status_code == 200
         data = resp.json()
+        assert list(data) == ["backup_name", "chain", "chain_length", "valid", "errors"]
         assert data["backup_name"] == "backup_20250120_100000"
         assert data["chain_length"] == 2
         assert data["chain"] == ["backup_20250120_090000", "backup_20250120_100000"]
         assert data["valid"] is True
         assert data["errors"] == []
         mock_backup_manager.inspect_backup_chain.assert_called_once_with("backup_20250120_100000")
+
+    def test_get_backup_chain_reports_unavailable_contract(self, client):
+        manager = SimpleNamespace(backup_dir=Path("/backups"))
+        with patch('searchat.api.routers.backup.get_backup_manager', return_value=manager):
+            resp = client.get("/api/backup/chain/backup_20250120_100000")
+        assert resp.status_code == 500
+        assert resp.json()["detail"] == "Backup chain resolution is not available"
 
     def test_get_backup_chain_fixture_bundle_surfaces_invalid_state(self, client, tmp_path):
         from searchat.services.backup import BackupManager
@@ -445,15 +467,16 @@ class TestRestoreBackupEndpoint:
             with patch('searchat.api.routers.backup.invalidate_search_index') as invalidate:
                 response = client.post("/api/backup/restore?backup_name=backup_20250120_100000")
 
-                assert response.status_code == 200
-                data = response.json()
+            assert response.status_code == 200
+            data = response.json()
 
-                assert data["success"] is True
-                assert data["restored_from"] == "backup_20250120_100000"
-                assert "Successfully restored" in data["message"]
+            assert list(data) == ["success", "restored_from", "message"]
+            assert data["success"] is True
+            assert data["restored_from"] == "backup_20250120_100000"
+            assert "Successfully restored" in data["message"]
 
-                mock_backup_manager.restore_from_backup.assert_called_once()
-                invalidate.assert_called_once()
+            mock_backup_manager.restore_from_backup.assert_called_once()
+            invalidate.assert_called_once()
 
     def test_restore_backup_not_found(self, client, mock_backup_manager, tmp_path):
         """Test error when backup doesn't exist."""
@@ -463,7 +486,7 @@ class TestRestoreBackupEndpoint:
             response = client.post("/api/backup/restore?backup_name=nonexistent")
 
             assert response.status_code == 404
-            assert "not found" in response.json()["detail"]
+            assert response.json()["detail"] == "Backup not found: nonexistent"
 
     def test_restore_backup_with_pre_restore_backup(self, client, mock_backup_manager, tmp_path):
         """Test restore creates pre-restore backup."""
@@ -484,6 +507,7 @@ class TestRestoreBackupEndpoint:
                 assert response.status_code == 200
                 data = response.json()
 
+                assert list(data) == ["success", "restored_from", "message", "pre_restore_backup"]
                 assert "pre_restore_backup" in data
                 assert data["pre_restore_backup"]["backup_path"] == "/backups/pre_restore"
 
@@ -505,6 +529,7 @@ class TestDeleteBackupEndpoint:
             assert response.status_code == 200
             data = response.json()
 
+            assert list(data) == ["success", "deleted", "message"]
             assert data["success"] is True
             assert data["deleted"] == "backup_20250120_100000"
             assert "Backup deleted" in data["message"]
@@ -519,7 +544,7 @@ class TestDeleteBackupEndpoint:
             response = client.delete("/api/backup/delete/nonexistent")
 
             assert response.status_code == 404
-            assert "not found" in response.json()["detail"]
+            assert response.json()["detail"] == "Backup not found: nonexistent"
 
     def test_delete_backup_error(self, client, mock_backup_manager, tmp_path):
         """Test error handling when deletion fails."""

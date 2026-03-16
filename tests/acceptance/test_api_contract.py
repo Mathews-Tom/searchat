@@ -426,6 +426,61 @@ def test_analytics_routes_preserve_stable_contracts() -> None:
     assert list(config_response.json()) == ["enabled", "retention_days"]
 
 
+def test_backup_routes_preserve_stable_contracts() -> None:
+    client = TestClient(app)
+    backup_manager = Mock()
+    backup_manager.backup_dir = "/backups"
+
+    metadata = Mock()
+    metadata.backup_path.name = "backup_20250120_100000"
+    metadata.to_dict.return_value = {
+        "backup_path": "/backups/backup_20250120_100000",
+        "timestamp": "20250120_100000",
+        "file_count": 5,
+        "total_size_mb": 10.5,
+    }
+    backup_manager.create_backup.return_value = metadata
+    backup_manager.list_backups.return_value = [metadata]
+    backup_manager.get_backup_summary.return_value = {
+        "name": "backup_20250120_100000",
+        "backup_mode": "full",
+        "encrypted": False,
+        "parent_name": None,
+        "chain_length": 1,
+        "snapshot_browsable": True,
+        "has_manifest": True,
+        "valid": True,
+        "errors": [],
+    }
+    backup_manager.validate_backup_artifact.return_value = {
+        "backup_name": "backup_20250120_100000",
+        "valid": True,
+        "errors": [],
+    }
+    backup_manager.inspect_backup_chain.return_value = {
+        "backup_name": "backup_20250120_100000",
+        "chain": ["backup_20250120_100000"],
+        "chain_length": 1,
+        "valid": True,
+        "errors": [],
+    }
+
+    with patch("searchat.api.routers.backup.get_backup_manager", return_value=backup_manager):
+        create_response = client.post("/api/backup/create")
+        list_response = client.get("/api/backup/list")
+        validate_response = client.get("/api/backup/validate/backup_20250120_100000")
+        chain_response = client.get("/api/backup/chain/backup_20250120_100000")
+
+    assert create_response.status_code == 200
+    assert list(create_response.json()) == ["success", "backup", "message"]
+    assert list_response.status_code == 200
+    assert list(list_response.json()) == ["backups", "total", "backup_directory"]
+    assert validate_response.status_code == 200
+    assert list(validate_response.json()) == ["backup_name", "valid", "errors"]
+    assert chain_response.status_code == 200
+    assert list(chain_response.json()) == ["backup_name", "chain", "chain_length", "valid", "errors"]
+
+
 def test_search_and_similarity_routes_preserve_stable_error_messages() -> None:
     client = TestClient(app)
     dataset = SimpleNamespace(
