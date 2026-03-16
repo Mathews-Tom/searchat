@@ -6,9 +6,24 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
 
+from searchat.api.contracts import (
+    serialize_backup_chain_payload,
+    serialize_backup_delete_payload,
+    serialize_backup_mutation_payload,
+    serialize_backup_restore_payload,
+    serialize_backups_payload,
+    serialize_backup_summary_fallback,
+)
 from searchat.api.warmup import invalidate_search_index
 from searchat.api.dependencies import (
     get_backup_manager,
+)
+from searchat.contracts.errors import (
+    backup_chain_resolution_unavailable_message,
+    backup_not_found_message,
+    backup_operations_disabled_message,
+    backup_summary_unavailable_message,
+    backup_validation_unavailable_message,
 )
 
 
@@ -24,17 +39,16 @@ async def create_backup(
 ):
     """Create a new backup of the index and data."""
     if snapshot is not None:
-        raise HTTPException(status_code=403, detail="Backup operations are disabled in snapshot mode")
+        raise HTTPException(status_code=403, detail=backup_operations_disabled_message())
     try:
         backup_manager = get_backup_manager()
         logger.info(f"Creating backup: {backup_name or 'auto'}")
         metadata = backup_manager.create_backup(backup_name=backup_name, encrypted=encrypted)
 
-        return {
-            "success": True,
-            "backup": metadata.to_dict(),
-            "message": f"Backup created: {metadata.backup_path.name}"
-        }
+        return serialize_backup_mutation_payload(
+            backup=metadata.to_dict(),
+            message=f"Backup created: {metadata.backup_path.name}",
+        )
 
     except Exception as e:
         logger.error(f"Failed to create backup: {e}", exc_info=True)
@@ -50,17 +64,16 @@ async def create_incremental_backup(
 ):
     """Create an incremental backup based on a parent backup."""
     if snapshot is not None:
-        raise HTTPException(status_code=403, detail="Backup operations are disabled in snapshot mode")
+        raise HTTPException(status_code=403, detail=backup_operations_disabled_message())
     try:
         backup_manager = get_backup_manager()
         logger.info(f"Creating incremental backup from parent: {parent}")
         metadata = backup_manager.create_incremental_backup(parent_name=parent, backup_name=backup_name, encrypted=encrypted)
 
-        return {
-            "success": True,
-            "backup": metadata.to_dict(),
-            "message": f"Incremental backup created: {metadata.backup_path.name}",
-        }
+        return serialize_backup_mutation_payload(
+            backup=metadata.to_dict(),
+            message=f"Incremental backup created: {metadata.backup_path.name}",
+        )
     except Exception as e:
         logger.error(f"Failed to create incremental backup: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -75,7 +88,7 @@ async def validate_backup(
     try:
         backup_manager = get_backup_manager()
         if not hasattr(backup_manager, "validate_backup_artifact"):
-            raise HTTPException(status_code=500, detail="Backup validation is not available")
+            raise HTTPException(status_code=500, detail=backup_validation_unavailable_message())
 
         result = backup_manager.validate_backup_artifact(backup_name, verify_hashes=verify_hashes)
         return result
@@ -95,12 +108,8 @@ async def get_backup_chain(backup_name: str):
             return backup_manager.inspect_backup_chain(backup_name)
         if hasattr(backup_manager, "resolve_backup_chain"):
             chain = backup_manager.resolve_backup_chain(backup_name)
-            return {
-                "backup_name": backup_name,
-                "chain": chain,
-                "chain_length": len(chain),
-            }
-        raise HTTPException(status_code=500, detail="Backup chain resolution is not available")
+            return serialize_backup_chain_payload(backup_name=backup_name, chain=chain)
+        raise HTTPException(status_code=500, detail=backup_chain_resolution_unavailable_message())
     except HTTPException:
         raise
     except Exception as e:
@@ -125,38 +134,31 @@ async def list_backups():
                 try:
                     entry.update(backup_manager.get_backup_summary(name))
                 except Exception:
-                    entry.update({
-                        "name": name,
-                        "backup_mode": "full",
-                        "encrypted": False,
-                        "parent_name": None,
-                        "chain_length": 0,
-                        "snapshot_browsable": False,
-                        "has_manifest": False,
-                        "valid": False,
-                        "errors": ["Backup summary unavailable"],
-                    })
+                    entry.update(
+                        serialize_backup_summary_fallback(
+                            name=name,
+                            chain_length=0,
+                            valid=False,
+                            errors=[backup_summary_unavailable_message()],
+                        )
+                    )
             else:
                 # In tests backup_manager may be a mock; keep response stable.
-                entry.update({
-                    "name": name,
-                    "backup_mode": "full",
-                    "encrypted": False,
-                    "parent_name": None,
-                    "chain_length": 1 if name else 0,
-                    "snapshot_browsable": False,
-                    "has_manifest": False,
-                    "valid": False,
-                    "errors": [],
-                })
+                entry.update(
+                    serialize_backup_summary_fallback(
+                        name=name,
+                        chain_length=1 if name else 0,
+                        valid=False,
+                        errors=[],
+                    )
+                )
 
             enriched.append(entry)
 
-        return {
-            "backups": enriched,
-            "total": len(enriched),
-            "backup_directory": str(backup_manager.backup_dir)
-        }
+        return serialize_backups_payload(
+            backups=enriched,
+            backup_directory=str(backup_manager.backup_dir),
+        )
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -169,14 +171,14 @@ async def restore_backup(
 ):
     """Restore from a backup."""
     if snapshot is not None:
-        raise HTTPException(status_code=403, detail="Backup operations are disabled in snapshot mode")
+        raise HTTPException(status_code=403, detail=backup_operations_disabled_message())
     try:
         backup_manager = get_backup_manager()
 
         backup_path = backup_manager.backup_dir / backup_name
 
         if not backup_path.exists():
-            raise HTTPException(status_code=404, detail=f"Backup not found: {backup_name}")
+            raise HTTPException(status_code=404, detail=backup_not_found_message(backup_name))
 
         logger.info(f"Restoring from backup: {backup_name}")
 
@@ -186,17 +188,10 @@ async def restore_backup(
         )
 
         invalidate_search_index()
-
-        result = {
-            "success": True,
-            "restored_from": backup_name,
-            "message": f"Successfully restored from backup: {backup_name}"
-        }
-
-        if pre_restore_metadata:
-            result["pre_restore_backup"] = pre_restore_metadata.to_dict()
-
-        return result
+        return serialize_backup_restore_payload(
+            restored_from=backup_name,
+            pre_restore_backup=None if pre_restore_metadata is None else pre_restore_metadata.to_dict(),
+        )
 
     except HTTPException:
         raise
@@ -212,22 +207,18 @@ async def delete_backup(
 ):
     """Delete a backup."""
     if snapshot is not None:
-        raise HTTPException(status_code=403, detail="Backup operations are disabled in snapshot mode")
+        raise HTTPException(status_code=403, detail=backup_operations_disabled_message())
     try:
         backup_manager = get_backup_manager()
         backup_path = backup_manager.backup_dir / backup_name
 
         if not backup_path.exists():
-            raise HTTPException(status_code=404, detail=f"Backup not found: {backup_name}")
+            raise HTTPException(status_code=404, detail=backup_not_found_message(backup_name))
 
         logger.info(f"Deleting backup: {backup_name}")
         backup_manager.delete_backup(backup_path)
 
-        return {
-            "success": True,
-            "deleted": backup_name,
-            "message": f"Backup deleted: {backup_name}"
-        }
+        return serialize_backup_delete_payload(deleted=backup_name)
 
     except HTTPException:
         raise

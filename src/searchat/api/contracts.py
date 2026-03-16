@@ -282,3 +282,86 @@ def serialize_analytics_topics_payload(
         "days": days,
         "clusters": clusters,
     }
+
+
+def serialize_backup_mutation_payload(
+    *,
+    backup: dict[str, Any],
+    message: str,
+) -> dict[str, Any]:
+    return {
+        "success": True,
+        "backup": backup,
+        "message": message,
+    }
+
+
+def serialize_backup_chain_payload(
+    *,
+    backup_name: str,
+    chain: list[str],
+    valid: bool = True,
+    errors: list[str] | None = None,
+) -> dict[str, Any]:
+    return {
+        "backup_name": backup_name,
+        "chain": chain,
+        "chain_length": len(chain),
+        "valid": valid,
+        "errors": [] if errors is None else errors,
+    }
+
+
+def serialize_backup_summary_fallback(
+    *,
+    name: str,
+    chain_length: int,
+    valid: bool,
+    errors: list[str],
+) -> dict[str, Any]:
+    return {
+        "name": name,
+        "backup_mode": "full",
+        "encrypted": False,
+        "parent_name": None,
+        "chain_length": chain_length,
+        "snapshot_browsable": False,
+        "has_manifest": False,
+        "valid": valid,
+        "errors": errors,
+    }
+
+
+def serialize_backups_payload(
+    *,
+    backups: list[dict[str, Any]],
+    backup_directory: str,
+) -> dict[str, Any]:
+    return {
+        "backups": backups,
+        "total": len(backups),
+        "backup_directory": backup_directory,
+    }
+
+
+def serialize_backup_restore_payload(
+    *,
+    restored_from: str,
+    pre_restore_backup: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "success": True,
+        "restored_from": restored_from,
+        "message": f"Successfully restored from backup: {restored_from}",
+    }
+    if pre_restore_backup is not None:
+        payload["pre_restore_backup"] = pre_restore_backup
+    return payload
+
+
+def serialize_backup_delete_payload(*, deleted: str) -> dict[str, Any]:
+    return {
+        "success": True,
+        "deleted": deleted,
+        "message": f"Backup deleted: {deleted}",
+    }

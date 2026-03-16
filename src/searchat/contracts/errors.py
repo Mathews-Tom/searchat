@@ -75,6 +75,26 @@ def internal_server_error_message() -> str:
     return "Internal server error"
 
 
+def backup_operations_disabled_message() -> str:
+    return "Backup operations are disabled in snapshot mode"
+
+
+def backup_validation_unavailable_message() -> str:
+    return "Backup validation is not available"
+
+
+def backup_chain_resolution_unavailable_message() -> str:
+    return "Backup chain resolution is not available"
+
+
+def backup_not_found_message(backup_name: str) -> str:
+    return f"Backup not found: {backup_name}"
+
+
+def backup_summary_unavailable_message() -> str:
+    return "Backup summary unavailable"
+
+
 def no_embeddings_for_conversation_message() -> str:
     return "No embeddings found for this conversation"
 
