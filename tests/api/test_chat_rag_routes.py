@@ -182,6 +182,27 @@ def test_chat_rag_reports_semantic_capability_error_when_components_look_ready(c
     assert data["capabilities"]["semantic_available"] is False
 
 
+def test_chat_rag_fails_closed_when_capability_inspection_errors(client):
+    readiness = Mock()
+    readiness.snapshot.return_value = Mock(
+        components={"metadata": "ready", "faiss": "ready", "embedder": "ready"}
+    )
+
+    with patch("searchat.api.readiness.get_readiness", return_value=readiness):
+        with patch(
+            "searchat.api.routers.chat.get_search_engine",
+            side_effect=RuntimeError("service registry unavailable"),
+        ):
+            resp = client.post("/api/chat-rag", json={"query": "x", "model_provider": "ollama"})
+
+    assert resp.status_code == 500
+    data = resp.json()
+    assert data["status"] == "error"
+    assert data["errors"]["semantic"] == (
+        "Retrieval capability inspection failed: service registry unavailable"
+    )
+
+
 def test_chat_rag_value_error_returns_400(client):
     from searchat.services.llm_service import LLMServiceError
 

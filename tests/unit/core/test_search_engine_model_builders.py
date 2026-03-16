@@ -233,6 +233,29 @@ def test_search_engine_describe_capabilities_reflects_embedder_load_failure(
 
 
 @pytest.mark.unit
+def test_search_engine_describe_capabilities_reflects_faiss_load_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    temp_search_dir: Path,
+):
+    cfg = Config.load()
+    _prepare_search_dir(temp_search_dir, cfg)
+
+    monkeypatch.setattr(
+        "searchat.core.search_engine.faiss.read_index",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("corrupt index")),
+    )
+
+    engine = SearchEngine(temp_search_dir, cfg)
+
+    with pytest.raises(SemanticSearchUnavailable, match="FAISS index unavailable: corrupt index"):
+        engine.ensure_faiss_loaded()
+
+    capabilities = engine.describe_capabilities()
+    assert capabilities.semantic_available is False
+    assert capabilities.semantic_reason == "FAISS index unavailable: corrupt index"
+
+
+@pytest.mark.unit
 def test_search_engine_describe_capabilities_reflects_reranker_load_failure(
     monkeypatch: pytest.MonkeyPatch,
     temp_search_dir: Path,

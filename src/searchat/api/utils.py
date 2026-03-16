@@ -13,6 +13,10 @@ from searchat.models import SearchResult
 VALID_PROVIDERS: frozenset[str] = frozenset({"openai", "ollama", "embedded"})
 
 
+class RetrievalCapabilitiesUnavailable(RuntimeError):
+    """Raised when retrieval capabilities cannot be inspected for a semantic-gated request."""
+
+
 def detect_tool_from_path(file_path: str) -> str:
     """
     Detect tool type from a conversation file path.
@@ -171,7 +175,15 @@ def check_semantic_readiness(
         _warmup.trigger_search_engine_warmup()
         return JSONResponse(status_code=503, content=_readiness_mod.warming_payload())
 
-    capabilities = _get_retrieval_capabilities(retrieval_service)
+    try:
+        capabilities = _get_retrieval_capabilities(retrieval_service, fail_closed=True)
+    except RetrievalCapabilitiesUnavailable as exc:
+        payload = _readiness_mod.error_payload()
+        errors = dict(payload["errors"])
+        errors["semantic"] = str(exc)
+        payload["errors"] = errors
+        return JSONResponse(status_code=500, content=payload)
+
     if capabilities is not None and not capabilities.semantic_available:
         payload = _readiness_mod.error_payload()
         errors = dict(payload["errors"])
@@ -191,7 +203,10 @@ def check_semantic_readiness(
 
 def get_retrieval_capabilities_snapshot() -> dict[str, object] | None:
     """Best-effort retrieval capability snapshot for status endpoints."""
-    capabilities = _get_retrieval_capabilities()
+    try:
+        capabilities = _get_retrieval_capabilities()
+    except RetrievalCapabilitiesUnavailable:
+        return None
     if capabilities is None:
         return None
     return {
@@ -202,7 +217,7 @@ def get_retrieval_capabilities_snapshot() -> dict[str, object] | None:
     }
 
 
-def _get_retrieval_capabilities(retrieval_service=None):
+def _get_retrieval_capabilities(retrieval_service=None, *, fail_closed: bool = False):
     """Return retrieval capabilities when a semantic retrieval service is available."""
     service = retrieval_service
     if service is None:
@@ -214,7 +229,11 @@ def _get_retrieval_capabilities(retrieval_service=None):
     elif callable(service):
         try:
             service = service()
-        except Exception:
+        except Exception as exc:
+            if fail_closed:
+                raise RetrievalCapabilitiesUnavailable(
+                    f"Retrieval capability inspection failed: {exc}"
+                ) from exc
             return None
 
     describe = getattr(service, "describe_capabilities", None)
@@ -223,7 +242,11 @@ def _get_retrieval_capabilities(retrieval_service=None):
 
     try:
         return describe()
-    except Exception:
+    except Exception as exc:
+        if fail_closed:
+            raise RetrievalCapabilitiesUnavailable(
+                f"Retrieval capability inspection failed: {exc}"
+            ) from exc
         return None
 
 

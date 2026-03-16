@@ -288,6 +288,38 @@ def test_extract_patterns_reports_semantic_capability_error_when_components_look
     assert data["capabilities"]["semantic_available"] is False
 
 
+def test_extract_patterns_fails_closed_when_capability_inspection_errors(client):
+    readiness = Mock()
+    readiness.snapshot.return_value = Mock(
+        components={
+            "metadata": "ready",
+            "faiss": "ready",
+            "embedder": "ready",
+        }
+    )
+
+    with patch("searchat.api.readiness.get_readiness", return_value=readiness):
+        with patch(
+            "searchat.api.routers.patterns.get_search_engine",
+            side_effect=RuntimeError("service registry unavailable"),
+        ):
+            resp = client.post(
+                "/api/patterns/extract",
+                json={
+                    "topic": "test",
+                    "max_patterns": 10,
+                    "model_provider": "ollama",
+                },
+            )
+
+    assert resp.status_code == 500
+    data = resp.json()
+    assert data["status"] == "error"
+    assert data["errors"]["semantic"] == (
+        "Retrieval capability inspection failed: service registry unavailable"
+    )
+
+
 def test_extract_patterns_embedded_model_not_ready(client):
     """Test pattern extraction when embedded model is required but not ready."""
     readiness = Mock()

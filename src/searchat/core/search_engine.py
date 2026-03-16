@@ -94,6 +94,7 @@ class SearchEngine:
 
         # Reranker (lazy loaded)
         self._reranker: RerankingService | None = None
+        self._faiss_runtime_reason: str | None = None
         self._semantic_runtime_reason: str | None = None
         self._reranking_runtime_reason: str | None = None
 
@@ -188,14 +189,24 @@ class SearchEngine:
             )
 
         if self.faiss_index is None:
-            if getattr(self.config.performance, "faiss_mmap", False):
-                try:
-                    flags = faiss.IO_FLAG_MMAP | faiss.IO_FLAG_READ_ONLY
-                except Exception as e:
-                    raise RuntimeError("FAISS mmap flags are not supported by this build") from e
-                self.faiss_index = faiss.read_index(str(self.index_path), flags)
-            else:
-                self.faiss_index = faiss.read_index(str(self.index_path))
+            try:
+                if getattr(self.config.performance, "faiss_mmap", False):
+                    try:
+                        flags = faiss.IO_FLAG_MMAP | faiss.IO_FLAG_READ_ONLY
+                    except Exception as exc:
+                        raise SemanticSearchUnavailable(
+                            "FAISS mmap flags are not supported by this build"
+                        ) from exc
+                    self.faiss_index = faiss.read_index(str(self.index_path), flags)
+                else:
+                    self.faiss_index = faiss.read_index(str(self.index_path))
+                self._faiss_runtime_reason = None
+            except SemanticSearchUnavailable as exc:
+                self._faiss_runtime_reason = str(exc)
+                raise
+            except Exception as exc:
+                self._faiss_runtime_reason = f"FAISS index unavailable: {exc}"
+                raise SemanticSearchUnavailable(self._faiss_runtime_reason) from exc
 
 
     def _ensure_embedder_loaded_locked(self) -> None:
@@ -225,6 +236,8 @@ class SearchEngine:
             return "Metadata parquet not available"
         if not self.index_path.exists():
             return "FAISS index not available"
+        if self.faiss_index is None and self._faiss_runtime_reason is not None:
+            return self._faiss_runtime_reason
         if self.embedder is None and self._semantic_runtime_reason is not None:
             return self._semantic_runtime_reason
         return None
@@ -242,6 +255,9 @@ class SearchEngine:
         with self._init_lock:
             self.result_cache.clear()
             self.faiss_index = None
+            self._faiss_runtime_reason = None
+            self._semantic_runtime_reason = None
+            self._reranking_runtime_reason = None
             try:
                 self._build_fts_table()
                 self._fts_ready = True
