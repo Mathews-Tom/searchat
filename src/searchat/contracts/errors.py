@@ -118,6 +118,33 @@ def conversation_not_found_message_simple() -> str:
     return "Conversation not found"
 
 
+def conversation_not_found_in_index_message() -> str:
+    return "Conversation not found in index"
+
+
+def conversation_not_found_in_snapshot_message() -> str:
+    return "Conversation not found in snapshot"
+
+
+def conversation_file_missing_with_record_message(file_path: str) -> str:
+    return (
+        "Conversation file not found and no indexed record is available. "
+        f"The file may have been moved or deleted: {file_path}"
+    )
+
+
+def conversation_file_missing_message(file_path: str) -> str:
+    return f"Conversation file not found. The file may have been moved or deleted: {file_path}"
+
+
+def conversation_invalid_json_message() -> str:
+    return "Failed to parse conversation file (invalid JSON)"
+
+
+def conversation_encoding_error_message() -> str:
+    return "Failed to read conversation file (encoding error)"
+
+
 def export_disabled_message(format_name: str) -> str:
     return f"{format_name} export is disabled"
 
@@ -140,6 +167,18 @@ def resume_command_not_found_message(tool_name: str) -> str:
 
 def no_embeddings_for_conversation_message() -> str:
     return "No embeddings found for this conversation"
+
+
+def no_similar_conversation_found_message() -> str:
+    return "No similar conversation found"
+
+
+def target_conversation_not_found_message() -> str:
+    return "Target conversation not found"
+
+
+def invalid_target_conversation_id_message() -> str:
+    return "Invalid target conversation id"
 
 
 def mcp_search_limit_message() -> str:

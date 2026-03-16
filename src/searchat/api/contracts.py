@@ -478,3 +478,39 @@ def serialize_resume_session_payload(
         "command": command,
         "platform": platform,
     }
+
+
+def serialize_conversation_code_payload(
+    *,
+    conversation_id: str,
+    title: str,
+    code_blocks: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "conversation_id": conversation_id,
+        "title": title,
+        "total_blocks": len(code_blocks),
+        "code_blocks": code_blocks,
+    }
+
+
+def serialize_conversation_diff_payload(
+    *,
+    source_conversation_id: str,
+    target_conversation_id: str,
+    added: list[str],
+    removed: list[str],
+    unchanged: list[str],
+) -> dict[str, Any]:
+    return {
+        "source_conversation_id": source_conversation_id,
+        "target_conversation_id": target_conversation_id,
+        "summary": {
+            "added": len(added),
+            "removed": len(removed),
+            "unchanged": len(unchanged),
+        },
+        "added": added,
+        "removed": removed,
+        "unchanged": unchanged,
+    }

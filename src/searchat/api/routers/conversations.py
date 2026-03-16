@@ -22,7 +22,11 @@ from searchat.api.models import (
     ConversationResponse,
     ResumeRequest,
 )
-from searchat.api.contracts import serialize_resume_session_payload
+from searchat.api.contracts import (
+    serialize_conversation_code_payload,
+    serialize_conversation_diff_payload,
+    serialize_resume_session_payload,
+)
 from searchat.contracts.similarity import (
     serialize_similar_conversation,
     serialize_similar_conversations_payload,
@@ -33,14 +37,23 @@ from searchat.api.utils import detect_tool_from_path, detect_source_from_path, p
 from searchat.contracts.errors import (
     bulk_export_no_ids_message,
     bulk_export_too_many_message,
+    conversation_encoding_error_message,
+    conversation_file_missing_message,
+    conversation_file_missing_with_record_message,
+    conversation_invalid_json_message,
+    conversation_not_found_in_index_message,
+    conversation_not_found_in_snapshot_message,
     conversation_not_found_message_simple,
     export_disabled_message,
+    invalid_target_conversation_id_message,
     invalid_export_format_message,
     invalid_tool_filter_message,
     no_embeddings_for_conversation_message,
+    no_similar_conversation_found_message,
     resume_command_not_found_message,
     resume_snapshot_disabled_message,
     snapshot_not_found_message,
+    target_conversation_not_found_message,
 )
 import searchat.api.dependencies as deps
 
@@ -468,13 +481,13 @@ async def get_conversation(
         conv = store.get_conversation_meta(conversation_id)
         if conv is None:
             logger.warning(f"Conversation not found in index: {conversation_id}")
-            raise HTTPException(status_code=404, detail="Conversation not found in index")
+            raise HTTPException(status_code=404, detail=conversation_not_found_in_index_message())
         file_path = conv["file_path"]
 
         if snapshot_name is not None:
             record = store.get_conversation_record(conversation_id)
             if record is None:
-                raise HTTPException(status_code=404, detail="Conversation not found in snapshot")
+                raise HTTPException(status_code=404, detail=conversation_not_found_in_snapshot_message())
             messages = _messages_from_parquet(record.get("messages"))
             tool_name = detect_tool_from_path(file_path)
             return ConversationResponse(
@@ -499,10 +512,7 @@ async def get_conversation(
                 )
                 raise HTTPException(
                     status_code=404,
-                    detail=(
-                        "Conversation file not found and no indexed record is available. "
-                        f"The file may have been moved or deleted: {file_path}"
-                    ),
+                    detail=conversation_file_missing_with_record_message(file_path),
                 )
 
             try:
@@ -510,7 +520,7 @@ async def get_conversation(
             except TypeError:
                 raise HTTPException(
                     status_code=404,
-                    detail=f"Conversation file not found. The file may have been moved or deleted: {file_path}",
+                    detail=conversation_file_missing_message(file_path),
                 )
             tool_name = detect_tool_from_path(file_path)
             return ConversationResponse(
@@ -534,13 +544,13 @@ async def get_conversation(
                 logger.error(f"Invalid JSON in conversation file {file_path}: {e}")
                 raise HTTPException(
                     status_code=500,
-                    detail="Failed to parse conversation file (invalid JSON)"
+                    detail=conversation_invalid_json_message()
                 )
             except UnicodeDecodeError as e:
                 logger.error(f"Encoding error reading {file_path}: {e}")
                 raise HTTPException(
                     status_code=500,
-                    detail="Failed to read conversation file (encoding error)"
+                    detail=conversation_encoding_error_message()
                 )
 
             for entry in lines:
@@ -572,13 +582,13 @@ async def get_conversation(
                 logger.error(f"Invalid JSON in conversation file {file_path}: {e}")
                 raise HTTPException(
                     status_code=500,
-                    detail="Failed to parse conversation file (invalid JSON)"
+                    detail=conversation_invalid_json_message()
                 )
             except UnicodeDecodeError as e:
                 logger.error(f"Encoding error reading {file_path}: {e}")
                 raise HTTPException(
                     status_code=500,
-                    detail="Failed to read conversation file (encoding error)"
+                    detail=conversation_encoding_error_message()
                 )
 
             file_path_lower = file_path.lower()
@@ -745,12 +755,11 @@ async def get_conversation_code(
                     'lines': len(code.splitlines())
                 })
 
-        return {
-            'conversation_id': conversation_id,
-            'title': conv_response.title,
-            'total_blocks': len(code_blocks),
-            'code_blocks': code_blocks
-        }
+        return serialize_conversation_code_payload(
+            conversation_id=conversation_id,
+            title=conv_response.title,
+            code_blocks=code_blocks,
+        )
 
     except HTTPException:
         raise
@@ -926,13 +935,13 @@ async def get_conversation_diff(
             similar_payload = await get_similar_conversations(conversation_id, limit=1, snapshot=snapshot)
             similar_list = similar_payload.get("similar_conversations", [])
             if not similar_list:
-                raise HTTPException(status_code=404, detail="No similar conversation found")
+                raise HTTPException(status_code=404, detail=no_similar_conversation_found_message())
             target_id = similar_list[0]["conversation_id"]
 
         if target_id is None:
-            raise HTTPException(status_code=404, detail="Target conversation not found")
+            raise HTTPException(status_code=404, detail=target_conversation_not_found_message())
         if not isinstance(target_id, str):
-            raise HTTPException(status_code=400, detail="Invalid target conversation id")
+            raise HTTPException(status_code=400, detail=invalid_target_conversation_id_message())
 
         source_conv = await get_conversation(conversation_id, snapshot=snapshot)
         target_conv = await get_conversation(target_id, snapshot=snapshot)
@@ -955,18 +964,13 @@ async def get_conversation_diff(
             elif line.startswith("  "):
                 unchanged.append(line[2:])
 
-        return {
-            "source_conversation_id": conversation_id,
-            "target_conversation_id": target_id,
-            "summary": {
-                "added": len(added),
-                "removed": len(removed),
-                "unchanged": len(unchanged),
-            },
-            "added": added,
-            "removed": removed,
-            "unchanged": unchanged,
-        }
+        return serialize_conversation_diff_payload(
+            source_conversation_id=conversation_id,
+            target_conversation_id=target_id,
+            added=added,
+            removed=removed,
+            unchanged=unchanged,
+        )
 
     except HTTPException:
         raise
