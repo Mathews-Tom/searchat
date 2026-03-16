@@ -45,6 +45,7 @@ def test_docs_summary_disabled_returns_404(client):
         )
 
     assert resp.status_code == 404
+    assert resp.json()["detail"] == "Tech docs generator is disabled"
 
 
 def test_docs_summary_markdown_returns_content_and_citations(client):
@@ -69,6 +70,14 @@ def test_docs_summary_markdown_returns_content_and_citations(client):
 
     assert resp.status_code == 200
     data = resp.json()
+    assert list(data) == [
+        "title",
+        "format",
+        "generated_at",
+        "content",
+        "citation_count",
+        "citations",
+    ]
     assert data["title"] == "My Doc"
     assert data["format"] == "markdown"
     assert "# My Doc" in data["content"]
@@ -95,5 +104,13 @@ def test_docs_summary_asciidoc_returns_content(client):
 
     assert resp.status_code == 200
     data = resp.json()
+    assert list(data) == [
+        "title",
+        "format",
+        "generated_at",
+        "content",
+        "citation_count",
+        "citations",
+    ]
     assert data["format"] == "asciidoc"
     assert data["content"].startswith("= ")

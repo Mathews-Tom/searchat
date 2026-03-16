@@ -10,6 +10,8 @@ from searchat.api.contracts import (
     serialize_backup_restore_payload,
     serialize_backup_summary_fallback,
     serialize_backups_payload,
+    serialize_docs_summary_payload,
+    serialize_agent_config_payload,
     serialize_analytics_agent_comparison_payload,
     serialize_analytics_config_payload,
     serialize_analytics_queries_payload,
@@ -62,6 +64,7 @@ from searchat.contracts.errors import (
     saved_query_invalid_message,
     saved_query_missing_message,
     snapshot_not_found_message,
+    tech_docs_disabled_message,
 )
 from searchat.models import SearchResult
 
@@ -392,6 +395,44 @@ def test_serialize_backup_payloads_preserve_shapes() -> None:
     }
 
 
+def test_serialize_docs_and_agent_config_payloads_preserve_shapes() -> None:
+    citation = {
+        "conversation_id": "conv-1",
+        "title": "T",
+        "project_id": "p",
+        "date": "2026-03-16T00:00:00+00:00",
+    }
+    docs_payload = serialize_docs_summary_payload(
+        title="My Doc",
+        format="markdown",
+        generated_at="2026-03-16T00:00:00+00:00",
+        content="# My Doc",
+        citations=[citation],
+    )
+    assert list(docs_payload) == [
+        "title",
+        "format",
+        "generated_at",
+        "content",
+        "citation_count",
+        "citations",
+    ]
+    assert docs_payload["citation_count"] == 1
+
+    agent_payload = serialize_agent_config_payload(
+        format="claude.md",
+        content="# Project",
+        pattern_count=2,
+        project_filter="searchat",
+    )
+    assert agent_payload == {
+        "format": "claude.md",
+        "content": "# Project",
+        "pattern_count": 2,
+        "project_filter": "searchat",
+    }
+
+
 def test_shared_error_contract_messages_are_stable() -> None:
     assert invalid_search_mode_message() == "Invalid search mode"
     assert invalid_mcp_mode_message() == "Invalid mode; expected: hybrid, semantic, keyword"
@@ -412,6 +453,7 @@ def test_shared_error_contract_messages_are_stable() -> None:
     assert backup_chain_resolution_unavailable_message() == "Backup chain resolution is not available"
     assert backup_not_found_message("backup-1") == "Backup not found: backup-1"
     assert backup_summary_unavailable_message() == "Backup summary unavailable"
+    assert tech_docs_disabled_message() == "Tech docs generator is disabled"
     assert saved_query_missing_message("q-1") == "Saved query q-1 not found"
     assert saved_query_invalid_message("q-1") == "Saved query q-1 is invalid"
     assert invalid_saved_query_mode_message() == "Invalid search mode in saved query"

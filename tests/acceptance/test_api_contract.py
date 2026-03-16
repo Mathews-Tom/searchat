@@ -481,6 +481,70 @@ def test_backup_routes_preserve_stable_contracts() -> None:
     assert list(chain_response.json()) == ["backup_name", "chain", "chain_length", "valid", "errors"]
 
 
+def test_docs_and_agent_config_routes_preserve_stable_contracts() -> None:
+    client = TestClient(app)
+    docs_config = SimpleNamespace(export=SimpleNamespace(enable_tech_docs=True))
+
+    retrieval_service = Mock()
+    retrieval_service.search.return_value = SearchResults(
+        results=[
+            SearchResult(
+                conversation_id="conv-1",
+                project_id="p",
+                title="T",
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
+                message_count=3,
+                file_path="/home/user/.claude/projects/p/conv.jsonl",
+                score=0.9,
+                snippet="snippet",
+                message_start_index=0,
+                message_end_index=1,
+            )
+        ],
+        total_count=1,
+        search_time_ms=1.0,
+        mode_used="hybrid",
+    )
+    patterns = [
+        SimpleNamespace(
+            name="Test-Driven Development",
+            description="User consistently writes tests before implementation",
+            evidence=[],
+        )
+    ]
+
+    with patch("searchat.api.routers.docs.deps.get_config", return_value=docs_config):
+        with patch(
+            "searchat.api.routers.docs.get_dataset_semantic_retrieval",
+            return_value=(None, retrieval_service),
+        ):
+            docs_response = client.post(
+                "/api/docs/summary",
+                json={"title": "My Doc", "sections": [{"name": "S", "query": "q"}]},
+            )
+
+    with patch("searchat.api.routers.docs.deps.get_config", return_value=docs_config):
+        with patch("searchat.api.routers.docs.extract_patterns", return_value=patterns):
+            with patch("searchat.api.routers.docs.deps.get_search_engine", return_value=Mock()):
+                agent_response = client.post(
+                    "/api/export/agent-config",
+                    json={"format": "claude.md", "model_provider": "ollama"},
+                )
+
+    assert docs_response.status_code == 200
+    assert list(docs_response.json()) == [
+        "title",
+        "format",
+        "generated_at",
+        "content",
+        "citation_count",
+        "citations",
+    ]
+    assert agent_response.status_code == 200
+    assert list(agent_response.json()) == ["format", "content", "pattern_count", "project_filter"]
+
+
 def test_search_and_similarity_routes_preserve_stable_error_messages() -> None:
     client = TestClient(app)
     dataset = SimpleNamespace(

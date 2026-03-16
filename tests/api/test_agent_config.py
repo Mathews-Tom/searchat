@@ -81,6 +81,7 @@ def test_generate_agent_config_success_claude_md(client, mock_patterns):
 
     assert resp.status_code == 200
     data = resp.json()
+    assert list(data) == ["format", "content", "pattern_count", "project_filter"]
 
     assert data["format"] == "claude.md"
     assert data["pattern_count"] == 2
@@ -122,6 +123,7 @@ def test_generate_agent_config_success_copilot_instructions(client, mock_pattern
 
     assert resp.status_code == 200
     data = resp.json()
+    assert list(data) == ["format", "content", "pattern_count", "project_filter"]
 
     assert data["format"] == "copilot-instructions.md"
     assert data["pattern_count"] == 2
@@ -150,6 +152,7 @@ def test_generate_agent_config_success_cursorrules(client, mock_patterns):
 
     assert resp.status_code == 200
     data = resp.json()
+    assert list(data) == ["format", "content", "pattern_count", "project_filter"]
 
     assert data["format"] == "cursorrules"
     assert data["pattern_count"] == 2
