@@ -12,6 +12,10 @@ from searchat.api.contracts import (
     serialize_backups_payload,
     serialize_docs_summary_payload,
     serialize_agent_config_payload,
+    serialize_index_missing_payload,
+    serialize_shutdown_blocked_payload,
+    serialize_shutdown_payload,
+    serialize_watcher_status_payload,
     serialize_analytics_agent_comparison_payload,
     serialize_analytics_config_payload,
     serialize_analytics_queries_payload,
@@ -55,11 +59,13 @@ from searchat.contracts.errors import (
     invalid_saved_query_mode_message,
     invalid_saved_query_tool_filter_message,
     invalid_tool_filter_message,
+    indexing_snapshot_disabled_message,
     internal_server_error_message,
     mcp_offset_message,
     mcp_search_limit_message,
     mcp_similarity_limit_message,
     no_embeddings_for_conversation_message,
+    reindex_blocked_message,
     saved_query_not_found_message,
     saved_query_invalid_message,
     saved_query_missing_message,
@@ -433,6 +439,63 @@ def test_serialize_docs_and_agent_config_payloads_preserve_shapes() -> None:
     }
 
 
+def test_serialize_admin_and_indexing_payloads_preserve_shapes() -> None:
+    watcher_payload = serialize_watcher_status_payload(
+        running=True,
+        watched_directories=["/tmp/a", "/tmp/b"],
+        indexed_since_start=5,
+        last_update="2026-03-16T00:00:00+00:00",
+    )
+    assert list(watcher_payload) == [
+        "running",
+        "watched_directories",
+        "indexed_since_start",
+        "last_update",
+    ]
+
+    blocked_payload = serialize_shutdown_blocked_payload(
+        operation="manual_index",
+        files_total=100,
+        elapsed_seconds=5.5,
+        message="blocked",
+    )
+    assert list(blocked_payload) == [
+        "success",
+        "indexing_in_progress",
+        "operation",
+        "files_total",
+        "elapsed_seconds",
+        "message",
+    ]
+    assert blocked_payload["success"] is False
+
+    assert serialize_shutdown_payload(forced=False, message="graceful") == {
+        "success": True,
+        "forced": False,
+        "message": "graceful",
+    }
+
+    index_payload = serialize_index_missing_payload(
+        new_conversations=2,
+        failed_conversations=1,
+        empty_conversations=0,
+        total_files=5,
+        already_indexed=3,
+        time_seconds=1.25,
+        message="done",
+    )
+    assert list(index_payload) == [
+        "success",
+        "new_conversations",
+        "failed_conversations",
+        "empty_conversations",
+        "total_files",
+        "already_indexed",
+        "message",
+        "time_seconds",
+    ]
+
+
 def test_shared_error_contract_messages_are_stable() -> None:
     assert invalid_search_mode_message() == "Invalid search mode"
     assert invalid_mcp_mode_message() == "Invalid mode; expected: hybrid, semantic, keyword"
@@ -454,6 +517,8 @@ def test_shared_error_contract_messages_are_stable() -> None:
     assert backup_not_found_message("backup-1") == "Backup not found: backup-1"
     assert backup_summary_unavailable_message() == "Backup summary unavailable"
     assert tech_docs_disabled_message() == "Tech docs generator is disabled"
+    assert reindex_blocked_message().startswith("BLOCKED: Reindexing disabled")
+    assert indexing_snapshot_disabled_message() == "Indexing is disabled in snapshot mode"
     assert saved_query_missing_message("q-1") == "Saved query q-1 not found"
     assert saved_query_invalid_message("q-1") == "Saved query q-1 is invalid"
     assert invalid_saved_query_mode_message() == "Invalid search mode in saved query"

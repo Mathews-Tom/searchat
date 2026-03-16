@@ -545,6 +545,62 @@ def test_docs_and_agent_config_routes_preserve_stable_contracts() -> None:
     assert list(agent_response.json()) == ["format", "content", "pattern_count", "project_filter"]
 
 
+def test_admin_and_indexing_routes_preserve_stable_contracts() -> None:
+    client = TestClient(app)
+    watcher = Mock()
+    watcher.is_running = True
+    watcher.get_watched_directories.return_value = ["/tmp/watch"]
+    watcher_stats = {"indexed_count": 5, "last_update": "2026-03-16T00:00:00+00:00"}
+
+    with patch("searchat.api.routers.admin.get_watcher", return_value=watcher):
+        with patch("searchat.api.routers.admin.api_state.watcher_stats", watcher_stats):
+            watcher_response = client.get("/api/watcher/status")
+
+    config = Mock()
+    indexer = Mock()
+    indexer.get_indexed_file_paths.return_value = set()
+    indexer.index_append_only.return_value = SimpleNamespace(
+        new_conversations=1,
+        skipped_conversations=0,
+        empty_conversations=0,
+    )
+
+    connector = SimpleNamespace(name="claude", discover_files=lambda _config: ["/tmp/conv1.jsonl"])
+    indexing_state = {
+        "in_progress": False,
+        "operation": None,
+        "started_at": None,
+        "files_total": 0,
+        "files_processed": 0,
+    }
+
+    with patch("searchat.api.routers.indexing.get_config", return_value=config):
+        with patch("searchat.api.routers.indexing.get_indexer", return_value=indexer):
+            with patch("searchat.api.routers.indexing.get_connectors", return_value=[connector]):
+                with patch("searchat.api.routers.indexing.invalidate_search_index"):
+                    with patch("searchat.api.routers.indexing.api_state.indexing_state", indexing_state):
+                        index_response = client.post("/api/index_missing")
+
+    assert watcher_response.status_code == 200
+    assert list(watcher_response.json()) == [
+        "running",
+        "watched_directories",
+        "indexed_since_start",
+        "last_update",
+    ]
+    assert index_response.status_code == 200
+    assert list(index_response.json()) == [
+        "success",
+        "new_conversations",
+        "failed_conversations",
+        "empty_conversations",
+        "total_files",
+        "already_indexed",
+        "message",
+        "time_seconds",
+    ]
+
+
 def test_search_and_similarity_routes_preserve_stable_error_messages() -> None:
     client = TestClient(app)
     dataset = SimpleNamespace(
