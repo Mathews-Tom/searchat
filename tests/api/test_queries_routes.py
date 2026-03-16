@@ -89,22 +89,27 @@ def test_queries_crud_flow(client, queries_service, monkeypatch):
 
     create = client.post("/api/queries", json=payload)
     assert create.status_code == 200
+    assert list(create.json()) == ["success", "query"]
     query_id = create.json()["query"]["id"]
 
     listing = client.get("/api/queries")
     assert listing.status_code == 200
+    assert list(listing.json()) == ["total", "queries"]
     assert listing.json()["total"] == 1
 
     update = client.put(f"/api/queries/{query_id}", json={"name": "Release Checks v2"})
     assert update.status_code == 200
+    assert list(update.json()) == ["success", "query"]
     assert update.json()["query"]["name"] == "Release Checks v2"
 
     run = client.post(f"/api/queries/{query_id}/run")
     assert run.status_code == 200
+    assert list(run.json()) == ["success", "query"]
     assert run.json()["query"]["use_count"] == 1
 
     delete = client.delete(f"/api/queries/{query_id}")
     assert delete.status_code == 200
+    assert list(delete.json()) == ["success"]
     assert delete.json()["success"] is True
 
     listing_after = client.get("/api/queries")

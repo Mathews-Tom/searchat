@@ -107,6 +107,8 @@ def test_get_bookmarks_empty(client, mock_bookmarks_service, mock_duckdb_store):
 
         assert response.status_code == 200
         data = response.json()
+        assert list(data) == ["total", "bookmarks"]
+        assert data["total"] == 0
         assert data["bookmarks"] == []
 
 
@@ -122,6 +124,7 @@ def test_add_bookmark(client, mock_bookmarks_service, mock_duckdb_store):
 
         assert response.status_code == 200
         data = response.json()
+        assert list(data) == ["success", "bookmark"]
         assert data["success"] is True
         assert data["bookmark"]["conversation_id"] == "conv-1"
         assert data["bookmark"]["notes"] == "Important"
@@ -155,7 +158,7 @@ def test_add_bookmark_returns_404_when_conversation_missing(client, mock_bookmar
         )
 
     assert response.status_code == 404
-    assert "not found" in response.json()["detail"].lower()
+    assert response.json()["detail"] == "Conversation missing not found"
 
 
 def test_remove_bookmark(client, mock_bookmarks_service, mock_duckdb_store):
@@ -179,6 +182,7 @@ def test_remove_nonexistent_bookmark(client, mock_bookmarks_service):
         response = client.delete("/api/bookmarks/nonexistent")
 
         assert response.status_code == 404
+        assert response.json()["detail"] == "Bookmark for conversation nonexistent not found"
 
 
 def test_update_bookmark_notes(client, mock_bookmarks_service, mock_duckdb_store):
@@ -195,6 +199,7 @@ def test_update_bookmark_notes(client, mock_bookmarks_service, mock_duckdb_store
 
         assert response.status_code == 200
         data = response.json()
+        assert list(data) == ["success", "message"]
         assert data["success"] is True
         assert "message" in data
 
@@ -209,6 +214,7 @@ def test_update_notes_nonexistent_bookmark(client, mock_bookmarks_service):
         )
 
         assert response.status_code == 404
+        assert response.json()["detail"] == "Bookmark for conversation nonexistent not found"
 
 
 def test_get_bookmark_endpoint_returns_status(client, mock_bookmarks_service):

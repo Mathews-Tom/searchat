@@ -134,3 +134,67 @@ def serialize_status_features_payload(
         },
         "retrieval": retrieval,
     }
+
+
+def serialize_bookmark_payload(
+    bookmark: dict[str, Any],
+    *,
+    conversation: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    payload = dict(bookmark)
+    if conversation is None:
+        return payload
+    payload.update(
+        title=conversation["title"],
+        project_id=conversation["project_id"],
+        message_count=conversation["message_count"],
+        created_at=conversation["created_at"].isoformat(),
+        updated_at=conversation["updated_at"].isoformat(),
+    )
+    return payload
+
+
+def serialize_bookmarks_payload(bookmarks: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "total": len(bookmarks),
+        "bookmarks": bookmarks,
+    }
+
+
+def serialize_bookmark_mutation_payload(bookmark: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "success": True,
+        "bookmark": bookmark,
+    }
+
+
+def serialize_bookmark_status_payload(bookmark: dict[str, Any] | None) -> dict[str, Any]:
+    return {
+        "is_bookmarked": bookmark is not None,
+        "bookmark": bookmark,
+    }
+
+
+def serialize_success_message_payload(message: str) -> dict[str, Any]:
+    return {
+        "success": True,
+        "message": message,
+    }
+
+
+def serialize_saved_queries_payload(queries: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "total": len(queries),
+        "queries": queries,
+    }
+
+
+def serialize_saved_query_mutation_payload(query: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "success": True,
+        "query": query,
+    }
+
+
+def serialize_success_flag_payload() -> dict[str, Any]:
+    return {"success": True}

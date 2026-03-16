@@ -4,14 +4,23 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 
 from searchat.api.contracts import (
+    serialize_bookmark_mutation_payload,
+    serialize_bookmark_payload,
+    serialize_bookmark_status_payload,
+    serialize_bookmarks_payload,
     serialize_projects_payload,
     serialize_readiness_payload,
+    serialize_saved_queries_payload,
+    serialize_saved_query_mutation_payload,
     serialize_search_payload,
+    serialize_success_flag_payload,
+    serialize_success_message_payload,
     serialize_status_features_payload,
     serialize_status_payload,
     serialize_statistics_payload,
 )
 from searchat.contracts.errors import (
+    bookmark_not_found_message,
     conversation_not_found_message,
     highlight_provider_required_message,
     invalid_highlight_provider_message,
@@ -23,6 +32,7 @@ from searchat.contracts.errors import (
     mcp_search_limit_message,
     mcp_similarity_limit_message,
     no_embeddings_for_conversation_message,
+    saved_query_not_found_message,
     snapshot_not_found_message,
 )
 from searchat.models import SearchResult
@@ -171,6 +181,72 @@ def test_serialize_status_features_payload_preserves_feature_groups() -> None:
     ]
 
 
+def test_serialize_bookmark_payloads_preserve_saved_state_shapes() -> None:
+    bookmark = {
+        "conversation_id": "conv-123",
+        "added_at": "2026-03-16T00:00:00+00:00",
+        "notes": "important",
+    }
+    conversation = {
+        "title": "Contract result",
+        "project_id": "project-a",
+        "message_count": 5,
+        "created_at": datetime(2026, 3, 16, tzinfo=timezone.utc),
+        "updated_at": datetime(2026, 3, 17, tzinfo=timezone.utc),
+    }
+
+    enriched = serialize_bookmark_payload(bookmark, conversation=conversation)
+    assert list(enriched) == [
+        "conversation_id",
+        "added_at",
+        "notes",
+        "title",
+        "project_id",
+        "message_count",
+        "created_at",
+        "updated_at",
+    ]
+
+    assert serialize_bookmarks_payload([enriched]) == {
+        "total": 1,
+        "bookmarks": [enriched],
+    }
+    assert serialize_bookmark_mutation_payload(bookmark) == {
+        "success": True,
+        "bookmark": bookmark,
+    }
+    assert serialize_bookmark_status_payload(bookmark) == {
+        "is_bookmarked": True,
+        "bookmark": bookmark,
+    }
+    assert serialize_bookmark_status_payload(None) == {
+        "is_bookmarked": False,
+        "bookmark": None,
+    }
+
+
+def test_serialize_saved_query_payloads_preserve_saved_query_shapes() -> None:
+    query = {
+        "id": "q-123",
+        "name": "Release Checks",
+        "query": "deployment",
+    }
+
+    assert serialize_saved_queries_payload([query]) == {
+        "total": 1,
+        "queries": [query],
+    }
+    assert serialize_saved_query_mutation_payload(query) == {
+        "success": True,
+        "query": query,
+    }
+    assert serialize_success_message_payload("ok") == {
+        "success": True,
+        "message": "ok",
+    }
+    assert serialize_success_flag_payload() == {"success": True}
+
+
 def test_shared_error_contract_messages_are_stable() -> None:
     assert invalid_search_mode_message() == "Invalid search mode"
     assert invalid_mcp_mode_message() == "Invalid mode; expected: hybrid, semantic, keyword"
@@ -180,6 +256,8 @@ def test_shared_error_contract_messages_are_stable() -> None:
     assert invalid_highlight_provider_message() == "Invalid highlight provider"
     assert snapshot_not_found_message() == "Snapshot not found"
     assert conversation_not_found_message("conv-123") == "Conversation not found: conv-123"
+    assert bookmark_not_found_message("conv-123") == "Bookmark for conversation conv-123 not found"
+    assert saved_query_not_found_message() == "Saved query not found"
     assert no_embeddings_for_conversation_message() == "No embeddings found for this conversation"
     assert mcp_search_limit_message() == "limit must be between 1 and 100"
     assert mcp_similarity_limit_message() == "limit must be between 1 and 20"

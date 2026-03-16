@@ -273,6 +273,74 @@ def test_projects_and_statistics_routes_preserve_stable_contracts() -> None:
     ]
 
 
+def test_saved_state_routes_preserve_stable_contracts() -> None:
+    client = TestClient(app)
+
+    bookmark = {
+        "conversation_id": "conv-123",
+        "added_at": "2026-03-16T00:00:00+00:00",
+        "notes": "important",
+    }
+    store = Mock()
+    store.get_conversation_meta.return_value = {
+        "conversation_id": "conv-123",
+        "title": "Stable Bookmark",
+        "project_id": "project-a",
+        "message_count": 5,
+        "created_at": datetime(2026, 3, 16),
+        "updated_at": datetime(2026, 3, 17),
+    }
+    bookmark_dataset = SimpleNamespace(snapshot_name=None, store=store, search_dir="/tmp/searchat")
+    query = {
+        "id": "q-123",
+        "name": "Release Checks",
+        "description": "smoke",
+        "query": "deployment",
+        "filters": {},
+        "mode": "hybrid",
+        "created_at": "2026-03-16T00:00:00+00:00",
+        "last_used": None,
+        "use_count": 0,
+    }
+    queries_service = Mock()
+    queries_service.list_queries.return_value = [query]
+
+    with patch("searchat.api.routers.bookmarks.deps.get_bookmarks_service") as get_bookmarks_service:
+        get_bookmarks_service.return_value.list_bookmarks.return_value = [bookmark]
+        with patch("searchat.api.routers.bookmarks.get_dataset_store", return_value=bookmark_dataset):
+            bookmarks_response = client.get("/api/bookmarks")
+
+    with patch("searchat.api.routers.queries.deps.get_saved_queries_service", return_value=queries_service):
+        queries_response = client.get("/api/queries")
+
+    assert bookmarks_response.status_code == 200
+    assert list(bookmarks_response.json()) == ["total", "bookmarks"]
+    assert list(bookmarks_response.json()["bookmarks"][0]) == [
+        "conversation_id",
+        "added_at",
+        "notes",
+        "title",
+        "project_id",
+        "message_count",
+        "created_at",
+        "updated_at",
+    ]
+
+    assert queries_response.status_code == 200
+    assert list(queries_response.json()) == ["total", "queries"]
+    assert list(queries_response.json()["queries"][0]) == [
+        "id",
+        "name",
+        "description",
+        "query",
+        "filters",
+        "mode",
+        "created_at",
+        "last_used",
+        "use_count",
+    ]
+
+
 def test_search_and_similarity_routes_preserve_stable_error_messages() -> None:
     client = TestClient(app)
     dataset = SimpleNamespace(

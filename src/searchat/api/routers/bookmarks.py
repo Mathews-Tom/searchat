@@ -6,7 +6,15 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 import searchat.api.dependencies as deps
+from searchat.api.contracts import (
+    serialize_bookmark_mutation_payload,
+    serialize_bookmark_payload,
+    serialize_bookmark_status_payload,
+    serialize_bookmarks_payload,
+    serialize_success_message_payload,
+)
 from searchat.api.dataset_access import get_dataset_store
+from searchat.contracts.errors import bookmark_not_found_message
 
 
 router = APIRouter()
@@ -37,26 +45,18 @@ async def get_bookmarks():
         enriched_bookmarks = []
 
         for bookmark in bookmarks:
-            conv_id = bookmark['conversation_id']
+            conv_id = bookmark["conversation_id"]
             conv_meta = store.get_conversation_meta(conv_id)
 
             if conv_meta:
-                enriched_bookmarks.append({
-                    **bookmark,
-                    'title': conv_meta['title'],
-                    'project_id': conv_meta['project_id'],
-                    'message_count': conv_meta['message_count'],
-                    'created_at': conv_meta['created_at'].isoformat(),
-                    'updated_at': conv_meta['updated_at'].isoformat(),
-                })
+                enriched_bookmarks.append(
+                    serialize_bookmark_payload(bookmark, conversation=conv_meta)
+                )
             else:
                 # Conversation not found in index, keep basic bookmark info
-                enriched_bookmarks.append(bookmark)
+                enriched_bookmarks.append(serialize_bookmark_payload(bookmark))
 
-        return {
-            'total': len(enriched_bookmarks),
-            'bookmarks': enriched_bookmarks
-        }
+        return serialize_bookmarks_payload(enriched_bookmarks)
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -83,10 +83,7 @@ async def add_bookmark(request: BookmarkRequest):
             request.notes
         )
 
-        return {
-            'success': True,
-            'bookmark': bookmark
-        }
+        return serialize_bookmark_mutation_payload(bookmark)
 
     except HTTPException:
         raise
@@ -104,13 +101,12 @@ async def remove_bookmark(conversation_id: str):
         if not removed:
             raise HTTPException(
                 status_code=404,
-                detail=f"Bookmark for conversation {conversation_id} not found"
+                detail=bookmark_not_found_message(conversation_id),
             )
 
-        return {
-            'success': True,
-            'message': f'Bookmark removed for conversation {conversation_id}'
-        }
+        return serialize_success_message_payload(
+            f"Bookmark removed for conversation {conversation_id}"
+        )
 
     except HTTPException:
         raise
@@ -125,16 +121,7 @@ async def get_bookmark(conversation_id: str):
         bookmarks_service = deps.get_bookmarks_service()
         bookmark = bookmarks_service.get_bookmark(conversation_id)
 
-        if bookmark:
-            return {
-                'is_bookmarked': True,
-                'bookmark': bookmark
-            }
-        else:
-            return {
-                'is_bookmarked': False,
-                'bookmark': None
-            }
+        return serialize_bookmark_status_payload(bookmark)
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -153,13 +140,10 @@ async def update_bookmark_notes(
         if not updated:
             raise HTTPException(
                 status_code=404,
-                detail=f"Bookmark for conversation {conversation_id} not found"
+                detail=bookmark_not_found_message(conversation_id),
             )
 
-        return {
-            'success': True,
-            'message': 'Notes updated successfully'
-        }
+        return serialize_success_message_payload("Notes updated successfully")
 
     except HTTPException:
         raise

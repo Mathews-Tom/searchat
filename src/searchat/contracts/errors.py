@@ -35,6 +35,14 @@ def conversation_not_found_message(conversation_id: str) -> str:
     return f"Conversation not found: {conversation_id}"
 
 
+def bookmark_not_found_message(conversation_id: str) -> str:
+    return f"Bookmark for conversation {conversation_id} not found"
+
+
+def saved_query_not_found_message() -> str:
+    return "Saved query not found"
+
+
 def no_embeddings_for_conversation_message() -> str:
     return "No embeddings found for this conversation"
 
