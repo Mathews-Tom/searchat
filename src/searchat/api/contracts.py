@@ -365,3 +365,36 @@ def serialize_backup_delete_payload(*, deleted: str) -> dict[str, Any]:
         "deleted": deleted,
         "message": f"Backup deleted: {deleted}",
     }
+
+
+def serialize_docs_summary_payload(
+    *,
+    title: str,
+    format: str,
+    generated_at: Any,
+    content: str,
+    citations: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "title": title,
+        "format": format,
+        "generated_at": generated_at,
+        "content": content,
+        "citation_count": len(citations),
+        "citations": citations,
+    }
+
+
+def serialize_agent_config_payload(
+    *,
+    format: str,
+    content: str,
+    pattern_count: int,
+    project_filter: str | None,
+) -> dict[str, Any]:
+    return {
+        "format": format,
+        "content": content,
+        "pattern_count": pattern_count,
+        "project_filter": project_filter,
+    }

@@ -95,6 +95,10 @@ def backup_summary_unavailable_message() -> str:
     return "Backup summary unavailable"
 
 
+def tech_docs_disabled_message() -> str:
+    return "Tech docs generator is disabled"
+
+
 def no_embeddings_for_conversation_message() -> str:
     return "No embeddings found for this conversation"
 
