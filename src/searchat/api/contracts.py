@@ -59,3 +59,78 @@ def serialize_statistics_payload(stats: Any) -> dict[str, Any]:
         "earliest_date": stats.earliest_date,
         "latest_date": stats.latest_date,
     }
+
+
+def serialize_readiness_payload(
+    *,
+    status: str,
+    warmup_started_at: str | None,
+    components: dict[str, str],
+    watcher: str,
+    errors: dict[str, str],
+    retry_after_ms: int | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "status": status,
+        "warmup_started_at": warmup_started_at,
+        "components": components,
+        "watcher": watcher,
+        "errors": errors,
+    }
+    if retry_after_ms is not None:
+        payload["retry_after_ms"] = retry_after_ms
+    return payload
+
+
+def serialize_status_payload(
+    *,
+    server_started_at: str,
+    warmup_started_at: str | None,
+    components: dict[str, str],
+    watcher: str,
+    errors: dict[str, str],
+    retrieval: dict[str, Any] | None,
+) -> dict[str, Any]:
+    return {
+        "server_started_at": server_started_at,
+        "warmup_started_at": warmup_started_at,
+        "components": components,
+        "watcher": watcher,
+        "errors": errors,
+        "retrieval": retrieval,
+    }
+
+
+def serialize_status_features_payload(
+    *,
+    analytics_enabled: bool,
+    chat_enable_rag: bool,
+    chat_enable_citations: bool,
+    export_enable_ipynb: bool,
+    export_enable_pdf: bool,
+    export_enable_tech_docs: bool,
+    dashboards_enabled: bool,
+    snapshots_enabled: bool,
+    retrieval: dict[str, Any] | None,
+) -> dict[str, Any]:
+    return {
+        "analytics": {
+            "enabled": analytics_enabled,
+        },
+        "chat": {
+            "enable_rag": chat_enable_rag,
+            "enable_citations": chat_enable_citations,
+        },
+        "export": {
+            "enable_ipynb": export_enable_ipynb,
+            "enable_pdf": export_enable_pdf,
+            "enable_tech_docs": export_enable_tech_docs,
+        },
+        "dashboards": {
+            "enabled": dashboards_enabled,
+        },
+        "snapshots": {
+            "enabled": snapshots_enabled,
+        },
+        "retrieval": retrieval,
+    }
