@@ -682,7 +682,7 @@ class TestSearchEndpoint:
             response = client.get("/api/search?q=test")
 
             assert response.status_code == 500
-            assert "Search failed" in response.json()["detail"]
+            assert response.json()["detail"] == "Internal server error"
 
     def test_search_rejects_invalid_tool_filter(self, client, mock_search_engine):
         with patch(

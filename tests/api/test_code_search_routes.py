@@ -107,3 +107,24 @@ def test_search_code_returns_503_when_no_code_index(client: TestClient, tmp_path
 
     assert resp.status_code == 503
     assert resp.json()["detail"] == "Code index not found. Rebuild the index to enable /api/search/code."
+
+
+@pytest.mark.unit
+def test_search_code_returns_500_on_store_error(client: TestClient, tmp_path: Path) -> None:
+    search_dir = tmp_path / "search"
+    code_dir = search_dir / "data" / "code"
+    code_dir.mkdir(parents=True, exist_ok=True)
+    (code_dir / "dummy.parquet").write_text("x")
+
+    class BoomStore:
+        def _connect(self):
+            raise RuntimeError("boom")
+
+    with patch(
+        "searchat.api.routers.search.get_dataset_store",
+        return_value=SimpleNamespace(search_dir=search_dir, snapshot_name=None, store=BoomStore()),
+    ):
+        resp = client.get("/api/search/code?q=print")
+
+    assert resp.status_code == 500
+    assert resp.json()["detail"] == "Internal server error"

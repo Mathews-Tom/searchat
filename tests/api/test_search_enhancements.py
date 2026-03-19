@@ -178,6 +178,17 @@ def test_get_search_suggestions_deduplication(client, mock_duckdb_store_for_sugg
         assert len(suggestions) == len(set(suggestions))
 
 
+def test_get_search_suggestions_returns_500_on_store_error(client):
+    broken_store = Mock()
+    broken_store._connect.side_effect = RuntimeError("boom")
+
+    with patch("searchat.api.routers.search.deps.get_duckdb_store", return_value=broken_store):
+        response = client.get("/api/search/suggestions?q=test")
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Internal server error"
+
+
 # ============================================================================
 # PAGINATION TESTS
 # ============================================================================

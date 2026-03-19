@@ -993,6 +993,8 @@ def test_search_and_similarity_routes_preserve_stable_error_messages() -> None:
         snapshot_name=None,
         retrieval_service=Mock(),
     )
+    failing_search_engine = Mock()
+    failing_search_engine.search.side_effect = RuntimeError("boom")
 
     response = client.get("/api/search?q=test&mode=invalid")
     assert response.status_code == 400
@@ -1012,6 +1014,18 @@ def test_search_and_similarity_routes_preserve_stable_error_messages() -> None:
         response = client.get("/api/search?q=python&highlight=true&highlight_provider=bad")
     assert response.status_code == 400
     assert response.json()["detail"] == "Invalid highlight provider"
+
+    with patch(
+        "searchat.api.routers.search.get_dataset_retrieval",
+        return_value=SimpleNamespace(
+            search_dir="/tmp/searchat",
+            snapshot_name=None,
+            retrieval_service=failing_search_engine,
+        ),
+    ):
+        response = client.get("/api/search?q=test")
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Internal server error"
 
     store = Mock()
     store.get_conversation_meta.return_value = {
