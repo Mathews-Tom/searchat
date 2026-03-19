@@ -12,7 +12,7 @@ from searchat.api.contracts import (
     serialize_docs_summary_payload,
 )
 from searchat.api.dataset_access import get_dataset_semantic_retrieval
-from searchat.api.utils import parse_date_filter
+from searchat.api.utils import check_semantic_readiness, parse_date_filter, validate_provider
 from searchat.config.constants import AGENT_CONFIG_TEMPLATES
 from searchat.contracts.errors import tech_docs_disabled_message
 from searchat.models import SearchMode
@@ -103,9 +103,11 @@ class AgentConfigRequest(BaseModel):
 @router.post("/export/agent-config")
 async def generate_agent_config(request: AgentConfigRequest):
     """Generate agent configuration from conversation patterns."""
-    from searchat.api.utils import validate_provider
-
     provider = validate_provider(request.model_provider)
+    extra = ["embedded_model"] if provider == "embedded" else None
+    not_ready = check_semantic_readiness(extra, retrieval_service=deps.get_search_engine)
+    if not_ready is not None:
+        return not_ready
 
     config = deps.get_config()
 
