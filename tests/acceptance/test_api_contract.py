@@ -859,6 +859,32 @@ def test_admin_and_indexing_routes_preserve_stable_contracts() -> None:
     ]
 
 
+def test_index_missing_preserves_stable_internal_error_message() -> None:
+    client = TestClient(app)
+    config = Mock()
+    indexer = Mock()
+    indexer.get_indexed_file_paths.return_value = set()
+    indexer.index_append_only.side_effect = RuntimeError("boom")
+
+    connector = SimpleNamespace(name="claude", discover_files=lambda _config: ["/tmp/conv1.jsonl"])
+    indexing_state = {
+        "in_progress": False,
+        "operation": None,
+        "started_at": None,
+        "files_total": 0,
+        "files_processed": 0,
+    }
+
+    with patch("searchat.api.routers.indexing.get_config", return_value=config):
+        with patch("searchat.api.routers.indexing.get_indexer", return_value=indexer):
+            with patch("searchat.api.routers.indexing.get_connectors", return_value=[connector]):
+                with patch("searchat.api.routers.indexing.api_state.indexing_state", indexing_state):
+                    response = client.post("/api/index_missing")
+
+    assert response.status_code == 500
+    assert response.json() == {"detail": "Internal server error"}
+
+
 def test_resume_and_export_routes_preserve_stable_contracts() -> None:
     client = TestClient(app)
     store = Mock()

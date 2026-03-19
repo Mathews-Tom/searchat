@@ -215,7 +215,7 @@ class TestIndexMissingEndpoint:
                         response = client.post("/api/index_missing")
 
         assert response.status_code == 500
-        assert "Indexing error" in response.json()["detail"]
+        assert response.json()["detail"] == "Internal server error"
 
     def test_index_missing_progress_adapter_updates_state(self):
         from searchat.api.routers.indexing import StateTrackingProgressAdapter
