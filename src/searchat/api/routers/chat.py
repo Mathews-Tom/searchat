@@ -12,7 +12,11 @@ from searchat.api.utils import (
     check_semantic_readiness,
 )
 from searchat.api.dependencies import get_config, get_search_engine
-from searchat.contracts.errors import chat_snapshot_disabled_message, rag_chat_disabled_message
+from searchat.contracts.errors import (
+    chat_snapshot_disabled_message,
+    internal_server_error_message,
+    rag_chat_disabled_message,
+)
 from searchat.services.chat_service import generate_answer_stream, generate_rag_response
 from searchat.services.llm_service import LLMServiceError
 
@@ -50,7 +54,7 @@ async def chat(
     except LLMServiceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from exc
 
     return StreamingResponse(
         stream,
@@ -95,7 +99,7 @@ async def chat_rag(
     except LLMServiceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from exc
 
     sources: list[ConversationSource]
     if not config.chat.enable_citations:
