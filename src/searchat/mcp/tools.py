@@ -123,10 +123,14 @@ def search_conversations(
         raise ValueError(mcp_offset_message())
 
     mode_value = parse_mode(mode)
+    if query.strip() == "*":
+        mode_value = SearchMode.KEYWORD
     tool_value = parse_tool(tool)
 
     dataset_dir = resolve_dataset(search_dir)
     _config, engine, _store = build_services(dataset_dir)
+    if mode_value != SearchMode.KEYWORD:
+        ensure_semantic_capability(engine)
 
     filters = SearchFilters()
     if project_id:
