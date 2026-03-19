@@ -1097,6 +1097,17 @@ def test_code_routes_preserve_stable_error_messages() -> None:
     with patch("searchat.api.routers.code.get_dataset_store", return_value=dataset):
         symbols_response = client.get("/api/conversation/conv-1/code-symbols")
 
+    class BoomStore:
+        def _connect(self):
+            raise RuntimeError("boom")
+
+    failing_dataset = SimpleNamespace(search_dir=search_dir, snapshot_name=None, store=BoomStore())
+
+    with patch("searchat.api.routers.code.get_dataset_store", return_value=failing_dataset):
+        with patch("pathlib.Path.exists", return_value=True):
+            with patch("pathlib.Path.glob", return_value=[search_dir / "data" / "code" / "blocks.parquet"]):
+                symbols_error_response = client.get("/api/conversation/conv-1/code-symbols")
+
     with patch("searchat.api.routers.search.get_dataset_store", return_value=dataset):
         code_search_response = client.get("/api/search/code?q=print")
 
@@ -1107,6 +1118,8 @@ def test_code_routes_preserve_stable_error_messages() -> None:
         symbols_response.json()["detail"]
         == "Code index not found. Rebuild the index to enable code symbol endpoints."
     )
+    assert symbols_error_response.status_code == 500
+    assert symbols_error_response.json()["detail"] == "Internal server error"
     assert code_search_response.status_code == 503
     assert (
         code_search_response.json()["detail"]
