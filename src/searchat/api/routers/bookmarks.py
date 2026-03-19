@@ -14,7 +14,7 @@ from searchat.api.contracts import (
     serialize_success_message_payload,
 )
 from searchat.api.dataset_access import get_dataset_store
-from searchat.contracts.errors import bookmark_not_found_message
+from searchat.contracts.errors import bookmark_not_found_message, conversation_not_found_message
 
 
 router = APIRouter()
@@ -75,7 +75,7 @@ async def add_bookmark(request: BookmarkRequest):
         if not conv_meta:
             raise HTTPException(
                 status_code=404,
-                detail=f"Conversation {request.conversation_id} not found"
+                detail=conversation_not_found_message(request.conversation_id),
             )
 
         bookmark = bookmarks_service.add_bookmark(
