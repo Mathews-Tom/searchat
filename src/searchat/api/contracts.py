@@ -46,6 +46,22 @@ def serialize_search_payload(
     }
 
 
+def serialize_code_search_payload(
+    *,
+    results: list[dict[str, Any]],
+    total: int,
+    limit: int,
+    offset: int,
+) -> dict[str, Any]:
+    return {
+        "results": results,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "has_more": (offset + limit) < total,
+    }
+
+
 def serialize_projects_payload(projects: list[str]) -> list[str]:
     return projects
 
@@ -60,6 +76,17 @@ def serialize_conversations_payload(
         "results": results,
         "total": total,
         "search_time_ms": search_time_ms,
+    }
+
+
+def serialize_search_suggestions_payload(
+    *,
+    query: str,
+    suggestions: list[str],
+) -> dict[str, Any]:
+    return {
+        "query": query,
+        "suggestions": suggestions,
     }
 
 

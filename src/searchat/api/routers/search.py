@@ -5,7 +5,12 @@ from functools import lru_cache
 
 from fastapi import APIRouter, Query, HTTPException
 
-from searchat.api.contracts import serialize_projects_payload, serialize_search_payload
+from searchat.api.contracts import (
+    serialize_code_search_payload,
+    serialize_projects_payload,
+    serialize_search_payload,
+    serialize_search_suggestions_payload,
+)
 from searchat.contracts.errors import (
     highlight_provider_required_message,
     invalid_highlight_provider_message,
@@ -137,13 +142,12 @@ async def search_code(
 
         total, results = rows_to_code_results(rows)
 
-        return {
-            "results": results,
-            "total": total,
-            "limit": limit,
-            "offset": offset,
-            "has_more": (offset + limit) < total,
-        }
+        return serialize_code_search_payload(
+            results=results,
+            total=total,
+            limit=limit,
+            offset=offset,
+        )
     except HTTPException:
         raise
     except Exception as exc:
@@ -342,10 +346,10 @@ async def get_search_suggestions(
             )
         )
 
-        return {
-            "query": q,
-            "suggestions": sorted_suggestions[:limit]
-        }
+        return serialize_search_suggestions_payload(
+            query=q,
+            suggestions=sorted_suggestions[:limit],
+        )
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
