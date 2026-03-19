@@ -51,6 +51,34 @@ def saved_query_not_found_message() -> str:
     return "Saved query not found"
 
 
+def saved_queries_file_invalid_message() -> str:
+    return "Saved queries file is invalid."
+
+
+def saved_query_missing_created_at_message() -> str:
+    return "Saved query is missing created_at."
+
+
+def saved_query_name_required_message() -> str:
+    return "Saved query name is required."
+
+
+def saved_query_text_required_message() -> str:
+    return "Saved query text is required."
+
+
+def saved_query_filters_required_message() -> str:
+    return "Saved query filters must be provided."
+
+
+def saved_query_mode_required_message() -> str:
+    return "Saved query mode is required."
+
+
+def saved_query_use_count_invalid_message() -> str:
+    return "Saved query use_count is invalid."
+
+
 def dashboards_disabled_message() -> str:
     return "Dashboards are disabled"
 
