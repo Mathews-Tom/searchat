@@ -25,6 +25,7 @@ from searchat.api.models import (
 from searchat.api.contracts import (
     serialize_conversation_code_payload,
     serialize_conversation_diff_payload,
+    serialize_delete_conversations_payload,
     serialize_resume_session_payload,
 )
 from searchat.contracts.similarity import (
@@ -1150,4 +1151,8 @@ async def delete_conversations(request: DeleteConversationsRequest):
 
     invalidate_search_index()
 
-    return result
+    return serialize_delete_conversations_payload(
+        deleted=result["deleted"],
+        removed_vectors=result["removed_vectors"],
+        source_files_deleted=result["source_files_deleted"],
+    )

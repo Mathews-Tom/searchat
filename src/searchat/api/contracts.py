@@ -464,6 +464,19 @@ def serialize_index_missing_payload(
     return payload
 
 
+def serialize_delete_conversations_payload(
+    *,
+    deleted: int,
+    removed_vectors: int,
+    source_files_deleted: int,
+) -> dict[str, Any]:
+    return {
+        "deleted": deleted,
+        "removed_vectors": removed_vectors,
+        "source_files_deleted": source_files_deleted,
+    }
+
+
 def serialize_resume_session_payload(
     *,
     tool: str,
