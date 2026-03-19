@@ -7,7 +7,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from searchat.api.contracts import serialize_deleted_resource_payload
+from searchat.api.contracts import serialize_content_payload, serialize_deleted_resource_payload
 from searchat.api.dependencies import get_expertise_store, get_config
 from searchat.expertise.models import (
     ExpertiseQuery,
@@ -411,9 +411,9 @@ def prime_expertise(
 
     formatter = PrimeFormatter()
     if format == "markdown":
-        return {"content": formatter.format_markdown(result, project=project)}
+        return serialize_content_payload(formatter.format_markdown(result, project=project))
     if format == "prompt":
-        return {"content": formatter.format_prompt(result, project=project)}
+        return serialize_content_payload(formatter.format_prompt(result, project=project))
     return formatter.format_json(result)
 
 

@@ -90,6 +90,10 @@ def serialize_search_suggestions_payload(
     }
 
 
+def serialize_content_payload(content: str) -> dict[str, str]:
+    return {"content": content}
+
+
 def serialize_statistics_payload(stats: Any) -> dict[str, Any]:
     return {
         "total_conversations": stats.total_conversations,
