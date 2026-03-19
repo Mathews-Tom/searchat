@@ -335,3 +335,55 @@ def expertise_record_not_found_after_update_message(record_id: str) -> str:
 
 def expertise_record_not_found_after_validation_message(record_id: str) -> str:
     return f"Record not found after validation: {record_id}"
+
+
+def invalid_knowledge_graph_edge_type_message(value: str, valid: str) -> str:
+    return f"Invalid edge_type '{value}'. Must be one of: {valid}"
+
+
+def invalid_knowledge_graph_strategy_message(value: str, valid: str) -> str:
+    return f"Invalid strategy '{value}'. Must be one of: {valid}"
+
+
+def knowledge_graph_edge_not_found_message(edge_id: str) -> str:
+    return f"Edge not found: {edge_id}"
+
+
+def knowledge_graph_edge_not_contradiction_message(edge_id: str, edge_type: str) -> str:
+    return f"Edge {edge_id} is not a CONTRADICTS edge (type={edge_type})"
+
+
+def knowledge_graph_supersede_winner_required_message() -> str:
+    return "params.winner_id required for supersede strategy"
+
+
+def knowledge_graph_scope_both_required_message() -> str:
+    return "params.scope_a and params.scope_b required for scope_both strategy"
+
+
+def knowledge_graph_merge_content_required_message() -> str:
+    return "params.merged_content required for merge strategy"
+
+
+def knowledge_graph_dismiss_reason_required_message() -> str:
+    return "params.reason required for dismiss strategy"
+
+
+def knowledge_graph_keep_both_reason_required_message() -> str:
+    return "params.reason required for keep_both strategy"
+
+
+def knowledge_graph_unsupported_strategy_message(strategy: object) -> str:
+    return f"Unsupported strategy: {strategy}"
+
+
+def knowledge_graph_record_not_found_message(record_id: str) -> str:
+    return f"Record not found: {record_id}"
+
+
+def knowledge_graph_source_record_not_found_message(record_id: str) -> str:
+    return f"Source record not found: {record_id}"
+
+
+def knowledge_graph_target_record_not_found_message(record_id: str) -> str:
+    return f"Target record not found: {record_id}"
