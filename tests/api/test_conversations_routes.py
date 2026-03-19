@@ -566,7 +566,7 @@ class TestGetAllConversationsEndpoint:
             response = client.get("/api/conversations/all")
 
             assert response.status_code == 500
-            assert "Database error" in response.json()["detail"]
+            assert response.json()["detail"] == "Internal server error"
 
     def test_get_all_conversations_filter_by_project(self, client, mock_duckdb_store):
         """Test filtering conversations by project."""
@@ -1110,6 +1110,29 @@ class TestResumeSessionEndpoint:
                 assert data["cwd"] is None
                 # Should still open terminal
                 mock_platform_manager.open_terminal_with_command.assert_called_once()
+
+    def test_resume_wraps_internal_errors(self, client, mock_duckdb_store, mock_platform_manager, tmp_path):
+        conv_file = tmp_path / "conv-1.jsonl"
+        messages = [
+            {"type": "user", "message": {"content": "Test"}, "cwd": "/tmp/project"},
+            {"type": "assistant", "message": {"content": "Response"}},
+        ]
+        with open(conv_file, 'w') as f:
+            for msg in messages:
+                f.write(json.dumps(msg) + '\n')
+
+        for row in mock_duckdb_store._data:
+            if row["conversation_id"] == "conv-1":
+                row["file_path"] = str(conv_file)
+
+        mock_platform_manager.open_terminal_with_command.side_effect = RuntimeError("boom")
+
+        with patch('searchat.api.routers.conversations.deps.get_duckdb_store', return_value=mock_duckdb_store):
+            with patch('searchat.api.routers.conversations.get_platform_manager', return_value=mock_platform_manager):
+                response = client.post("/api/resume", json={"conversation_id": "conv-1"})
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Internal server error"
 
     def test_export_conversation_wraps_internal_errors(self, client):
         with patch("searchat.api.routers.conversations.get_conversation", side_effect=Exception("boom")):

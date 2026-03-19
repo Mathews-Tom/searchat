@@ -878,6 +878,40 @@ def test_all_conversations_route_preserves_stable_contract() -> None:
     assert export_response.json()["detail"] == "Invalid format. Use: json, markdown, text, ipynb, or pdf"
 
 
+def test_conversation_list_and_resume_routes_preserve_stable_internal_error_message() -> None:
+    client = TestClient(app)
+
+    failing_store = Mock()
+    failing_store.list_conversations.side_effect = RuntimeError("boom")
+
+    with patch("searchat.api.routers.conversations.deps.get_duckdb_store", return_value=failing_store):
+        list_response = client.get("/api/conversations/all")
+
+    assert list_response.status_code == 500
+    assert list_response.json()["detail"] == "Internal server error"
+
+    store = Mock()
+    store.get_conversation_meta.return_value = {
+        "conversation_id": "conv-1",
+        "file_path": "/tmp/conv-1.jsonl",
+    }
+    platform_manager = Mock()
+    platform_manager.platform = "darwin"
+    platform_manager.normalize_path.return_value = "/tmp/project"
+    platform_manager.open_terminal_with_command.side_effect = RuntimeError("boom")
+
+    async def _fake_read_file(_path: str) -> str:
+        return '{"type": "user", "cwd": "/tmp/project", "message": {"content": "hi"}}\n'
+
+    with patch("searchat.api.routers.conversations.deps.get_duckdb_store", return_value=store):
+        with patch("searchat.api.routers.conversations.get_platform_manager", return_value=platform_manager):
+            with patch("searchat.api.routers.conversations.read_file_async", side_effect=_fake_read_file):
+                resume_response = client.post("/api/resume", json={"conversation_id": "conv-1"})
+
+    assert resume_response.status_code == 500
+    assert resume_response.json()["detail"] == "Internal server error"
+
+
 def test_expertise_and_knowledge_graph_delete_routes_preserve_stable_contract() -> None:
     client = TestClient(app)
 
