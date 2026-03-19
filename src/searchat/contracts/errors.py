@@ -31,6 +31,10 @@ def invalid_model_provider_message() -> str:
     return "model_provider must be 'openai', 'ollama', or 'embedded'."
 
 
+def retrieval_capability_inspection_failed_message(reason: str) -> str:
+    return f"Retrieval capability inspection failed: {reason}"
+
+
 def snapshot_not_found_message() -> str:
     return "Snapshot not found"
 

@@ -11,6 +11,7 @@ from searchat.config.constants import VALID_TOOL_NAMES
 from searchat.contracts.errors import (
     invalid_model_provider_message,
     invalid_tool_filter_message,
+    retrieval_capability_inspection_failed_message,
     snapshot_not_found_message,
 )
 from searchat.models import SearchResult
@@ -237,7 +238,7 @@ def _get_retrieval_capabilities(retrieval_service=None, *, fail_closed: bool = F
         except Exception as exc:
             if fail_closed:
                 raise RetrievalCapabilitiesUnavailable(
-                    f"Retrieval capability inspection failed: {exc}"
+                    retrieval_capability_inspection_failed_message(str(exc))
                 ) from exc
             return None
 
@@ -250,7 +251,7 @@ def _get_retrieval_capabilities(retrieval_service=None, *, fail_closed: bool = F
     except Exception as exc:
         if fail_closed:
             raise RetrievalCapabilitiesUnavailable(
-                f"Retrieval capability inspection failed: {exc}"
+                retrieval_capability_inspection_failed_message(str(exc))
             ) from exc
         return None
 

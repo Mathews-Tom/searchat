@@ -15,6 +15,7 @@ from searchat.contracts.errors import (
     mcp_search_limit_message,
     mcp_similarity_limit_message,
     no_embeddings_for_conversation_message,
+    retrieval_capability_inspection_failed_message,
 )
 from searchat.mcp.contracts import (
     serialize_conversation_payload,
@@ -101,7 +102,10 @@ def ensure_semantic_capability(engine: SemanticRetrievalService) -> None:
     describe = getattr(engine, "describe_capabilities", None)
     if not callable(describe):
         return
-    capabilities = describe()
+    try:
+        capabilities = describe()
+    except Exception as exc:
+        raise RuntimeError(retrieval_capability_inspection_failed_message(str(exc))) from exc
     if capabilities.semantic_available:
         return
     raise RuntimeError(capabilities.semantic_reason or "Semantic search unavailable")
