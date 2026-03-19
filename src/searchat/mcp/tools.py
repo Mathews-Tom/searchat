@@ -308,6 +308,7 @@ def ask_about_history(
     provider_value = parse_generation_provider(model_provider)
     dataset_dir = resolve_dataset(search_dir)
     config, engine, _store = build_services(dataset_dir)
+    ensure_semantic_capability(engine)
 
     target = resolve_generation_target(
         config.llm,
