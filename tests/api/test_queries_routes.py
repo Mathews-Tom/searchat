@@ -131,7 +131,7 @@ def test_queries_list_returns_500_on_service_error(client, monkeypatch):
 def test_queries_create_returns_400_on_value_error(client, monkeypatch):
     class BadService:
         def create_query(self, _payload: dict) -> dict:
-            raise ValueError("invalid")
+            raise ValueError("Saved query name is required.")
 
     monkeypatch.setattr("searchat.api.routers.queries.deps.get_saved_queries_service", lambda: BadService())
     resp = client.post(
@@ -145,7 +145,18 @@ def test_queries_create_returns_400_on_value_error(client, monkeypatch):
         },
     )
     assert resp.status_code == 400
-    assert resp.json()["detail"] == "invalid"
+    assert resp.json()["detail"] == "Saved query name is required."
+
+
+def test_queries_update_returns_400_on_stable_validation_message(client, monkeypatch):
+    class BadService:
+        def update_query(self, _qid: str, _updates: dict) -> dict:
+            raise ValueError("Saved query mode is required.")
+
+    monkeypatch.setattr("searchat.api.routers.queries.deps.get_saved_queries_service", lambda: BadService())
+    resp = client.put("/api/queries/q-1", json={"mode": ""})
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "Saved query mode is required."
 
 
 def test_queries_update_returns_404_when_not_found(client, monkeypatch):

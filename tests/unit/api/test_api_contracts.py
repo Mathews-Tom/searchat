@@ -86,9 +86,16 @@ from searchat.contracts.errors import (
     retrieval_capability_inspection_failed_message,
     resume_command_not_found_message,
     resume_snapshot_disabled_message,
+    saved_queries_file_invalid_message,
+    saved_query_filters_required_message,
+    saved_query_missing_created_at_message,
+    saved_query_mode_required_message,
+    saved_query_name_required_message,
     saved_query_not_found_message,
     saved_query_invalid_message,
     saved_query_missing_message,
+    saved_query_text_required_message,
+    saved_query_use_count_invalid_message,
     snapshot_not_found_message,
     target_conversation_not_found_message,
     tech_docs_disabled_message,
@@ -570,6 +577,13 @@ def test_shared_error_contract_messages_are_stable() -> None:
     assert conversation_not_found_message("conv-123") == "Conversation not found: conv-123"
     assert bookmark_not_found_message("conv-123") == "Bookmark for conversation conv-123 not found"
     assert saved_query_not_found_message() == "Saved query not found"
+    assert saved_queries_file_invalid_message() == "Saved queries file is invalid."
+    assert saved_query_missing_created_at_message() == "Saved query is missing created_at."
+    assert saved_query_name_required_message() == "Saved query name is required."
+    assert saved_query_text_required_message() == "Saved query text is required."
+    assert saved_query_filters_required_message() == "Saved query filters must be provided."
+    assert saved_query_mode_required_message() == "Saved query mode is required."
+    assert saved_query_use_count_invalid_message() == "Saved query use_count is invalid."
     assert dashboards_disabled_message() == "Dashboards are disabled"
     assert dashboard_not_found_message() == "Dashboard not found"
     assert analytics_active_dataset_only_message() == "Analytics is available only for the active dataset"
