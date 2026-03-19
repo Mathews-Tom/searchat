@@ -79,6 +79,35 @@ def test_ask_about_history_generation_outage_returns_grounded_fallback(tmp_path:
     ]
 
 
+def test_ask_about_history_fails_closed_from_capability_snapshot(tmp_path: Path) -> None:
+    config = SimpleNamespace(
+        llm=SimpleNamespace(
+            default_provider="ollama",
+            openai_model="gpt-4.1-mini",
+            ollama_model="llama3",
+        )
+    )
+    engine = MagicMock()
+    engine.describe_capabilities.return_value = SimpleNamespace(
+        semantic_available=False,
+        reranking_available=False,
+        semantic_reason="Embedding model unavailable: all-MiniLM-L6-v2",
+        reranking_reason=None,
+    )
+
+    with (
+        patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+        patch("searchat.mcp.tools.build_services", return_value=(config, engine, MagicMock())),
+    ):
+        with pytest.raises(
+            RuntimeError,
+            match=r"^Embedding model unavailable: all-MiniLM-L6-v2$",
+        ):
+            ask_about_history(question="What changed?", search_dir=str(tmp_path))
+
+    engine.search.assert_not_called()
+
+
 def test_search_conversations_preserves_stable_result_contract(tmp_path: Path) -> None:
     now = datetime.now(timezone.utc)
     engine = MagicMock()

@@ -512,6 +512,28 @@ class TestProviderValidation:
             ):
                 ask_about_history(question="What changed?", model_provider="azure")
 
+    def test_ask_about_history_fails_closed_from_capability_state_before_search(self, tmp_path: Path):
+        from searchat.mcp.tools import ask_about_history
+
+        cfg = MagicMock()
+        cfg.llm.default_provider = "ollama"
+        engine = MagicMock()
+        engine.describe_capabilities.return_value = SimpleNamespace(
+            semantic_available=False,
+            reranking_available=False,
+            semantic_reason="Embedding model unavailable: all-MiniLM-L6-v2",
+            reranking_reason=None,
+        )
+
+        with (
+            patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+            patch("searchat.mcp.tools.build_services", return_value=(cfg, engine, MagicMock())),
+        ):
+            with pytest.raises(RuntimeError, match="Embedding model unavailable: all-MiniLM-L6-v2"):
+                ask_about_history(question="What changed?", search_dir=str(tmp_path))
+
+        engine.search.assert_not_called()
+
     def test_extract_patterns_invalid_provider_fails_fast(self):
         from searchat.mcp.tools import extract_patterns
 
