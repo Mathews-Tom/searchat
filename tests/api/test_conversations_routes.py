@@ -1139,7 +1139,48 @@ class TestResumeSessionEndpoint:
             response = client.get("/api/conversation/conv-1/export")
 
             assert response.status_code == 500
-            assert response.json()["detail"] == "Internal server error: boom"
+            assert response.json()["detail"] == "Internal server error"
+
+    def test_get_conversation_wraps_internal_errors(self, client):
+        dataset = SimpleNamespace(store=Mock(), snapshot_name=None)
+        dataset.store.get_conversation_meta.return_value = {
+            "conversation_id": "conv-1",
+            "title": "Conversation",
+            "project_id": "proj-1",
+            "file_path": "/tmp/conv-1.jsonl",
+        }
+
+        with patch("searchat.api.routers.conversations.get_dataset_store", return_value=dataset):
+            with patch("searchat.api.routers.conversations.Path.exists", return_value=True):
+                with patch("searchat.api.routers.conversations.read_file_async", side_effect=RuntimeError("boom")):
+                    response = client.get("/api/conversation/conv-1")
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Internal server error"
+
+    def test_conversation_code_wraps_internal_errors(self, client):
+        with patch("searchat.api.routers.conversations.get_conversation", side_effect=RuntimeError("boom")):
+            response = client.get("/api/conversation/conv-1/code")
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Internal server error"
+
+    def test_conversation_diff_wraps_internal_errors(self, client):
+        with patch("searchat.api.routers.conversations.get_conversation", side_effect=RuntimeError("boom")):
+            response = client.get("/api/conversation/conv-1/diff?target_id=conv-2")
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Internal server error"
+
+    def test_bulk_export_wraps_internal_errors(self, client):
+        with patch("zipfile.ZipFile", side_effect=RuntimeError("boom")):
+            response = client.post(
+                "/api/conversations/bulk-export",
+                json={"conversation_ids": ["conv-1"], "format": "json"},
+            )
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Internal server error"
 
 
 def test_conversations_resolve_dataset_requires_snapshot() -> None:

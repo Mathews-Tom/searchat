@@ -912,6 +912,41 @@ def test_conversation_list_and_resume_routes_preserve_stable_internal_error_mess
     assert resume_response.json()["detail"] == "Internal server error"
 
 
+def test_conversation_read_and_export_routes_preserve_stable_internal_error_message() -> None:
+    client = TestClient(app)
+
+    dataset = SimpleNamespace(store=Mock(), snapshot_name=None)
+    dataset.store.get_conversation_meta.return_value = {
+        "conversation_id": "conv-1",
+        "title": "Conversation",
+        "project_id": "proj-1",
+        "file_path": "/tmp/conv-1.jsonl",
+    }
+
+    with patch("searchat.api.routers.conversations.get_dataset_store", return_value=dataset):
+        with patch("searchat.api.routers.conversations.Path.exists", return_value=True):
+            with patch("searchat.api.routers.conversations.read_file_async", side_effect=RuntimeError("boom")):
+                detail_response = client.get("/api/conversation/conv-1")
+
+    assert detail_response.status_code == 500
+    assert detail_response.json()["detail"] == "Internal server error"
+
+    with patch("searchat.api.routers.conversations.get_conversation", side_effect=RuntimeError("boom")):
+        code_response = client.get("/api/conversation/conv-1/code")
+        diff_response = client.get("/api/conversation/conv-1/diff?target_id=conv-2")
+        export_response = client.get("/api/conversation/conv-1/export")
+
+    with patch("zipfile.ZipFile", side_effect=RuntimeError("boom")):
+        bulk_export_response = client.post(
+            "/api/conversations/bulk-export",
+            json={"conversation_ids": ["conv-1"], "format": "json"},
+        )
+
+    for response in (code_response, diff_response, export_response, bulk_export_response):
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Internal server error"
+
+
 def test_expertise_and_knowledge_graph_delete_routes_preserve_stable_contract() -> None:
     client = TestClient(app)
 
