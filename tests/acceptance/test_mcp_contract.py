@@ -16,7 +16,7 @@ from searchat.mcp.tools import (
     generate_agent_config,
     get_conversation,
 )
-from searchat.models import SearchResult, SearchResults
+from searchat.models import SearchMode, SearchResult, SearchResults
 from searchat.services.llm_service import LLMServiceError
 from searchat.mcp.tools import get_statistics, list_projects, search_conversations
 from searchat.services.retrieval_service import SemanticVectorHit
@@ -123,6 +123,73 @@ def test_search_conversations_preserves_stable_result_contract(tmp_path: Path) -
         "message_start_index",
         "message_end_index",
     ]
+
+
+def test_search_conversations_fails_closed_from_semantic_capability_snapshot(tmp_path: Path) -> None:
+    engine = MagicMock()
+    engine.describe_capabilities.return_value = SimpleNamespace(
+        semantic_available=False,
+        reranking_available=False,
+        semantic_reason="Embedding model unavailable: all-MiniLM-L6-v2",
+        reranking_reason=None,
+    )
+
+    with (
+        patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+        patch("searchat.mcp.tools.build_services", return_value=(MagicMock(), engine, MagicMock())),
+    ):
+        with pytest.raises(
+            RuntimeError,
+            match=r"^Embedding model unavailable: all-MiniLM-L6-v2$",
+        ):
+            search_conversations(
+                query="how to sort data structures",
+                mode="semantic",
+                search_dir=str(tmp_path),
+            )
+
+    engine.search.assert_not_called()
+
+
+def test_search_conversations_star_query_preserves_keyword_fallback_contract(tmp_path: Path) -> None:
+    now = datetime.now(timezone.utc)
+    engine = MagicMock()
+    engine.describe_capabilities.return_value = SimpleNamespace(
+        semantic_available=False,
+        reranking_available=False,
+        semantic_reason="Embedding model unavailable: all-MiniLM-L6-v2",
+        reranking_reason=None,
+    )
+    engine.search.return_value = SearchResults(
+        results=[
+            SearchResult(
+                conversation_id="conv-123",
+                project_id="project-a",
+                title="Archival Context",
+                created_at=now,
+                updated_at=now,
+                message_count=4,
+                file_path="/tmp/conv-123.jsonl",
+                score=0.9,
+                snippet="Grounded implementation detail.",
+            )
+        ],
+        total_count=1,
+        search_time_ms=2.0,
+        mode_used="keyword",
+    )
+
+    with (
+        patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+        patch("searchat.mcp.tools.build_services", return_value=(MagicMock(), engine, MagicMock())),
+    ):
+        payload = json.loads(
+            search_conversations(query="*", mode="semantic", search_dir=str(tmp_path))
+        )
+
+    assert payload["mode_used"] == "keyword"
+    assert len(payload["results"]) == 1
+    assert engine.search.call_args.kwargs["mode"] == SearchMode.KEYWORD
 
 
 def test_project_and_statistics_tools_preserve_stable_top_level_contracts(tmp_path: Path) -> None:
@@ -407,4 +474,3 @@ def test_generate_agent_config_fails_closed_from_capability_snapshot(tmp_path: P
             match=r"^Embedding model unavailable: all-MiniLM-L6-v2$",
         ):
             generate_agent_config(format="claude.md", search_dir=str(tmp_path))
-

@@ -168,6 +168,83 @@ class TestSearchConversations:
         assert parsed["results"] == []
         assert parsed["mode_used"] == "hybrid"
 
+    def test_semantic_mode_fails_closed_from_capability_state_before_search(self, tmp_path: Path):
+        from searchat.mcp.tools import search_conversations
+
+        fake_engine = MagicMock()
+        fake_engine.describe_capabilities.return_value = SimpleNamespace(
+            semantic_available=False,
+            reranking_available=False,
+            semantic_reason="Embedding model unavailable: all-MiniLM-L6-v2",
+            reranking_reason=None,
+        )
+
+        with (
+            patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+            patch(
+                "searchat.mcp.tools.build_services",
+                return_value=(MagicMock(), fake_engine, MagicMock()),
+            ),
+        ):
+            with pytest.raises(RuntimeError, match="Embedding model unavailable: all-MiniLM-L6-v2"):
+                search_conversations(query="how to sort data structures", mode="semantic")
+
+        fake_engine.search.assert_not_called()
+
+    def test_hybrid_mode_fails_closed_from_capability_state_before_search(self, tmp_path: Path):
+        from searchat.mcp.tools import search_conversations
+
+        fake_engine = MagicMock()
+        fake_engine.describe_capabilities.return_value = SimpleNamespace(
+            semantic_available=False,
+            reranking_available=False,
+            semantic_reason="Embedding model unavailable: all-MiniLM-L6-v2",
+            reranking_reason=None,
+        )
+
+        with (
+            patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+            patch(
+                "searchat.mcp.tools.build_services",
+                return_value=(MagicMock(), fake_engine, MagicMock()),
+            ),
+        ):
+            with pytest.raises(RuntimeError, match="Embedding model unavailable: all-MiniLM-L6-v2"):
+                search_conversations(query="contract", mode="hybrid")
+
+        fake_engine.search.assert_not_called()
+
+    def test_star_query_forces_keyword_mode_without_semantic_gate(self, tmp_path: Path):
+        from searchat.mcp.tools import search_conversations
+
+        fake_result = MagicMock()
+        fake_result.results = []
+        fake_result.mode_used = "keyword"
+        fake_result.search_time_ms = 1.0
+
+        fake_engine = MagicMock()
+        fake_engine.describe_capabilities.return_value = SimpleNamespace(
+            semantic_available=False,
+            reranking_available=False,
+            semantic_reason="Embedding model unavailable: all-MiniLM-L6-v2",
+            reranking_reason=None,
+        )
+        fake_engine.search.return_value = fake_result
+
+        with (
+            patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+            patch(
+                "searchat.mcp.tools.build_services",
+                return_value=(MagicMock(), fake_engine, MagicMock()),
+            ),
+        ):
+            result = search_conversations(query="*", mode="semantic")
+
+        parsed = json.loads(result)
+        assert parsed["mode_used"] == "keyword"
+        fake_engine.search.assert_called_once()
+        assert fake_engine.search.call_args.kwargs["mode"] == SearchMode.KEYWORD
+
 
 class TestGetConversation:
     def test_raises_when_not_found(self, tmp_path: Path):
