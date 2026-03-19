@@ -203,6 +203,10 @@ def analytics_active_dataset_only_message() -> str:
     return "Analytics is available only for the active dataset"
 
 
+def analytics_topic_cluster_count_invalid_message() -> str:
+    return "Topic cluster count must be between 2 and 20"
+
+
 def internal_server_error_message() -> str:
     return "Internal server error"
 

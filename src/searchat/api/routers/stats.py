@@ -18,6 +18,7 @@ from searchat.api import state as api_state
 from searchat.api.dataset_access import get_dataset_store
 from searchat.contracts.errors import (
     analytics_active_dataset_only_message,
+    analytics_topic_cluster_count_invalid_message,
     internal_server_error_message,
 )
 
@@ -187,7 +188,7 @@ async def get_analytics_topics(
             clusters=analytics.get_topic_clusters(days=days, k=k),
         )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=analytics_topic_cluster_count_invalid_message()) from e
     except Exception as e:
         logger.error(f"Failed to get analytics topics: {e}")
         raise HTTPException(status_code=500, detail=internal_server_error_message())
