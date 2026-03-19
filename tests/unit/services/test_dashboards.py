@@ -50,27 +50,27 @@ class TestCreateDashboard:
     def test_create_requires_name(self, svc):
         payload = _make_payload()
         payload["name"] = ""
-        with pytest.raises(ValueError, match="name is required"):
+        with pytest.raises(ValueError, match="Dashboard name is required\\."):
             svc.create_dashboard(payload)
 
     def test_create_rejects_missing_name(self, svc):
         payload = _make_payload()
         del payload["name"]
-        with pytest.raises(ValueError, match="name is required"):
+        with pytest.raises(ValueError, match="Dashboard name is required\\."):
             svc.create_dashboard(payload)
 
     def test_create_requires_layout(self, svc):
-        with pytest.raises(ValueError, match="layout is required"):
+        with pytest.raises(ValueError, match="Dashboard layout is required\\."):
             svc.create_dashboard({"name": "X", "layout": "invalid"})
 
     def test_create_requires_widgets(self, svc):
-        with pytest.raises(ValueError, match="widgets are required"):
+        with pytest.raises(ValueError, match="Dashboard layout widgets are required\\."):
             svc.create_dashboard({"name": "X", "layout": {"widgets": []}})
 
     def test_create_rejects_non_int_refresh(self, svc):
         payload = _make_payload()
         payload["refresh_interval"] = "slow"
-        with pytest.raises(ValueError, match="refresh_interval must be an integer"):
+        with pytest.raises(ValueError, match="Dashboard refresh_interval must be an integer\\."):
             svc.create_dashboard(payload)
 
 
@@ -119,7 +119,7 @@ class TestUpdateDashboard:
 
     def test_update_rejects_empty_name(self, svc):
         created = svc.create_dashboard(_make_payload())
-        with pytest.raises(ValueError, match="name is required"):
+        with pytest.raises(ValueError, match="Dashboard name is required\\."):
             svc.update_dashboard(created["id"], {"name": ""})
 
     def test_update_layout(self, svc):
@@ -131,7 +131,7 @@ class TestUpdateDashboard:
 
     def test_update_rejects_non_int_refresh(self, svc):
         created = svc.create_dashboard(_make_payload())
-        with pytest.raises(ValueError, match="refresh_interval must be an integer"):
+        with pytest.raises(ValueError, match="Dashboard refresh_interval must be an integer\\."):
             svc.update_dashboard(created["id"], {"refresh_interval": 3.5})
 
     def test_update_description(self, svc):
@@ -173,35 +173,35 @@ class TestNormalizeLayout:
         assert result["widgets"][0]["title"] == "Widget Title"
 
     def test_widget_non_dict_rejected(self, svc):
-        with pytest.raises(ValueError, match="widget must be an object"):
+        with pytest.raises(ValueError, match="Dashboard widget must be an object\\."):
             svc._normalize_layout({"widgets": ["not_a_dict"]})
 
     def test_widget_missing_query_id(self, svc):
-        with pytest.raises(ValueError, match="query_id is required"):
+        with pytest.raises(ValueError, match="Dashboard widget query_id is required\\."):
             svc._normalize_layout({"widgets": [{"title": "X"}]})
 
     def test_widget_non_string_title(self, svc):
-        with pytest.raises(ValueError, match="title must be a string"):
+        with pytest.raises(ValueError, match="Dashboard widget title must be a string\\."):
             svc._normalize_layout({"widgets": [{"query_id": "q1", "title": 123}]})
 
     def test_widget_non_int_limit(self, svc):
-        with pytest.raises(ValueError, match="limit must be an integer"):
+        with pytest.raises(ValueError, match="Dashboard widget limit must be an integer\\."):
             svc._normalize_layout({"widgets": [{"query_id": "q1", "limit": "ten"}]})
 
     def test_widget_non_string_sort_by(self, svc):
-        with pytest.raises(ValueError, match="sort_by must be a string"):
+        with pytest.raises(ValueError, match="Dashboard widget sort_by must be a string\\."):
             svc._normalize_layout({"widgets": [{"query_id": "q1", "sort_by": 42}]})
 
     def test_widget_non_dict_layout(self, svc):
-        with pytest.raises(ValueError, match="widget layout must be an object"):
+        with pytest.raises(ValueError, match="Dashboard widget layout must be an object\\."):
             svc._normalize_layout({"widgets": [{"query_id": "q1", "layout": "flat"}]})
 
     def test_widget_non_string_id(self, svc):
-        with pytest.raises(ValueError, match="widget id must be a string"):
+        with pytest.raises(ValueError, match="Dashboard widget id must be a string\\."):
             svc._normalize_layout({"widgets": [{"query_id": "q1", "id": 999}]})
 
     def test_non_int_columns(self, svc):
-        with pytest.raises(ValueError, match="columns must be an integer"):
+        with pytest.raises(ValueError, match="Dashboard layout columns must be an integer\\."):
             svc._normalize_layout({"widgets": [{"query_id": "q1"}], "columns": "two"})
 
 
@@ -220,15 +220,15 @@ class TestNormalizeQueries:
 
     def test_explicit_queries_must_include_widget_ids(self, svc):
         layout = {"widgets": [{"query_id": "q1"}, {"query_id": "q2"}]}
-        with pytest.raises(ValueError, match="must include all widget query ids"):
+        with pytest.raises(ValueError, match="Dashboard queries must include all widget query ids\\."):
             svc._normalize_queries(["q1"], layout)
 
     def test_non_list_queries_rejected(self, svc):
-        with pytest.raises(ValueError, match="must be a list"):
+        with pytest.raises(ValueError, match="Dashboard queries must be a list of strings\\."):
             svc._normalize_queries("q1", {"widgets": []})
 
     def test_non_string_query_id_rejected(self, svc):
-        with pytest.raises(ValueError, match="must be a list of strings"):
+        with pytest.raises(ValueError, match="Dashboard queries must be a list of strings\\."):
             svc._normalize_queries([123], {"widgets": []})
 
     def test_deduplicates_queries(self, svc):

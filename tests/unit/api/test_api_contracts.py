@@ -51,7 +51,23 @@ from searchat.contracts.errors import (
     backup_summary_unavailable_message,
     backup_validation_unavailable_message,
     dashboard_not_found_message,
+    dashboard_layout_columns_invalid_message,
+    dashboard_layout_required_message,
+    dashboard_layout_widgets_required_message,
+    dashboard_missing_created_at_message,
+    dashboard_name_required_message,
+    dashboard_queries_invalid_message,
+    dashboard_queries_missing_widget_ids_message,
+    dashboard_refresh_interval_invalid_message,
+    dashboard_widget_id_invalid_message,
+    dashboard_widget_layout_invalid_message,
+    dashboard_widget_limit_invalid_message,
+    dashboard_widget_object_required_message,
+    dashboard_widget_query_id_required_message,
+    dashboard_widget_sort_by_invalid_message,
+    dashboard_widget_title_invalid_message,
     dashboards_disabled_message,
+    dashboards_file_invalid_message,
     bookmark_not_found_message,
     bulk_export_no_ids_message,
     bulk_export_too_many_message,
@@ -586,6 +602,22 @@ def test_shared_error_contract_messages_are_stable() -> None:
     assert saved_query_use_count_invalid_message() == "Saved query use_count is invalid."
     assert dashboards_disabled_message() == "Dashboards are disabled"
     assert dashboard_not_found_message() == "Dashboard not found"
+    assert dashboards_file_invalid_message() == "Dashboards file is invalid."
+    assert dashboard_missing_created_at_message() == "Dashboard is missing created_at."
+    assert dashboard_name_required_message() == "Dashboard name is required."
+    assert dashboard_refresh_interval_invalid_message() == "Dashboard refresh_interval must be an integer."
+    assert dashboard_layout_required_message() == "Dashboard layout is required."
+    assert dashboard_layout_widgets_required_message() == "Dashboard layout widgets are required."
+    assert dashboard_widget_object_required_message() == "Dashboard widget must be an object."
+    assert dashboard_widget_query_id_required_message() == "Dashboard widget query_id is required."
+    assert dashboard_widget_title_invalid_message() == "Dashboard widget title must be a string."
+    assert dashboard_widget_limit_invalid_message() == "Dashboard widget limit must be an integer."
+    assert dashboard_widget_sort_by_invalid_message() == "Dashboard widget sort_by must be a string."
+    assert dashboard_widget_layout_invalid_message() == "Dashboard widget layout must be an object."
+    assert dashboard_widget_id_invalid_message() == "Dashboard widget id must be a string."
+    assert dashboard_layout_columns_invalid_message() == "Dashboard layout columns must be an integer."
+    assert dashboard_queries_invalid_message() == "Dashboard queries must be a list of strings."
+    assert dashboard_queries_missing_widget_ids_message() == "Dashboard queries must include all widget query ids."
     assert analytics_active_dataset_only_message() == "Analytics is available only for the active dataset"
     assert internal_server_error_message() == "Internal server error"
     assert backup_operations_disabled_message() == "Backup operations are disabled in snapshot mode"

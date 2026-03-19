@@ -234,6 +234,35 @@ def test_dashboards_export_returns_attachment_json(client, monkeypatch):
     assert "attachment" in resp.headers.get("content-disposition", "")
 
 
+def test_dashboards_create_returns_400_on_stable_validation_message(client, monkeypatch):
+    class BadService:
+        def create_dashboard(self, _payload: dict) -> dict:
+            raise ValueError("Dashboard name is required.")
+
+    monkeypatch.setattr("searchat.api.routers.dashboards.deps.get_dashboards_service", lambda: BadService())
+    monkeypatch.setattr("searchat.api.routers.dashboards.deps.get_config", _enabled_config)
+
+    resp = client.post(
+        "/api/dashboards",
+        json={"name": "x", "layout": {"widgets": [{"query_id": "q-1"}]}},
+    )
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "Dashboard name is required."
+
+
+def test_dashboards_update_returns_400_on_stable_validation_message(client, monkeypatch):
+    class BadService:
+        def update_dashboard(self, _dashboard_id: str, _updates: dict) -> dict:
+            raise ValueError("Dashboard layout is required.")
+
+    monkeypatch.setattr("searchat.api.routers.dashboards.deps.get_dashboards_service", lambda: BadService())
+    monkeypatch.setattr("searchat.api.routers.dashboards.deps.get_config", _enabled_config)
+
+    resp = client.put("/api/dashboards/d-1", json={"name": "Updated"})
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "Dashboard layout is required."
+
+
 def test_dashboards_render_rejects_invalid_layout(client, monkeypatch):
     dashboards_service = InMemoryDashboardsService()
     dashboard = dashboards_service.create_dashboard(
