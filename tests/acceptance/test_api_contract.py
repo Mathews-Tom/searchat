@@ -692,6 +692,27 @@ def test_resume_and_export_routes_preserve_stable_contracts() -> None:
     assert resume_response.status_code == 200
     assert list(resume_response.json()) == ["success", "tool", "cwd", "command", "platform"]
 
+
+def test_delete_conversations_route_preserves_stable_contract() -> None:
+    client = TestClient(app)
+    indexer = Mock()
+    indexer.delete_conversations.return_value = {
+        "deleted": 2,
+        "removed_vectors": 5,
+        "source_files_deleted": 1,
+    }
+
+    with patch("searchat.api.routers.conversations.deps.get_indexer", return_value=indexer):
+        with patch("searchat.api.routers.conversations.invalidate_search_index"):
+            response = client.request(
+                "DELETE",
+                "/api/conversations/delete",
+                json={"conversation_ids": ["conv-1", "conv-2"], "delete_source_files": True},
+            )
+
+    assert response.status_code == 200
+    assert list(response.json()) == ["deleted", "removed_vectors", "source_files_deleted"]
+
     with patch("searchat.api.routers.conversations.get_conversation", return_value=SimpleNamespace()):
         export_response = client.get("/api/conversation/conv-1/export?format=xml")
     assert export_response.status_code == 400

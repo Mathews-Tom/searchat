@@ -1125,6 +1125,32 @@ def test_conversations_resolve_dataset_requires_snapshot() -> None:
         conv_router._resolve_dataset(None)
 
 
+def test_delete_conversations_preserves_stable_payload(client, monkeypatch: pytest.MonkeyPatch):
+    indexer = Mock()
+    indexer.delete_conversations.return_value = {
+        "deleted": 3,
+        "removed_vectors": 7,
+        "source_files_deleted": 2,
+    }
+    monkeypatch.setattr("searchat.api.routers.conversations.deps.get_indexer", lambda: indexer)
+    invalidate = Mock()
+    monkeypatch.setattr("searchat.api.routers.conversations.invalidate_search_index", invalidate)
+
+    response = client.request(
+        "DELETE",
+        "/api/conversations/delete",
+        json={"conversation_ids": ["conv-1"], "delete_source_files": False},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "deleted": 3,
+        "removed_vectors": 7,
+        "source_files_deleted": 2,
+    }
+    invalidate.assert_called_once()
+
+
 def test_conversations_resolve_dataset_disabled_returns_404(monkeypatch: pytest.MonkeyPatch) -> None:
     from searchat.api.routers import conversations as conv_router
 
