@@ -241,7 +241,7 @@ def test_get_bookmarks_returns_500_on_exception(client, mock_bookmarks_service, 
         resp = client.get("/api/bookmarks")
 
     assert resp.status_code == 500
-    assert resp.json()["detail"] == "boom"
+    assert resp.json()["detail"] == "Internal server error"
 
 
 def test_add_bookmark_returns_500_on_service_exception(client, mock_bookmarks_service, mock_duckdb_store):
@@ -252,7 +252,7 @@ def test_add_bookmark_returns_500_on_service_exception(client, mock_bookmarks_se
         resp = client.post("/api/bookmarks", json={"conversation_id": "conv-1", "notes": "x"})
 
     assert resp.status_code == 500
-    assert resp.json()["detail"] == "boom"
+    assert resp.json()["detail"] == "Internal server error"
 
 
 def test_remove_bookmark_returns_500_on_exception(client, mock_bookmarks_service):
@@ -260,7 +260,7 @@ def test_remove_bookmark_returns_500_on_exception(client, mock_bookmarks_service
     with patch("searchat.api.routers.bookmarks.deps.get_bookmarks_service", return_value=mock_bookmarks_service):
         resp = client.delete("/api/bookmarks/conv-1")
     assert resp.status_code == 500
-    assert resp.json()["detail"] == "boom"
+    assert resp.json()["detail"] == "Internal server error"
 
 
 def test_get_bookmark_returns_500_on_exception(client, mock_bookmarks_service):
@@ -268,7 +268,7 @@ def test_get_bookmark_returns_500_on_exception(client, mock_bookmarks_service):
     with patch("searchat.api.routers.bookmarks.deps.get_bookmarks_service", return_value=mock_bookmarks_service):
         resp = client.get("/api/bookmarks/conv-1")
     assert resp.status_code == 500
-    assert resp.json()["detail"] == "boom"
+    assert resp.json()["detail"] == "Internal server error"
 
 
 def test_update_bookmark_notes_returns_500_on_exception(client, mock_bookmarks_service):
@@ -276,7 +276,7 @@ def test_update_bookmark_notes_returns_500_on_exception(client, mock_bookmarks_s
     with patch("searchat.api.routers.bookmarks.deps.get_bookmarks_service", return_value=mock_bookmarks_service):
         resp = client.patch("/api/bookmarks/conv-1/notes", json={"notes": "x"})
     assert resp.status_code == 500
-    assert resp.json()["detail"] == "boom"
+    assert resp.json()["detail"] == "Internal server error"
 
 
 def test_get_bookmarks_with_metadata(client, mock_bookmarks_service, mock_duckdb_store):

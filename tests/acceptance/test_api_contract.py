@@ -419,6 +419,61 @@ def test_bookmark_mutation_routes_preserve_stable_success_messages() -> None:
     }
 
 
+def test_bookmark_routes_preserve_stable_internal_error_message() -> None:
+    client = TestClient(app)
+
+    class BoomBookmarksService:
+        def list_bookmarks(self):
+            raise RuntimeError("boom")
+
+        def add_bookmark(self, *_args, **_kwargs):
+            raise RuntimeError("boom")
+
+        def remove_bookmark(self, *_args, **_kwargs):
+            raise RuntimeError("boom")
+
+        def get_bookmark(self, *_args, **_kwargs):
+            raise RuntimeError("boom")
+
+        def update_notes(self, *_args, **_kwargs):
+            raise RuntimeError("boom")
+
+    bookmark_dataset = SimpleNamespace(
+        snapshot_name=None,
+        store=Mock(
+            get_conversation_meta=Mock(
+                return_value={
+                    "conversation_id": "conv-1",
+                    "project_id": "project-a",
+                    "title": "Bookmark contract",
+                }
+            )
+        ),
+        search_dir="/tmp/searchat",
+    )
+
+    with patch(
+        "searchat.api.routers.bookmarks.deps.get_bookmarks_service",
+        return_value=BoomBookmarksService(),
+    ):
+        with patch("searchat.api.routers.bookmarks.get_dataset_store", return_value=bookmark_dataset):
+            list_response = client.get("/api/bookmarks")
+            add_response = client.post(
+                "/api/bookmarks",
+                json={"conversation_id": "conv-1", "notes": "important"},
+            )
+            get_response = client.get("/api/bookmarks/conv-1")
+            remove_response = client.delete("/api/bookmarks/conv-1")
+            notes_response = client.patch(
+                "/api/bookmarks/conv-1/notes",
+                json={"notes": "updated"},
+            )
+
+    for response in (list_response, add_response, get_response, remove_response, notes_response):
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Internal server error"
+
+
 def test_dashboard_routes_preserve_stable_contracts() -> None:
     client = TestClient(app)
     config = SimpleNamespace(dashboards=SimpleNamespace(enabled=True))
