@@ -6,6 +6,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from searchat.api.contracts import serialize_deleted_resource_payload
 from searchat.api.dependencies import get_knowledge_graph_store, get_expertise_store, get_config
 from searchat.knowledge_graph.models import EdgeType, KnowledgeEdge, ResolutionStrategy
 
@@ -427,4 +428,4 @@ def delete_edge(edge_id: str) -> dict[str, str]:
     if edge is None:
         raise HTTPException(404, f"Edge not found: {edge_id}")
     kg_store.delete_edge(edge_id)
-    return {"status": "deleted", "id": edge_id}
+    return serialize_deleted_resource_payload(edge_id)

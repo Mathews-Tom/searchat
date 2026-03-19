@@ -195,6 +195,13 @@ def serialize_success_message_payload(message: str) -> dict[str, Any]:
     }
 
 
+def serialize_deleted_resource_payload(resource_id: str) -> dict[str, str]:
+    return {
+        "status": "deleted",
+        "id": resource_id,
+    }
+
+
 def serialize_saved_queries_payload(queries: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "total": len(queries),
