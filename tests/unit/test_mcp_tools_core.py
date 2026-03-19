@@ -263,6 +263,29 @@ class TestGetStatistics:
 
 
 class TestFindSimilarConversations:
+    def test_fails_closed_from_capability_state_before_lookup(self, tmp_path: Path):
+        fake_engine = MagicMock()
+        fake_engine.describe_capabilities.return_value = SimpleNamespace(
+            semantic_available=False,
+            reranking_available=False,
+            semantic_reason="Embedding model unavailable: all-MiniLM-L6-v2",
+            reranking_reason=None,
+        )
+
+        fake_store = MagicMock()
+
+        with (
+            patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+            patch(
+                "searchat.mcp.tools.build_services",
+                return_value=(MagicMock(), fake_engine, fake_store),
+            ),
+        ):
+            with pytest.raises(RuntimeError, match="Embedding model unavailable: all-MiniLM-L6-v2"):
+                find_similar_conversations(conversation_id="conv-123", search_dir=str(tmp_path))
+
+        fake_store.get_conversation_meta.assert_not_called()
+
     def test_routes_vector_hits_through_retrieval_contract(self, tmp_path: Path):
         fake_engine = MagicMock()
         fake_engine.metadata_path = tmp_path / "metadata.parquet"

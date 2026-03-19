@@ -347,3 +347,26 @@ def test_mcp_tools_preserve_stable_validation_and_not_found_messages(tmp_path: P
                 model_provider="azure",
                 search_dir=str(tmp_path),
             )
+
+
+def test_find_similar_conversations_fails_closed_from_capability_snapshot(tmp_path: Path) -> None:
+    engine = MagicMock()
+    engine.describe_capabilities.return_value = SimpleNamespace(
+        semantic_available=False,
+        reranking_available=False,
+        semantic_reason="Embedding model unavailable: all-MiniLM-L6-v2",
+        reranking_reason=None,
+    )
+    store = MagicMock()
+
+    with (
+        patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+        patch("searchat.mcp.tools.build_services", return_value=(MagicMock(), engine, store)),
+    ):
+        with pytest.raises(
+            RuntimeError,
+            match=r"^Embedding model unavailable: all-MiniLM-L6-v2$",
+        ):
+            find_similar_conversations(conversation_id="conv-123", search_dir=str(tmp_path))
+
+    store.get_conversation_meta.assert_not_called()
