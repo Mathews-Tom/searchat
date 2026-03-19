@@ -9,7 +9,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from searchat.mcp.tools import ask_about_history, extract_patterns, find_similar_conversations, get_conversation
+from searchat.mcp.tools import (
+    ask_about_history,
+    extract_patterns,
+    find_similar_conversations,
+    generate_agent_config,
+    get_conversation,
+)
 from searchat.models import SearchResult, SearchResults
 from searchat.services.llm_service import LLMServiceError
 from searchat.mcp.tools import get_statistics, list_projects, search_conversations
@@ -370,3 +376,35 @@ def test_find_similar_conversations_fails_closed_from_capability_snapshot(tmp_pa
             find_similar_conversations(conversation_id="conv-123", search_dir=str(tmp_path))
 
     store.get_conversation_meta.assert_not_called()
+
+
+def test_generate_agent_config_fails_closed_from_capability_snapshot(tmp_path: Path) -> None:
+    config = SimpleNamespace(
+        llm=SimpleNamespace(
+            default_provider="ollama",
+            openai_model="gpt-4.1-mini",
+            ollama_model="llama3",
+        )
+    )
+    engine = MagicMock()
+    engine.describe_capabilities.return_value = SimpleNamespace(
+        semantic_available=False,
+        reranking_available=False,
+        semantic_reason="Embedding model unavailable: all-MiniLM-L6-v2",
+        reranking_reason=None,
+    )
+
+    with (
+        patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+        patch("searchat.mcp.tools.build_services", return_value=(config, engine, MagicMock())),
+        patch(
+            "searchat.services.pattern_mining.extract_patterns",
+            side_effect=AssertionError("should not extract"),
+        ),
+    ):
+        with pytest.raises(
+            RuntimeError,
+            match=r"^Embedding model unavailable: all-MiniLM-L6-v2$",
+        ):
+            generate_agent_config(format="claude.md", search_dir=str(tmp_path))
+

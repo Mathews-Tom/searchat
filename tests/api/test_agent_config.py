@@ -20,6 +20,21 @@ def agent_config_retrieval_service():
         yield
 
 
+@pytest.fixture(autouse=True)
+def semantic_components_ready():
+    readiness = Mock()
+    readiness.snapshot.return_value = Mock(
+        components={
+            "metadata": "ready",
+            "faiss": "ready",
+            "embedder": "ready",
+            "embedded_model": "ready",
+        }
+    )
+    with patch("searchat.api.readiness.get_readiness", return_value=readiness):
+        yield
+
+
 @pytest.fixture
 def mock_patterns():
     """Sample extracted patterns for testing."""
@@ -503,3 +518,70 @@ def test_generate_agent_config_value_error_handling(client):
 
     assert resp.status_code == 500
     assert "Invalid topic filter" in resp.json()["detail"]
+
+
+def test_generate_agent_config_reports_semantic_capability_error_when_components_look_ready(client):
+    readiness = Mock()
+    readiness.snapshot.return_value = Mock(
+        components={
+            "metadata": "ready",
+            "faiss": "ready",
+            "embedder": "ready",
+        }
+    )
+    retrieval_service = Mock()
+    retrieval_service.describe_capabilities.return_value = Mock(
+        semantic_available=False,
+        reranking_available=True,
+        semantic_reason="Embedding model unavailable: all-MiniLM-L6-v2",
+        reranking_reason=None,
+    )
+
+    with patch("searchat.api.readiness.get_readiness", return_value=readiness):
+        with patch("searchat.api.routers.docs.deps.get_search_engine", return_value=retrieval_service):
+            resp = client.post(
+                "/api/export/agent-config",
+                json={
+                    "format": "claude.md",
+                    "project_filter": "test",
+                    "model_provider": "ollama",
+                },
+            )
+
+    assert resp.status_code == 500
+    data = resp.json()
+    assert data["status"] == "error"
+    assert data["errors"]["semantic"] == "Embedding model unavailable: all-MiniLM-L6-v2"
+    assert data["capabilities"]["semantic_available"] is False
+
+
+def test_generate_agent_config_fails_closed_when_capability_inspection_errors(client):
+    readiness = Mock()
+    readiness.snapshot.return_value = Mock(
+        components={
+            "metadata": "ready",
+            "faiss": "ready",
+            "embedder": "ready",
+        }
+    )
+
+    with patch("searchat.api.readiness.get_readiness", return_value=readiness):
+        with patch(
+            "searchat.api.routers.docs.deps.get_search_engine",
+            side_effect=RuntimeError("service registry unavailable"),
+        ):
+            resp = client.post(
+                "/api/export/agent-config",
+                json={
+                    "format": "claude.md",
+                    "project_filter": "test",
+                    "model_provider": "ollama",
+                },
+            )
+
+    assert resp.status_code == 500
+    data = resp.json()
+    assert data["status"] == "error"
+    assert data["errors"]["semantic"] == (
+        "Retrieval capability inspection failed: service registry unavailable"
+    )

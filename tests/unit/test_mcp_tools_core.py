@@ -399,6 +399,30 @@ class TestGenerateAgentConfig:
         assert parsed["pattern_count"] == 1
         assert "content" in parsed
 
+    def test_fails_closed_from_capability_state_before_pattern_extraction(self, tmp_path: Path):
+        from searchat.mcp.tools import generate_agent_config
+
+        cfg = MagicMock()
+        cfg.llm.default_provider = "ollama"
+        engine = MagicMock()
+        engine.describe_capabilities.return_value = SimpleNamespace(
+            semantic_available=False,
+            reranking_available=False,
+            semantic_reason="Embedding model unavailable: all-MiniLM-L6-v2",
+            reranking_reason=None,
+        )
+
+        with (
+            patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+            patch("searchat.mcp.tools.build_services", return_value=(cfg, engine, MagicMock())),
+            patch(
+                "searchat.services.pattern_mining.extract_patterns",
+                side_effect=AssertionError("should not extract"),
+            ),
+        ):
+            with pytest.raises(RuntimeError, match="Embedding model unavailable: all-MiniLM-L6-v2"):
+                generate_agent_config(format="claude.md", search_dir=str(tmp_path))
+
 
 class TestProviderValidation:
     def test_ask_about_history_invalid_provider_fails_fast(self):
@@ -420,3 +444,30 @@ class TestProviderValidation:
                 match="model_provider must be 'openai', 'ollama', or 'embedded'.",
             ):
                 extract_patterns(topic="testing", model_provider="azure")
+
+    def test_extract_patterns_fails_closed_from_capability_state_before_pattern_extraction(
+        self,
+        tmp_path: Path,
+    ):
+        from searchat.mcp.tools import extract_patterns
+
+        cfg = MagicMock()
+        cfg.llm.default_provider = "ollama"
+        engine = MagicMock()
+        engine.describe_capabilities.return_value = SimpleNamespace(
+            semantic_available=False,
+            reranking_available=False,
+            semantic_reason="Embedding model unavailable: all-MiniLM-L6-v2",
+            reranking_reason=None,
+        )
+
+        with (
+            patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+            patch("searchat.mcp.tools.build_services", return_value=(cfg, engine, MagicMock())),
+            patch(
+                "searchat.services.pattern_mining.extract_patterns",
+                side_effect=AssertionError("should not extract"),
+            ),
+        ):
+            with pytest.raises(RuntimeError, match="Embedding model unavailable: all-MiniLM-L6-v2"):
+                extract_patterns(topic="testing", search_dir=str(tmp_path))
