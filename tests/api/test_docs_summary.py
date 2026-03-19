@@ -6,6 +6,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+from fastapi.responses import JSONResponse
 
 from searchat.api.app import app
 from searchat.models import SearchResult, SearchResults
@@ -56,17 +57,18 @@ def test_docs_summary_markdown_returns_content_and_citations(client):
     engine.search.return_value = _make_results()
 
     with patch("searchat.api.routers.docs.deps.get_config", return_value=cfg):
-        with patch("searchat.api.routers.docs.get_dataset_semantic_retrieval", return_value=(None, engine)):
-            resp = client.post(
-                "/api/docs/summary",
-                json={
-                    "title": "My Doc",
-                    "format": "markdown",
-                    "sections": [
-                        {"name": "Section A", "query": "how do we index?", "max_results": 5}
-                    ],
-                },
-            )
+        with patch("searchat.api.routers.docs.check_semantic_readiness", return_value=None):
+            with patch("searchat.api.routers.docs.deps.get_search_engine", return_value=engine):
+                resp = client.post(
+                    "/api/docs/summary",
+                    json={
+                        "title": "My Doc",
+                        "format": "markdown",
+                        "sections": [
+                            {"name": "Section A", "query": "how do we index?", "max_results": 5}
+                        ],
+                    },
+                )
 
     assert resp.status_code == 200
     data = resp.json()
@@ -93,14 +95,15 @@ def test_docs_summary_asciidoc_returns_content(client):
     engine.search.return_value = _make_results()
 
     with patch("searchat.api.routers.docs.deps.get_config", return_value=cfg):
-        with patch("searchat.api.routers.docs.get_dataset_semantic_retrieval", return_value=(None, engine)):
-            resp = client.post(
-                "/api/docs/summary",
-                json={
-                    "format": "asciidoc",
-                    "sections": [{"name": "Section A", "query": "q"}],
-                },
-            )
+        with patch("searchat.api.routers.docs.check_semantic_readiness", return_value=None):
+            with patch("searchat.api.routers.docs.deps.get_search_engine", return_value=engine):
+                resp = client.post(
+                    "/api/docs/summary",
+                    json={
+                        "format": "asciidoc",
+                        "sections": [{"name": "Section A", "query": "q"}],
+                    },
+                )
 
     assert resp.status_code == 200
     data = resp.json()
@@ -114,3 +117,21 @@ def test_docs_summary_asciidoc_returns_content(client):
     ]
     assert data["format"] == "asciidoc"
     assert data["content"].startswith("= ")
+
+
+def test_docs_summary_returns_warming_payload_when_semantic_components_not_ready(client):
+    cfg = Mock()
+    cfg.export = Mock(enable_tech_docs=True)
+
+    with patch("searchat.api.routers.docs.deps.get_config", return_value=cfg):
+        with patch(
+            "searchat.api.routers.docs.check_semantic_readiness",
+            return_value=JSONResponse(status_code=503, content={"status": "warming"}),
+        ):
+            resp = client.post(
+                "/api/docs/summary",
+                json={"sections": [{"name": "S", "query": "q"}]},
+            )
+
+    assert resp.status_code == 503
+    assert resp.json()["status"] == "warming"

@@ -107,3 +107,26 @@ def test_agent_config_fails_closed_when_semantic_capability_is_unavailable() -> 
     payload = response.json()
     assert payload["status"] == "error"
     assert payload["errors"]["semantic"] == "Embedding model unavailable: all-MiniLM-L6-v2"
+
+
+def test_docs_summary_returns_warming_payload_when_semantic_components_are_idle() -> None:
+    readiness = Mock()
+    readiness.snapshot.return_value = Mock(
+        components={"metadata": "ready", "faiss": "idle", "embedder": "idle"},
+        watcher="disabled",
+        errors={},
+        warmup_started_at=None,
+    )
+    docs_config = SimpleNamespace(export=SimpleNamespace(enable_tech_docs=True))
+
+    with patch("searchat.api.readiness.get_readiness", return_value=readiness):
+        with patch("searchat.api.routers.docs.deps.get_config", return_value=docs_config):
+            client = TestClient(app)
+            response = client.post(
+                "/api/docs/summary",
+                json={"title": "My Doc", "sections": [{"name": "S", "query": "q"}]},
+            )
+
+    assert response.status_code == 503
+    payload = response.json()
+    assert payload["status"] == "warming"

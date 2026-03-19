@@ -212,7 +212,7 @@ def test_generate_agent_config_pattern_extraction_error(client):
             )
 
     assert resp.status_code == 500
-    assert "Pattern extraction failed" in resp.json()["detail"]
+    assert resp.json()["detail"] == "Internal server error"
 
 
 def test_generate_agent_config_default_format(client, mock_patterns):
@@ -517,7 +517,7 @@ def test_generate_agent_config_value_error_handling(client):
             )
 
     assert resp.status_code == 500
-    assert "Invalid topic filter" in resp.json()["detail"]
+    assert resp.json()["detail"] == "Internal server error"
 
 
 def test_generate_agent_config_reports_semantic_capability_error_when_components_look_ready(client):

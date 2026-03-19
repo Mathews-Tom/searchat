@@ -621,14 +621,15 @@ def test_docs_and_agent_config_routes_preserve_stable_contracts() -> None:
     ]
 
     with patch("searchat.api.routers.docs.deps.get_config", return_value=docs_config):
-        with patch(
-            "searchat.api.routers.docs.get_dataset_semantic_retrieval",
-            return_value=(None, retrieval_service),
-        ):
-            docs_response = client.post(
-                "/api/docs/summary",
-                json={"title": "My Doc", "sections": [{"name": "S", "query": "q"}]},
-            )
+        with patch("searchat.api.routers.docs.check_semantic_readiness", return_value=None):
+            with patch(
+                "searchat.api.routers.docs.deps.get_search_engine",
+                return_value=retrieval_service,
+            ):
+                docs_response = client.post(
+                    "/api/docs/summary",
+                    json={"title": "My Doc", "sections": [{"name": "S", "query": "q"}]},
+                )
 
     ready_pattern_retrieval = Mock()
     ready_pattern_retrieval.describe_capabilities.return_value = SimpleNamespace(
@@ -661,6 +662,47 @@ def test_docs_and_agent_config_routes_preserve_stable_contracts() -> None:
     ]
     assert agent_response.status_code == 200
     assert list(agent_response.json()) == ["format", "content", "pattern_count", "project_filter"]
+
+
+def test_agent_config_route_preserves_stable_internal_error_message() -> None:
+    client = TestClient(app)
+    docs_config = SimpleNamespace(export=SimpleNamespace(enable_tech_docs=True))
+    readiness = Mock()
+    readiness.snapshot.return_value = Mock(
+        components={
+            "metadata": "ready",
+            "faiss": "ready",
+            "embedder": "ready",
+        },
+        watcher="disabled",
+        errors={},
+        warmup_started_at=None,
+    )
+    retrieval_service = Mock()
+    retrieval_service.describe_capabilities.return_value = SimpleNamespace(
+        semantic_available=True,
+        reranking_available=True,
+        semantic_reason=None,
+        reranking_reason=None,
+    )
+
+    with patch("searchat.api.routers.docs.deps.get_config", return_value=docs_config):
+        with patch("searchat.api.readiness.get_readiness", return_value=readiness):
+            with patch(
+                "searchat.api.routers.docs.deps.get_search_engine",
+                return_value=retrieval_service,
+            ):
+                with patch(
+                    "searchat.api.routers.docs.extract_patterns",
+                    side_effect=RuntimeError("boom"),
+                ):
+                    response = client.post(
+                        "/api/export/agent-config",
+                        json={"format": "claude.md", "model_provider": "ollama"},
+                    )
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Internal server error"
 
 
 def test_admin_and_indexing_routes_preserve_stable_contracts() -> None:
