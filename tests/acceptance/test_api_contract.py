@@ -773,6 +773,49 @@ def test_expertise_and_knowledge_graph_delete_routes_preserve_stable_contract() 
     assert list(kg_response.json()) == ["status", "id"]
 
 
+def test_knowledge_graph_routes_preserve_stable_validation_and_not_found_messages() -> None:
+    client = TestClient(app)
+
+    kg_store = Mock()
+    kg_store.get_edge.return_value = None
+    expertise_store = Mock()
+    expertise_store.get.side_effect = lambda record_id: (
+        SimpleNamespace(id=record_id) if record_id in {"rec-a", "rec-b"} else None
+    )
+
+    with patch("searchat.api.routers.knowledge_graph.get_knowledge_graph_store", return_value=kg_store):
+        with patch("searchat.api.routers.knowledge_graph.get_expertise_store", return_value=expertise_store):
+            with patch(
+                "searchat.api.routers.knowledge_graph.get_config",
+                return_value=SimpleNamespace(
+                    knowledge_graph=SimpleNamespace(enabled=True),
+                    expertise=SimpleNamespace(enabled=True),
+                ),
+            ):
+                invalid_edge_type_response = client.post(
+                    "/api/knowledge-graph/edges",
+                    json={
+                        "source_id": "rec-a",
+                        "target_id": "rec-b",
+                        "edge_type": "bad_type",
+                    },
+                )
+                missing_edge_response = client.post(
+                    "/api/knowledge-graph/resolve",
+                    json={"edge_id": "edge-404", "strategy": "dismiss", "params": {"reason": "x"}},
+                )
+                missing_record_response = client.get("/api/knowledge-graph/lineage/rec-404")
+
+    assert invalid_edge_type_response.status_code == 422
+    assert invalid_edge_type_response.json()["detail"].startswith(
+        "Invalid edge_type 'bad_type'. Must be one of:"
+    )
+    assert missing_edge_response.status_code == 404
+    assert missing_edge_response.json()["detail"] == "Edge not found: edge-404"
+    assert missing_record_response.status_code == 404
+    assert missing_record_response.json()["detail"] == "Record not found: rec-404"
+
+
 def test_expertise_routes_preserve_stable_validation_and_not_found_messages() -> None:
     client = TestClient(app)
 

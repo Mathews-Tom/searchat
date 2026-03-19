@@ -99,6 +99,8 @@ from searchat.contracts.errors import (
     invalid_highlight_provider_message,
     invalid_model_provider_message,
     invalid_export_format_message,
+    invalid_knowledge_graph_edge_type_message,
+    invalid_knowledge_graph_strategy_message,
     invalid_mcp_mode_message,
     invalid_mcp_tool_message,
     invalid_search_mode_message,
@@ -108,6 +110,17 @@ from searchat.contracts.errors import (
     invalid_tool_filter_message,
     indexing_snapshot_disabled_message,
     internal_server_error_message,
+    knowledge_graph_dismiss_reason_required_message,
+    knowledge_graph_edge_not_contradiction_message,
+    knowledge_graph_edge_not_found_message,
+    knowledge_graph_keep_both_reason_required_message,
+    knowledge_graph_merge_content_required_message,
+    knowledge_graph_record_not_found_message,
+    knowledge_graph_scope_both_required_message,
+    knowledge_graph_source_record_not_found_message,
+    knowledge_graph_supersede_winner_required_message,
+    knowledge_graph_target_record_not_found_message,
+    knowledge_graph_unsupported_strategy_message,
     mcp_offset_message,
     mcp_search_limit_message,
     mcp_similarity_limit_message,
@@ -741,6 +754,52 @@ def test_shared_error_contract_messages_are_stable() -> None:
     assert (
         expertise_record_not_found_after_validation_message("rec-1")
         == "Record not found after validation: rec-1"
+    )
+    assert (
+        invalid_knowledge_graph_edge_type_message("bad", "qualifies, contradicts")
+        == "Invalid edge_type 'bad'. Must be one of: qualifies, contradicts"
+    )
+    assert (
+        invalid_knowledge_graph_strategy_message("bad", "dismiss, merge")
+        == "Invalid strategy 'bad'. Must be one of: dismiss, merge"
+    )
+    assert knowledge_graph_edge_not_found_message("edge-1") == "Edge not found: edge-1"
+    assert (
+        knowledge_graph_edge_not_contradiction_message("edge-1", "qualifies")
+        == "Edge edge-1 is not a CONTRADICTS edge (type=qualifies)"
+    )
+    assert (
+        knowledge_graph_supersede_winner_required_message()
+        == "params.winner_id required for supersede strategy"
+    )
+    assert (
+        knowledge_graph_scope_both_required_message()
+        == "params.scope_a and params.scope_b required for scope_both strategy"
+    )
+    assert (
+        knowledge_graph_merge_content_required_message()
+        == "params.merged_content required for merge strategy"
+    )
+    assert (
+        knowledge_graph_dismiss_reason_required_message()
+        == "params.reason required for dismiss strategy"
+    )
+    assert (
+        knowledge_graph_keep_both_reason_required_message()
+        == "params.reason required for keep_both strategy"
+    )
+    assert (
+        knowledge_graph_unsupported_strategy_message("weird")
+        == "Unsupported strategy: weird"
+    )
+    assert knowledge_graph_record_not_found_message("rec-1") == "Record not found: rec-1"
+    assert (
+        knowledge_graph_source_record_not_found_message("rec-a")
+        == "Source record not found: rec-a"
+    )
+    assert (
+        knowledge_graph_target_record_not_found_message("rec-b")
+        == "Target record not found: rec-b"
     )
     assert invalid_export_format_message() == "Invalid format. Use: json, markdown, text, ipynb, or pdf"
     assert bulk_export_no_ids_message() == "No conversation IDs provided"
