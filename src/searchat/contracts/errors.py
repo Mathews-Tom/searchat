@@ -31,6 +31,14 @@ def invalid_model_provider_message() -> str:
     return "model_provider must be 'openai', 'ollama', or 'embedded'."
 
 
+def chat_snapshot_disabled_message() -> str:
+    return "Chat is disabled in snapshot mode"
+
+
+def rag_chat_disabled_message() -> str:
+    return "RAG chat endpoint is disabled."
+
+
 def retrieval_capability_inspection_failed_message(reason: str) -> str:
     return f"Retrieval capability inspection failed: {reason}"
 
