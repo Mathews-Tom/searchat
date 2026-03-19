@@ -243,7 +243,7 @@ class TestCreateBackupEndpoint:
             response = client.post("/api/backup/create")
 
             assert response.status_code == 500
-            assert "Disk full" in response.json()["detail"]
+            assert response.json()["detail"] == "Internal server error"
 
 
 @pytest.mark.unit
@@ -447,7 +447,7 @@ class TestGetBackupChainEndpoint:
             response = client.get("/api/backup/list")
 
             assert response.status_code == 500
-            assert "Permission denied" in response.json()["detail"]
+            assert response.json()["detail"] == "Internal server error"
 
 
 @pytest.mark.unit
@@ -558,4 +558,4 @@ class TestDeleteBackupEndpoint:
             response = client.delete("/api/backup/delete/backup_20250120_100000")
 
             assert response.status_code == 500
-            assert "Permission denied" in response.json()["detail"]
+            assert response.json()["detail"] == "Internal server error"

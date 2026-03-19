@@ -575,6 +575,18 @@ def test_backup_routes_preserve_stable_contracts() -> None:
     assert list(chain_response.json()) == ["backup_name", "chain", "chain_length", "valid", "errors"]
 
 
+def test_backup_route_preserves_stable_internal_error_message() -> None:
+    client = TestClient(app)
+    backup_manager = Mock()
+    backup_manager.create_backup.side_effect = RuntimeError("disk full")
+
+    with patch("searchat.api.routers.backup.get_backup_manager", return_value=backup_manager):
+        response = client.post("/api/backup/create")
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Internal server error"
+
+
 def test_docs_and_agent_config_routes_preserve_stable_contracts() -> None:
     client = TestClient(app)
     docs_config = SimpleNamespace(export=SimpleNamespace(enable_tech_docs=True))
