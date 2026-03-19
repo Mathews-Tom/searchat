@@ -80,6 +80,7 @@ def test_get_search_suggestions(client, mock_duckdb_store_for_suggestions):
         assert response.status_code == 200
         data = response.json()
 
+        assert list(data) == ["query", "suggestions"]
         assert "query" in data
         assert "suggestions" in data
         assert data["query"] == "python"

@@ -10,6 +10,7 @@ from searchat.api.contracts import (
     serialize_backup_restore_payload,
     serialize_backup_summary_fallback,
     serialize_backups_payload,
+    serialize_code_search_payload,
     serialize_conversations_payload,
     serialize_conversation_code_payload,
     serialize_conversation_diff_payload,
@@ -40,6 +41,7 @@ from searchat.api.contracts import (
     serialize_saved_queries_payload,
     serialize_saved_query_mutation_payload,
     serialize_search_payload,
+    serialize_search_suggestions_payload,
     serialize_success_flag_payload,
     serialize_success_message_payload,
     serialize_status_features_payload,
@@ -180,6 +182,17 @@ def test_serialize_search_payload_preserves_stable_keys() -> None:
     ]
 
 
+def test_serialize_code_search_payload_preserves_stable_keys() -> None:
+    payload = serialize_code_search_payload(
+        results=[{"conversation_id": "conv-1", "language": "python"}],
+        total=3,
+        limit=2,
+        offset=1,
+    )
+
+    assert list(payload) == ["results", "total", "limit", "offset", "has_more"]
+
+
 def test_serialize_projects_payload_preserves_list_shape() -> None:
     payload = serialize_projects_payload(["proj-a", "proj-b"])
     assert payload == ["proj-a", "proj-b"]
@@ -201,6 +214,15 @@ def test_serialize_conversations_payload_preserves_stable_keys() -> None:
     )
 
     assert list(payload) == ["results", "total", "search_time_ms"]
+
+
+def test_serialize_search_suggestions_payload_preserves_stable_keys() -> None:
+    payload = serialize_search_suggestions_payload(
+        query="py",
+        suggestions=["python", "pytest"],
+    )
+
+    assert list(payload) == ["query", "suggestions"]
 
 
 def test_serialize_statistics_payload_preserves_stable_keys() -> None:

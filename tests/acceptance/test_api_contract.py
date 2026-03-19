@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -882,3 +883,36 @@ def test_search_and_similarity_routes_preserve_stable_error_messages() -> None:
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Conversation not found: conv-404"
+
+
+def test_search_auxiliary_routes_preserve_stable_contracts() -> None:
+    client = TestClient(app)
+
+    conn = Mock()
+    conn.execute.return_value.fetchall.return_value = [("Python testing guide",), ("Pytest fixtures",)]
+    store = Mock()
+    store._connect.return_value = conn
+
+    with patch("searchat.api.routers.search.deps.get_duckdb_store", return_value=store):
+        suggestions_response = client.get("/api/search/suggestions?q=py")
+
+    assert suggestions_response.status_code == 200
+    assert list(suggestions_response.json()) == ["query", "suggestions"]
+
+    code_conn = Mock()
+    code_conn.execute.return_value.fetchall.return_value = [("ignored",)]
+    code_store = Mock()
+    code_store._connect.return_value = code_conn
+    dataset = SimpleNamespace(search_dir=Path("/tmp/searchat"), snapshot_name=None, store=code_store)
+
+    with patch("searchat.api.routers.search.get_dataset_store", return_value=dataset):
+        with patch("pathlib.Path.exists", return_value=True):
+            with patch("pathlib.Path.glob", return_value=[dataset.search_dir / "data" / "code" / "blocks.parquet"]):
+                with patch(
+                    "searchat.api.routers.search.rows_to_code_results",
+                    return_value=(1, [{"conversation_id": "conv-1", "language": "python"}]),
+                ):
+                    code_response = client.get("/api/search/code?q=print")
+
+    assert code_response.status_code == 200
+    assert list(code_response.json()) == ["results", "total", "limit", "offset", "has_more"]

@@ -68,6 +68,7 @@ def test_search_code_returns_results(client: TestClient, tmp_path: Path) -> None
 
     assert resp.status_code == 200
     payload = resp.json()
+    assert list(payload) == ["results", "total", "limit", "offset", "has_more"]
     assert payload["total"] == 1
     assert len(payload["results"]) == 1
     assert payload["results"][0]["language"] == "python"
@@ -88,6 +89,7 @@ def test_search_code_filters_by_function_name(client: TestClient, tmp_path: Path
 
     assert resp.status_code == 200
     payload = resp.json()
+    assert list(payload) == ["results", "total", "limit", "offset", "has_more"]
     assert payload["total"] == 1
     assert len(payload["results"]) == 1
 
