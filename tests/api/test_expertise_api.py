@@ -225,6 +225,7 @@ class TestDeleteExpertise:
 
         assert resp.status_code == 200
         data = resp.json()
+        assert list(data) == ["status", "id"]
         assert data["status"] == "deleted"
         assert data["id"] == record.id
         patched_store.soft_delete.assert_called_once_with(record.id)

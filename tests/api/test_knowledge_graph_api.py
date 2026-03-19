@@ -600,6 +600,7 @@ class TestDeleteEdge:
 
         assert resp.status_code == 200
         data = resp.json()
+        assert list(data) == ["status", "id"]
         assert data["status"] == "deleted"
         assert data["id"] == edge.id
         kg_store.delete_edge.assert_called_once_with(edge.id)

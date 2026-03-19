@@ -14,6 +14,7 @@ from searchat.api.contracts import (
     serialize_conversation_code_payload,
     serialize_conversation_diff_payload,
     serialize_delete_conversations_payload,
+    serialize_deleted_resource_payload,
     serialize_docs_summary_payload,
     serialize_agent_config_payload,
     serialize_index_missing_payload,
@@ -572,6 +573,11 @@ def test_serialize_admin_and_indexing_payloads_preserve_shapes() -> None:
         "deleted": 2,
         "removed_vectors": 5,
         "source_files_deleted": 1,
+    }
+
+    assert serialize_deleted_resource_payload("rec-1") == {
+        "status": "deleted",
+        "id": "rec-1",
     }
 
     assert serialize_resume_session_payload(

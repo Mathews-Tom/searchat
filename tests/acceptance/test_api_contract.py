@@ -744,6 +744,33 @@ def test_all_conversations_route_preserves_stable_contract() -> None:
     assert export_response.json()["detail"] == "Invalid format. Use: json, markdown, text, ipynb, or pdf"
 
 
+def test_expertise_and_knowledge_graph_delete_routes_preserve_stable_contract() -> None:
+    client = TestClient(app)
+
+    expertise_store = Mock()
+    expertise_store.get.return_value = SimpleNamespace(id="rec-1")
+    with patch("searchat.api.routers.expertise.get_expertise_store", return_value=expertise_store):
+        expertise_response = client.delete("/api/expertise/rec-1")
+
+    kg_store = Mock()
+    kg_store.get_edge.return_value = SimpleNamespace(id="edge-1")
+    with patch("searchat.api.routers.knowledge_graph.get_knowledge_graph_store", return_value=kg_store):
+        with patch("searchat.api.routers.knowledge_graph.get_expertise_store", return_value=Mock()):
+            with patch(
+                "searchat.api.routers.knowledge_graph.get_config",
+                return_value=SimpleNamespace(
+                    knowledge_graph=SimpleNamespace(enabled=True),
+                    expertise=SimpleNamespace(enabled=True),
+                ),
+            ):
+                kg_response = client.delete("/api/knowledge-graph/edges/edge-1")
+
+    assert expertise_response.status_code == 200
+    assert list(expertise_response.json()) == ["status", "id"]
+    assert kg_response.status_code == 200
+    assert list(kg_response.json()) == ["status", "id"]
+
+
 def test_conversation_detail_code_and_diff_routes_preserve_stable_contracts() -> None:
     client = TestClient(app)
 
