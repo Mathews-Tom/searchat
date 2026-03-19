@@ -215,6 +215,22 @@ def test_get_similar_conversations_no_embedder(client, mock_duckdb_store, mock_s
         )
 
 
+def test_get_similar_conversations_dataset_semantic_resolution_failure(
+    client,
+):
+    with patch(
+        "searchat.api.routers.conversations.get_dataset_semantic_retrieval",
+        side_effect=RuntimeError("semantic service unavailable"),
+    ):
+        response = client.get("/api/conversation/conv-123/similar")
+
+    assert response.status_code == 503
+    assert (
+        response.json()["detail"]
+        == "Retrieval capability inspection failed: semantic service unavailable"
+    )
+
+
 def test_get_similar_conversations_wraps_unexpected_failures(
     client, mock_duckdb_store, mock_search_engine
 ):

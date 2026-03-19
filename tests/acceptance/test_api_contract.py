@@ -1302,6 +1302,18 @@ def test_search_and_similarity_routes_preserve_stable_error_messages() -> None:
         == "Retrieval capability inspection failed: FAISS index not available"
     )
 
+    with patch(
+        "searchat.api.routers.conversations.get_dataset_semantic_retrieval",
+        side_effect=RuntimeError("semantic service unavailable"),
+    ):
+        response = client.get("/api/conversation/conv-123/similar")
+
+    assert response.status_code == 503
+    assert (
+        response.json()["detail"]
+        == "Retrieval capability inspection failed: semantic service unavailable"
+    )
+
     store.get_conversation_meta.return_value = None
 
     with patch(

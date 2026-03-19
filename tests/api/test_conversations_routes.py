@@ -381,7 +381,10 @@ def test_conversation_diff_requires_search_engine(client):
         response = client.get("/api/conversation/conv-1/diff")
 
         assert response.status_code == 503
-        assert response.json()["detail"] == "Search engine not ready"
+        assert (
+            response.json()["detail"]
+            == "Retrieval capability inspection failed: Search engine not ready"
+        )
 
 
 @pytest.mark.unit
