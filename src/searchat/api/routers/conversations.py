@@ -793,7 +793,10 @@ async def get_similar_conversations(
         try:
             dataset, search_engine = get_dataset_semantic_retrieval(snapshot)
         except RuntimeError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
+            raise HTTPException(
+                status_code=503,
+                detail=retrieval_capability_inspection_failed_message(str(exc)),
+            ) from exc
         store = dataset.store
 
         # Verify conversation exists
