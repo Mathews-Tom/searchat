@@ -79,6 +79,7 @@ from searchat.contracts.errors import (
     bookmark_removed_message,
     bulk_export_no_ids_message,
     bulk_export_too_many_message,
+    chat_snapshot_disabled_message,
     conversation_internal_server_error_message,
     conversation_encoding_error_message,
     conversation_file_missing_message,
@@ -126,6 +127,7 @@ from searchat.contracts.errors import (
     mcp_similarity_limit_message,
     no_embeddings_for_conversation_message,
     no_similar_conversation_found_message,
+    rag_chat_disabled_message,
     reindex_blocked_message,
     retrieval_capability_inspection_failed_message,
     resume_command_not_found_message,
@@ -676,6 +678,8 @@ def test_shared_error_contract_messages_are_stable() -> None:
     assert highlight_provider_required_message() == "Highlight provider is required"
     assert invalid_highlight_provider_message() == "Invalid highlight provider"
     assert invalid_model_provider_message() == "model_provider must be 'openai', 'ollama', or 'embedded'."
+    assert chat_snapshot_disabled_message() == "Chat is disabled in snapshot mode"
+    assert rag_chat_disabled_message() == "RAG chat endpoint is disabled."
     assert retrieval_capability_inspection_failed_message("service registry unavailable") == (
         "Retrieval capability inspection failed: service registry unavailable"
     )

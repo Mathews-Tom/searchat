@@ -128,6 +128,23 @@ def test_chat_rag_generation_outage_returns_grounded_fallback_with_sources() -> 
     assert payload["sources"][0]["conversation_id"] == "conv-123"
 
 
+def test_chat_routes_preserve_stable_disabled_messages() -> None:
+    client = TestClient(app)
+    response = client.post(
+        "/api/chat?snapshot=backup_20250101_000000",
+        json={"query": "hello", "model_provider": "openai"},
+    )
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Chat is disabled in snapshot mode"
+
+    config = SimpleNamespace(chat=SimpleNamespace(enable_rag=False, enable_citations=True))
+    with patch("searchat.api.routers.chat.get_config", return_value=config):
+        rag_disabled = client.post("/api/chat-rag", json={"query": "x", "model_provider": "ollama"})
+
+    assert rag_disabled.status_code == 404
+    assert rag_disabled.json()["detail"] == "RAG chat endpoint is disabled."
+
+
 def test_search_highlight_provider_failure_degrades_to_plain_search() -> None:
     now = datetime.now()
     retrieval_service = Mock()
