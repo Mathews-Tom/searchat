@@ -106,3 +106,4 @@ def test_search_code_returns_503_when_no_code_index(client: TestClient, tmp_path
         resp = client.get("/api/search/code?q=print")
 
     assert resp.status_code == 503
+    assert resp.json()["detail"] == "Code index not found. Rebuild the index to enable /api/search/code."

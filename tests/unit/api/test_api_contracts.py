@@ -80,6 +80,8 @@ from searchat.contracts.errors import (
     bulk_export_no_ids_message,
     bulk_export_too_many_message,
     chat_snapshot_disabled_message,
+    code_search_index_missing_message,
+    code_symbol_index_missing_message,
     conversation_internal_server_error_message,
     conversation_encoding_error_message,
     conversation_file_missing_message,
@@ -127,6 +129,7 @@ from searchat.contracts.errors import (
     mcp_similarity_limit_message,
     no_embeddings_for_conversation_message,
     no_similar_conversation_found_message,
+    pygments_required_message,
     rag_chat_disabled_message,
     reindex_blocked_message,
     retrieval_capability_inspection_failed_message,
@@ -680,6 +683,15 @@ def test_shared_error_contract_messages_are_stable() -> None:
     assert invalid_model_provider_message() == "model_provider must be 'openai', 'ollama', or 'embedded'."
     assert chat_snapshot_disabled_message() == "Chat is disabled in snapshot mode"
     assert rag_chat_disabled_message() == "RAG chat endpoint is disabled."
+    assert pygments_required_message() == "Pygments is required for code highlighting"
+    assert (
+        code_symbol_index_missing_message()
+        == "Code index not found. Rebuild the index to enable code symbol endpoints."
+    )
+    assert (
+        code_search_index_missing_message()
+        == "Code index not found. Rebuild the index to enable /api/search/code."
+    )
     assert retrieval_capability_inspection_failed_message("service registry unavailable") == (
         "Retrieval capability inspection failed: service registry unavailable"
     )

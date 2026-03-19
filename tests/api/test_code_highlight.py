@@ -148,4 +148,4 @@ def test_code_highlight_missing_pygments_returns_500(client, monkeypatch: pytest
         },
     )
     assert resp.status_code == 500
-    assert "Pygments is required" in resp.json()["detail"]
+    assert resp.json()["detail"] == "Pygments is required for code highlighting"

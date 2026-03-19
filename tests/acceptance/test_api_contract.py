@@ -1008,6 +1008,40 @@ def test_search_auxiliary_routes_preserve_stable_contracts() -> None:
     assert list(code_response.json()) == ["results", "total", "limit", "offset", "has_more"]
 
 
+def test_code_routes_preserve_stable_error_messages() -> None:
+    client = TestClient(app)
+
+    with patch.dict("sys.modules", {"pygments": None, "pygments.formatters": None, "pygments.lexers": None}):
+        highlight_response = client.post(
+            "/api/code/highlight",
+            json={"blocks": [{"code": "x", "language": None, "language_source": "detected"}]},
+        )
+
+    search_dir = Path("/tmp/nonexistent-code-searchat")
+    store = Mock()
+    store._connect.return_value = Mock()
+    dataset = SimpleNamespace(search_dir=search_dir, snapshot_name=None, store=store)
+
+    with patch("searchat.api.routers.code.get_dataset_store", return_value=dataset):
+        symbols_response = client.get("/api/conversation/conv-1/code-symbols")
+
+    with patch("searchat.api.routers.search.get_dataset_store", return_value=dataset):
+        code_search_response = client.get("/api/search/code?q=print")
+
+    assert highlight_response.status_code == 500
+    assert highlight_response.json()["detail"] == "Pygments is required for code highlighting"
+    assert symbols_response.status_code == 503
+    assert (
+        symbols_response.json()["detail"]
+        == "Code index not found. Rebuild the index to enable code symbol endpoints."
+    )
+    assert code_search_response.status_code == 503
+    assert (
+        code_search_response.json()["detail"]
+        == "Code index not found. Rebuild the index to enable /api/search/code."
+    )
+
+
 def test_expertise_prime_content_formats_preserve_stable_contract() -> None:
     record = SimpleNamespace(
         type="convention",

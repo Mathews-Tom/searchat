@@ -126,3 +126,5 @@ def test_code_symbol_endpoints_return_503_when_no_code_index(client: TestClient,
 
     assert resp.status_code == 503
     assert resp2.status_code == 503
+    assert resp.json()["detail"] == "Code index not found. Rebuild the index to enable code symbol endpoints."
+    assert resp2.json()["detail"] == "Code index not found. Rebuild the index to enable code symbol endpoints."
