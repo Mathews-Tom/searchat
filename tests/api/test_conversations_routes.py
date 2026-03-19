@@ -396,6 +396,7 @@ class TestGetAllConversationsEndpoint:
             assert response.status_code == 200
             data = response.json()
 
+            assert list(data) == ["results", "total", "search_time_ms"]
             assert "results" in data
             assert "total" in data
             assert data["total"] == 2  # conv-3 filtered out (0 messages)

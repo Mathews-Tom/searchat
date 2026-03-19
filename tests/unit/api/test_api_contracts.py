@@ -10,6 +10,7 @@ from searchat.api.contracts import (
     serialize_backup_restore_payload,
     serialize_backup_summary_fallback,
     serialize_backups_payload,
+    serialize_conversations_payload,
     serialize_conversation_code_payload,
     serialize_conversation_diff_payload,
     serialize_delete_conversations_payload,
@@ -181,6 +182,24 @@ def test_serialize_search_payload_preserves_stable_keys() -> None:
 def test_serialize_projects_payload_preserves_list_shape() -> None:
     payload = serialize_projects_payload(["proj-a", "proj-b"])
     assert payload == ["proj-a", "proj-b"]
+
+
+def test_serialize_conversations_payload_preserves_stable_keys() -> None:
+    result = serialize_search_payload(
+        results=[_result()],
+        total=1,
+        search_time_ms=4.0,
+        limit=20,
+        offset=0,
+        highlight_terms=None,
+    )["results"][0]
+    payload = serialize_conversations_payload(
+        results=[result],
+        total=1,
+        search_time_ms=7,
+    )
+
+    assert list(payload) == ["results", "total", "search_time_ms"]
 
 
 def test_serialize_statistics_payload_preserves_stable_keys() -> None:

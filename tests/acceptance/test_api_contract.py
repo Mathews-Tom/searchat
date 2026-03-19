@@ -713,6 +713,31 @@ def test_delete_conversations_route_preserves_stable_contract() -> None:
     assert response.status_code == 200
     assert list(response.json()) == ["deleted", "removed_vectors", "source_files_deleted"]
 
+
+def test_all_conversations_route_preserves_stable_contract() -> None:
+    client = TestClient(app)
+    store = Mock()
+    now = datetime.now()
+    row = {
+        "conversation_id": "conv-1",
+        "project_id": "project-a",
+        "title": "Contract listing",
+        "created_at": now,
+        "updated_at": now,
+        "message_count": 3,
+        "file_path": "/home/user/.claude/project-a/conv-1.jsonl",
+        "full_text": "Conversation listing contract.",
+    }
+    store.count_conversations.return_value = 1
+    store.list_conversations.return_value = [row]
+    dataset = SimpleNamespace(store=store)
+
+    with patch("searchat.api.routers.conversations.get_dataset_store", return_value=dataset):
+        response = client.get("/api/conversations/all")
+
+    assert response.status_code == 200
+    assert list(response.json()) == ["results", "total", "search_time_ms"]
+
     with patch("searchat.api.routers.conversations.get_conversation", return_value=SimpleNamespace()):
         export_response = client.get("/api/conversation/conv-1/export?format=xml")
     assert export_response.status_code == 400
