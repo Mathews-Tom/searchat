@@ -43,6 +43,7 @@ from searchat.contracts.errors import (
     conversation_invalid_json_message,
     conversation_not_found_in_index_message,
     conversation_not_found_in_snapshot_message,
+    conversation_not_found_message,
     conversation_not_found_message_simple,
     export_disabled_message,
     invalid_target_conversation_id_message,
@@ -793,7 +794,7 @@ async def get_similar_conversations(
         if not conv_meta:
             raise HTTPException(
                 status_code=404,
-                detail=f"Conversation {conversation_id} not found"
+                detail=conversation_not_found_message(conversation_id),
             )
 
         # Get representative text from the conversation to generate embedding
