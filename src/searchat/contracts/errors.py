@@ -311,3 +311,27 @@ def mcp_similarity_limit_message() -> str:
 
 def mcp_offset_message() -> str:
     return "offset must be >= 0"
+
+
+def invalid_expertise_type_message(value: str, valid: str) -> str:
+    return f"Invalid type '{value}'. Must be one of: {valid}"
+
+
+def invalid_expertise_severity_message(value: str, valid: str) -> str:
+    return f"Invalid severity '{value}'. Must be one of: {valid}"
+
+
+def expertise_domain_not_found_message(domain_name: str) -> str:
+    return f"Domain not found: {domain_name}"
+
+
+def expertise_record_not_found_message(record_id: str) -> str:
+    return f"Record not found: {record_id}"
+
+
+def expertise_record_not_found_after_update_message(record_id: str) -> str:
+    return f"Record not found after update: {record_id}"
+
+
+def expertise_record_not_found_after_validation_message(record_id: str) -> str:
+    return f"Record not found after validation: {record_id}"
