@@ -214,6 +214,19 @@ def test_dashboards_delete_returns_404_when_not_found(client, monkeypatch):
     assert resp.json()["detail"] == "Dashboard not found"
 
 
+def test_dashboards_list_returns_500_on_service_error(client, monkeypatch):
+    class BoomService:
+        def list_dashboards(self) -> list[dict]:
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr("searchat.api.routers.dashboards.deps.get_dashboards_service", lambda: BoomService())
+    monkeypatch.setattr("searchat.api.routers.dashboards.deps.get_config", _enabled_config)
+
+    resp = client.get("/api/dashboards")
+    assert resp.status_code == 500
+    assert resp.json()["detail"] == "Internal server error"
+
+
 def test_dashboards_export_returns_attachment_json(client, monkeypatch):
     dashboards_service = InMemoryDashboardsService()
     dashboard = dashboards_service.create_dashboard(
@@ -250,6 +263,22 @@ def test_dashboards_create_returns_400_on_stable_validation_message(client, monk
     assert resp.json()["detail"] == "Dashboard name is required."
 
 
+def test_dashboards_create_returns_500_on_service_error(client, monkeypatch):
+    class BoomService:
+        def create_dashboard(self, _payload: dict) -> dict:
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr("searchat.api.routers.dashboards.deps.get_dashboards_service", lambda: BoomService())
+    monkeypatch.setattr("searchat.api.routers.dashboards.deps.get_config", _enabled_config)
+
+    resp = client.post(
+        "/api/dashboards",
+        json={"name": "x", "layout": {"widgets": [{"query_id": "q-1"}]}},
+    )
+    assert resp.status_code == 500
+    assert resp.json()["detail"] == "Internal server error"
+
+
 def test_dashboards_update_returns_400_on_stable_validation_message(client, monkeypatch):
     class BadService:
         def update_dashboard(self, _dashboard_id: str, _updates: dict) -> dict:
@@ -261,6 +290,58 @@ def test_dashboards_update_returns_400_on_stable_validation_message(client, monk
     resp = client.put("/api/dashboards/d-1", json={"name": "Updated"})
     assert resp.status_code == 400
     assert resp.json()["detail"] == "Dashboard layout is required."
+
+
+def test_dashboards_update_returns_500_on_service_error(client, monkeypatch):
+    class BoomService:
+        def update_dashboard(self, _dashboard_id: str, _updates: dict) -> dict:
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr("searchat.api.routers.dashboards.deps.get_dashboards_service", lambda: BoomService())
+    monkeypatch.setattr("searchat.api.routers.dashboards.deps.get_config", _enabled_config)
+
+    resp = client.put("/api/dashboards/d-1", json={"name": "Updated"})
+    assert resp.status_code == 500
+    assert resp.json()["detail"] == "Internal server error"
+
+
+def test_dashboards_get_returns_500_on_service_error(client, monkeypatch):
+    class BoomService:
+        def get_dashboard(self, _dashboard_id: str) -> dict | None:
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr("searchat.api.routers.dashboards.deps.get_dashboards_service", lambda: BoomService())
+    monkeypatch.setattr("searchat.api.routers.dashboards.deps.get_config", _enabled_config)
+
+    resp = client.get("/api/dashboards/d-1")
+    assert resp.status_code == 500
+    assert resp.json()["detail"] == "Internal server error"
+
+
+def test_dashboards_delete_returns_500_on_service_error(client, monkeypatch):
+    class BoomService:
+        def delete_dashboard(self, _dashboard_id: str) -> bool:
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr("searchat.api.routers.dashboards.deps.get_dashboards_service", lambda: BoomService())
+    monkeypatch.setattr("searchat.api.routers.dashboards.deps.get_config", _enabled_config)
+
+    resp = client.delete("/api/dashboards/d-1")
+    assert resp.status_code == 500
+    assert resp.json()["detail"] == "Internal server error"
+
+
+def test_dashboards_export_returns_500_on_service_error(client, monkeypatch):
+    class BoomService:
+        def get_dashboard(self, _dashboard_id: str) -> dict | None:
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr("searchat.api.routers.dashboards.deps.get_dashboards_service", lambda: BoomService())
+    monkeypatch.setattr("searchat.api.routers.dashboards.deps.get_config", _enabled_config)
+
+    resp = client.get("/api/dashboards/d-1/export")
+    assert resp.status_code == 500
+    assert resp.json()["detail"] == "Internal server error"
 
 
 def test_dashboards_render_rejects_invalid_layout(client, monkeypatch):
@@ -400,6 +481,31 @@ def test_dashboards_render_returns_500_when_semantic_component_error(client, mon
     resp = client.get(f"/api/dashboards/{dashboard['id']}/render")
     assert resp.status_code == 500
     assert resp.json()["status"] == "error"
+
+
+def test_dashboards_render_returns_500_on_service_error(client, monkeypatch):
+    dashboards_service = InMemoryDashboardsService()
+    dashboard = dashboards_service.create_dashboard(
+        {
+            "name": "Boom",
+            "description": None,
+            "queries": ["q-1"],
+            "layout": {"widgets": [{"query_id": "q-1"}]},
+            "refresh_interval": None,
+        }
+    )
+
+    class BoomSavedQueries:
+        def get_query(self, _query_id: str) -> dict | None:
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr("searchat.api.routers.dashboards.deps.get_dashboards_service", lambda: dashboards_service)
+    monkeypatch.setattr("searchat.api.routers.dashboards.deps.get_saved_queries_service", lambda: BoomSavedQueries())
+    monkeypatch.setattr("searchat.api.routers.dashboards.deps.get_config", _enabled_config)
+
+    resp = client.get(f"/api/dashboards/{dashboard['id']}/render")
+    assert resp.status_code == 500
+    assert resp.json()["detail"] == "Internal server error"
 
 
 def test_dashboards_render_sorts_results_by_messages(client, monkeypatch):

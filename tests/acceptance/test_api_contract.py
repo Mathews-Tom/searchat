@@ -458,6 +458,22 @@ def test_dashboard_routes_preserve_stable_contracts() -> None:
     assert list(get_response.json()) == ["dashboard"]
 
 
+def test_dashboard_routes_preserve_stable_internal_error_message() -> None:
+    client = TestClient(app)
+    config = SimpleNamespace(dashboards=SimpleNamespace(enabled=True))
+
+    class BoomService:
+        def list_dashboards(self) -> list[dict]:
+            raise RuntimeError("boom")
+
+    with patch("searchat.api.routers.dashboards.deps.get_config", return_value=config):
+        with patch("searchat.api.routers.dashboards.deps.get_dashboards_service", return_value=BoomService()):
+            response = client.get("/api/dashboards")
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Internal server error"
+
+
 def test_analytics_routes_preserve_stable_contracts() -> None:
     client = TestClient(app)
     analytics = Mock()
