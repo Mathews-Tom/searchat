@@ -631,7 +631,7 @@ async def get_conversation(
         raise
     except Exception as e:
         logger.error(f"Unexpected error loading conversation {conversation_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=conversation_internal_server_error_message(str(e)))
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from e
 
 
 @router.post("/resume")
@@ -772,7 +772,7 @@ async def get_conversation_code(
         raise
     except Exception as e:
         logger.error(f"Failed to extract code from conversation {conversation_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=conversation_internal_server_error_message(str(e)))
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from e
 
 
 def _detect_language(code: str) -> str:
@@ -983,7 +983,7 @@ async def get_conversation_diff(
         raise
     except Exception as e:
         logger.error(f"Failed to build diff for {conversation_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=conversation_internal_server_error_message(str(e)))
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from e
 
 
 @router.get("/conversation/{conversation_id}/export")
@@ -1028,7 +1028,7 @@ async def export_conversation(
         raise
     except Exception as e:
         logger.error(f"Failed to export conversation {conversation_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=conversation_internal_server_error_message(str(e)))
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from e
 
 
 class BulkExportRequest(BaseModel):
@@ -1129,7 +1129,7 @@ async def bulk_export_conversations(
         raise
     except Exception as e:
         logger.error(f"Failed to bulk export conversations: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=conversation_internal_server_error_message(str(e)))
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from e
 
 
 # ---------------------------------------------------------------------------
