@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 from searchat.api.dependencies import get_config, get_search_engine
 from searchat.api.utils import validate_provider, check_semantic_readiness
+from searchat.contracts.errors import internal_server_error_message
 from searchat.services.pattern_mining import extract_patterns
 
 router = APIRouter()
@@ -66,7 +67,7 @@ async def extract_patterns_endpoint(request: PatternExtractRequest):
             retrieval_service=get_search_engine(),
         )
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from exc
 
     response_patterns = [
         ExtractedPatternResponse(
