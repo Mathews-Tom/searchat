@@ -39,6 +39,18 @@ def rag_chat_disabled_message() -> str:
     return "RAG chat endpoint is disabled."
 
 
+def pygments_required_message() -> str:
+    return "Pygments is required for code highlighting"
+
+
+def code_symbol_index_missing_message() -> str:
+    return "Code index not found. Rebuild the index to enable code symbol endpoints."
+
+
+def code_search_index_missing_message() -> str:
+    return "Code index not found. Rebuild the index to enable /api/search/code."
+
+
 def retrieval_capability_inspection_failed_message(reason: str) -> str:
     return f"Retrieval capability inspection failed: {reason}"
 

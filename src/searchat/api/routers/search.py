@@ -12,6 +12,7 @@ from searchat.api.contracts import (
     serialize_search_suggestions_payload,
 )
 from searchat.contracts.errors import (
+    code_search_index_missing_message,
     highlight_provider_required_message,
     invalid_highlight_provider_message,
     invalid_search_mode_message,
@@ -80,10 +81,7 @@ async def search_code(
 
         code_dir = search_dir / "data" / "code"
         if not code_dir.exists() or not any(code_dir.glob("*.parquet")):
-            raise HTTPException(
-                status_code=503,
-                detail="Code index not found. Rebuild the index to enable /api/search/code.",
-            )
+            raise HTTPException(status_code=503, detail=code_search_index_missing_message())
 
         filters: list[str] = []
         params: list[object] = []
