@@ -1110,6 +1110,13 @@ class TestResumeSessionEndpoint:
                 # Should still open terminal
                 mock_platform_manager.open_terminal_with_command.assert_called_once()
 
+    def test_export_conversation_wraps_internal_errors(self, client):
+        with patch("searchat.api.routers.conversations.get_conversation", side_effect=Exception("boom")):
+            response = client.get("/api/conversation/conv-1/export")
+
+            assert response.status_code == 500
+            assert response.json()["detail"] == "Internal server error: boom"
+
 
 def test_conversations_resolve_dataset_requires_snapshot() -> None:
     from searchat.api.routers import conversations as conv_router

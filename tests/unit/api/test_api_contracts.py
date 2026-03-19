@@ -73,6 +73,7 @@ from searchat.contracts.errors import (
     bookmark_removed_message,
     bulk_export_no_ids_message,
     bulk_export_too_many_message,
+    conversation_internal_server_error_message,
     conversation_encoding_error_message,
     conversation_file_missing_message,
     conversation_file_missing_with_record_message,
@@ -636,6 +637,7 @@ def test_shared_error_contract_messages_are_stable() -> None:
     assert resume_snapshot_disabled_message() == "Resume is disabled in snapshot mode"
     assert conversation_not_found_message_simple() == "Conversation not found"
     assert unknown_conversation_format_message("/tmp/conv.txt") == "Unknown conversation format: /tmp/conv.txt"
+    assert conversation_internal_server_error_message("boom") == "Internal server error: boom"
     assert conversation_not_found_in_index_message() == "Conversation not found in index"
     assert conversation_not_found_in_snapshot_message() == "Conversation not found in snapshot"
     assert conversation_file_missing_with_record_message("/tmp/missing.jsonl").endswith(
