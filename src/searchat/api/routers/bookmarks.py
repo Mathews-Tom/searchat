@@ -14,8 +14,13 @@ from searchat.api.contracts import (
     serialize_success_message_payload,
 )
 from searchat.api.dataset_access import get_dataset_store
-from searchat.contracts.errors import bookmark_not_found_message, conversation_not_found_message
-from searchat.contracts.errors import bookmark_notes_updated_message, bookmark_removed_message
+from searchat.contracts.errors import (
+    bookmark_not_found_message,
+    bookmark_notes_updated_message,
+    bookmark_removed_message,
+    conversation_not_found_message,
+    internal_server_error_message,
+)
 
 
 router = APIRouter()
@@ -60,7 +65,7 @@ async def get_bookmarks():
         return serialize_bookmarks_payload(enriched_bookmarks)
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from e
 
 
 @router.post("/bookmarks")
@@ -89,7 +94,7 @@ async def add_bookmark(request: BookmarkRequest):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from e
 
 
 @router.delete("/bookmarks/{conversation_id}")
@@ -110,7 +115,7 @@ async def remove_bookmark(conversation_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from e
 
 
 @router.get("/bookmarks/{conversation_id}")
@@ -123,7 +128,7 @@ async def get_bookmark(conversation_id: str):
         return serialize_bookmark_status_payload(bookmark)
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from e
 
 
 @router.patch("/bookmarks/{conversation_id}/notes")
@@ -147,4 +152,4 @@ async def update_bookmark_notes(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from e
