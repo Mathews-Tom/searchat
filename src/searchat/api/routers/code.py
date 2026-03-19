@@ -9,6 +9,7 @@ from searchat.api.models import CodeSearchResponse
 from searchat.api.dataset_access import get_dataset_store
 from searchat.contracts.errors import (
     code_symbol_index_missing_message,
+    internal_server_error_message,
     pygments_required_message,
 )
 from searchat.api.utils import (
@@ -132,7 +133,7 @@ async def get_conversation_code_symbols(
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from exc
 
 
 @router.get("/code/functions", response_model=CodeSearchResponse)
@@ -245,4 +246,4 @@ async def _search_code_symbol(
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from exc
