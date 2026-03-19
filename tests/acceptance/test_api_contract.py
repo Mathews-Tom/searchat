@@ -341,6 +341,26 @@ def test_saved_state_routes_preserve_stable_contracts() -> None:
     ]
 
 
+def test_bookmark_creation_preserves_stable_not_found_message() -> None:
+    client = TestClient(app)
+    bookmark_dataset = SimpleNamespace(
+        snapshot_name=None,
+        store=Mock(get_conversation_meta=Mock(return_value=None)),
+        search_dir="/tmp/searchat",
+    )
+
+    with patch("searchat.api.routers.bookmarks.deps.get_bookmarks_service") as get_bookmarks_service:
+        get_bookmarks_service.return_value.add_bookmark.return_value = None
+        with patch("searchat.api.routers.bookmarks.get_dataset_store", return_value=bookmark_dataset):
+            response = client.post(
+                "/api/bookmarks",
+                json={"conversation_id": "conv-404", "notes": "important"},
+            )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Conversation not found: conv-404"
+
+
 def test_dashboard_routes_preserve_stable_contracts() -> None:
     client = TestClient(app)
     config = SimpleNamespace(dashboards=SimpleNamespace(enabled=True))

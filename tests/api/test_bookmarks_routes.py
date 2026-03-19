@@ -158,7 +158,7 @@ def test_add_bookmark_returns_404_when_conversation_missing(client, mock_bookmar
         )
 
     assert response.status_code == 404
-    assert response.json()["detail"] == "Conversation missing not found"
+    assert response.json()["detail"] == "Conversation not found: missing"
 
 
 def test_remove_bookmark(client, mock_bookmarks_service, mock_duckdb_store):
