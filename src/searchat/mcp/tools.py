@@ -97,6 +97,16 @@ def parse_generation_provider(provider: str | None) -> str | None:
     return value
 
 
+def ensure_semantic_capability(engine: SemanticRetrievalService) -> None:
+    describe = getattr(engine, "describe_capabilities", None)
+    if not callable(describe):
+        return
+    capabilities = describe()
+    if capabilities.semantic_available:
+        return
+    raise RuntimeError(capabilities.semantic_reason or "Semantic search unavailable")
+
+
 def search_conversations(
     *,
     query: str,
@@ -165,6 +175,7 @@ def find_similar_conversations(
 
     dataset_dir = resolve_dataset(search_dir)
     _config, engine, store = build_services(dataset_dir)
+    ensure_semantic_capability(engine)
 
     conv_meta = store.get_conversation_meta(conversation_id)
     if not conv_meta:
