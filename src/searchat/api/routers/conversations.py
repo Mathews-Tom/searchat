@@ -37,6 +37,7 @@ from searchat.api.utils import detect_tool_from_path, detect_source_from_path, p
 from searchat.contracts.errors import (
     bulk_export_no_ids_message,
     bulk_export_too_many_message,
+    conversation_internal_server_error_message,
     conversation_encoding_error_message,
     conversation_file_missing_message,
     conversation_file_missing_with_record_message,
@@ -626,7 +627,7 @@ async def get_conversation(
         raise
     except Exception as e:
         logger.error(f"Unexpected error loading conversation {conversation_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        raise HTTPException(status_code=500, detail=conversation_internal_server_error_message(str(e)))
 
 
 @router.post("/resume")
@@ -767,7 +768,7 @@ async def get_conversation_code(
         raise
     except Exception as e:
         logger.error(f"Failed to extract code from conversation {conversation_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        raise HTTPException(status_code=500, detail=conversation_internal_server_error_message(str(e)))
 
 
 def _detect_language(code: str) -> str:
@@ -920,7 +921,7 @@ async def get_similar_conversations(
         raise HTTPException(status_code=503, detail=str(e)) from e
     except Exception as e:
         logger.error(f"Failed to find similar conversations for {conversation_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        raise HTTPException(status_code=500, detail=conversation_internal_server_error_message(str(e)))
 
 
 @router.get("/conversation/{conversation_id}/diff")
@@ -978,7 +979,7 @@ async def get_conversation_diff(
         raise
     except Exception as e:
         logger.error(f"Failed to build diff for {conversation_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        raise HTTPException(status_code=500, detail=conversation_internal_server_error_message(str(e)))
 
 
 @router.get("/conversation/{conversation_id}/export")
@@ -1023,7 +1024,7 @@ async def export_conversation(
         raise
     except Exception as e:
         logger.error(f"Failed to export conversation {conversation_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        raise HTTPException(status_code=500, detail=conversation_internal_server_error_message(str(e)))
 
 
 class BulkExportRequest(BaseModel):
@@ -1124,7 +1125,7 @@ async def bulk_export_conversations(
         raise
     except Exception as e:
         logger.error(f"Failed to bulk export conversations: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        raise HTTPException(status_code=500, detail=conversation_internal_server_error_message(str(e)))
 
 
 # ---------------------------------------------------------------------------

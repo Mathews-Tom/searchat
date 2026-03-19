@@ -277,6 +277,10 @@ def unknown_conversation_format_message(file_path: str) -> str:
     return f"Unknown conversation format: {file_path}"
 
 
+def conversation_internal_server_error_message(reason: str) -> str:
+    return f"Internal server error: {reason}"
+
+
 def no_embeddings_for_conversation_message() -> str:
     return "No embeddings found for this conversation"
 
