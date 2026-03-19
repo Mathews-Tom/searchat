@@ -21,6 +21,7 @@ from searchat.api.dependencies import (
     get_indexer,
 )
 from searchat.contracts.errors import (
+    internal_server_error_message,
     indexing_snapshot_disabled_message,
     reindex_blocked_message,
 )
@@ -139,7 +140,7 @@ async def index_missing(snapshot: str | None = Query(None, description="Backup s
 
     except Exception as e:
         logger.error(f"Error indexing missing conversations: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from e
     finally:
         # Mark indexing complete
         api_state.indexing_state["in_progress"] = False
