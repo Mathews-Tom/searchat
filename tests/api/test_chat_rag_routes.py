@@ -306,4 +306,4 @@ def test_chat_rag_unexpected_error_returns_500(client):
                 resp = client.post("/api/chat-rag", json={"query": "x", "model_provider": "ollama"})
 
     assert resp.status_code == 500
-    assert resp.json()["detail"] == "boom"
+    assert resp.json()["detail"] == "Internal server error"

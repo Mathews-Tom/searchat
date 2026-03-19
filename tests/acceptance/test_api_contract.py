@@ -145,6 +145,35 @@ def test_chat_routes_preserve_stable_disabled_messages() -> None:
     assert rag_disabled.json()["detail"] == "RAG chat endpoint is disabled."
 
 
+def test_chat_routes_preserve_stable_internal_error_message() -> None:
+    client = TestClient(app)
+    with patch("searchat.api.routers.chat.check_semantic_readiness", return_value=None):
+        with patch("searchat.api.routers.chat.get_config", return_value=Mock(chat=Mock(enable_rag=True, enable_citations=True))):
+            with patch("searchat.api.routers.chat.get_search_engine", return_value=Mock()):
+                with patch(
+                    "searchat.api.routers.chat.generate_answer_stream",
+                    side_effect=RuntimeError("boom"),
+                ):
+                    chat_response = client.post(
+                        "/api/chat",
+                        json={"query": "hello", "model_provider": "openai"},
+                    )
+
+                with patch(
+                    "searchat.api.routers.chat.generate_rag_response",
+                    side_effect=RuntimeError("boom"),
+                ):
+                    chat_rag_response = client.post(
+                        "/api/chat-rag",
+                        json={"query": "hello", "model_provider": "ollama"},
+                    )
+
+    assert chat_response.status_code == 500
+    assert chat_response.json()["detail"] == "Internal server error"
+    assert chat_rag_response.status_code == 500
+    assert chat_rag_response.json()["detail"] == "Internal server error"
+
+
 def test_search_highlight_provider_failure_degrades_to_plain_search() -> None:
     now = datetime.now()
     retrieval_service = Mock()

@@ -733,7 +733,7 @@ def test_chat_returns_500_on_generate_unexpected_error(monkeypatch: pytest.Monke
     client = TestClient(app)
     resp = client.post("/api/chat", json={"query": "hello", "model_provider": "openai"})
     assert resp.status_code == 500
-    assert resp.json()["detail"] == "boom"
+    assert resp.json()["detail"] == "Internal server error"
 
 
 def test_dependencies_is_valid_snapshot_name() -> None:
