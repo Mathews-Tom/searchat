@@ -47,6 +47,14 @@ def bookmark_not_found_message(conversation_id: str) -> str:
     return f"Bookmark for conversation {conversation_id} not found"
 
 
+def bookmark_removed_message(conversation_id: str) -> str:
+    return f"Bookmark removed for conversation {conversation_id}"
+
+
+def bookmark_notes_updated_message() -> str:
+    return "Notes updated successfully"
+
+
 def saved_query_not_found_message() -> str:
     return "Saved query not found"
 

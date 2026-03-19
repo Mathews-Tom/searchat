@@ -15,6 +15,7 @@ from searchat.api.contracts import (
 )
 from searchat.api.dataset_access import get_dataset_store
 from searchat.contracts.errors import bookmark_not_found_message, conversation_not_found_message
+from searchat.contracts.errors import bookmark_notes_updated_message, bookmark_removed_message
 
 
 router = APIRouter()
@@ -104,9 +105,7 @@ async def remove_bookmark(conversation_id: str):
                 detail=bookmark_not_found_message(conversation_id),
             )
 
-        return serialize_success_message_payload(
-            f"Bookmark removed for conversation {conversation_id}"
-        )
+        return serialize_success_message_payload(bookmark_removed_message(conversation_id))
 
     except HTTPException:
         raise
@@ -143,7 +142,7 @@ async def update_bookmark_notes(
                 detail=bookmark_not_found_message(conversation_id),
             )
 
-        return serialize_success_message_payload("Notes updated successfully")
+        return serialize_success_message_payload(bookmark_notes_updated_message())
 
     except HTTPException:
         raise
