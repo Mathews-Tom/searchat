@@ -14,6 +14,7 @@ from searchat.api.contracts import (
 from searchat.contracts.errors import (
     code_search_index_missing_message,
     highlight_provider_required_message,
+    internal_server_error_message,
     invalid_highlight_provider_message,
     invalid_search_mode_message,
 )
@@ -149,7 +150,7 @@ async def search_code(
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from exc
 
 
 @router.get("/search")
@@ -245,7 +246,7 @@ async def search(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from e
 
 
 @router.get("/projects")
@@ -350,4 +351,4 @@ async def get_search_suggestions(
         )
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from e
