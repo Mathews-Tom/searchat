@@ -108,6 +108,30 @@ def test_ask_about_history_fails_closed_from_capability_snapshot(tmp_path: Path)
     engine.search.assert_not_called()
 
 
+def test_ask_about_history_wraps_capability_introspection_failures(tmp_path: Path) -> None:
+    config = SimpleNamespace(
+        llm=SimpleNamespace(
+            default_provider="ollama",
+            openai_model="gpt-4.1-mini",
+            ollama_model="llama3",
+        )
+    )
+    engine = MagicMock()
+    engine.describe_capabilities.side_effect = RuntimeError("service registry unavailable")
+
+    with (
+        patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+        patch("searchat.mcp.tools.build_services", return_value=(config, engine, MagicMock())),
+    ):
+        with pytest.raises(
+            RuntimeError,
+            match=r"^Retrieval capability inspection failed: service registry unavailable$",
+        ):
+            ask_about_history(question="What changed?", search_dir=str(tmp_path))
+
+    engine.search.assert_not_called()
+
+
 def test_search_conversations_preserves_stable_result_contract(tmp_path: Path) -> None:
     now = datetime.now(timezone.utc)
     engine = MagicMock()
@@ -170,6 +194,27 @@ def test_search_conversations_fails_closed_from_semantic_capability_snapshot(tmp
         with pytest.raises(
             RuntimeError,
             match=r"^Embedding model unavailable: all-MiniLM-L6-v2$",
+        ):
+            search_conversations(
+                query="how to sort data structures",
+                mode="semantic",
+                search_dir=str(tmp_path),
+            )
+
+    engine.search.assert_not_called()
+
+
+def test_search_conversations_wraps_capability_introspection_failures(tmp_path: Path) -> None:
+    engine = MagicMock()
+    engine.describe_capabilities.side_effect = RuntimeError("service registry unavailable")
+
+    with (
+        patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+        patch("searchat.mcp.tools.build_services", return_value=(MagicMock(), engine, MagicMock())),
+    ):
+        with pytest.raises(
+            RuntimeError,
+            match=r"^Retrieval capability inspection failed: service registry unavailable$",
         ):
             search_conversations(
                 query="how to sort data structures",

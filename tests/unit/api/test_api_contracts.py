@@ -83,6 +83,7 @@ from searchat.contracts.errors import (
     no_embeddings_for_conversation_message,
     no_similar_conversation_found_message,
     reindex_blocked_message,
+    retrieval_capability_inspection_failed_message,
     resume_command_not_found_message,
     resume_snapshot_disabled_message,
     saved_query_not_found_message,
@@ -562,6 +563,9 @@ def test_shared_error_contract_messages_are_stable() -> None:
     assert highlight_provider_required_message() == "Highlight provider is required"
     assert invalid_highlight_provider_message() == "Invalid highlight provider"
     assert invalid_model_provider_message() == "model_provider must be 'openai', 'ollama', or 'embedded'."
+    assert retrieval_capability_inspection_failed_message("service registry unavailable") == (
+        "Retrieval capability inspection failed: service registry unavailable"
+    )
     assert snapshot_not_found_message() == "Snapshot not found"
     assert conversation_not_found_message("conv-123") == "Conversation not found: conv-123"
     assert bookmark_not_found_message("conv-123") == "Bookmark for conversation conv-123 not found"

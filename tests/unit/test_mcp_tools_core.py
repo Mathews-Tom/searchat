@@ -214,6 +214,27 @@ class TestSearchConversations:
 
         fake_engine.search.assert_not_called()
 
+    def test_semantic_mode_wraps_capability_introspection_failures(self, tmp_path: Path):
+        from searchat.mcp.tools import search_conversations
+
+        fake_engine = MagicMock()
+        fake_engine.describe_capabilities.side_effect = RuntimeError("service registry unavailable")
+
+        with (
+            patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+            patch(
+                "searchat.mcp.tools.build_services",
+                return_value=(MagicMock(), fake_engine, MagicMock()),
+            ),
+        ):
+            with pytest.raises(
+                RuntimeError,
+                match="Retrieval capability inspection failed: service registry unavailable",
+            ):
+                search_conversations(query="contract", mode="semantic")
+
+        fake_engine.search.assert_not_called()
+
     def test_star_query_forces_keyword_mode_without_semantic_gate(self, tmp_path: Path):
         from searchat.mcp.tools import search_conversations
 
@@ -530,6 +551,26 @@ class TestProviderValidation:
             patch("searchat.mcp.tools.build_services", return_value=(cfg, engine, MagicMock())),
         ):
             with pytest.raises(RuntimeError, match="Embedding model unavailable: all-MiniLM-L6-v2"):
+                ask_about_history(question="What changed?", search_dir=str(tmp_path))
+
+        engine.search.assert_not_called()
+
+    def test_ask_about_history_wraps_capability_introspection_failures(self, tmp_path: Path):
+        from searchat.mcp.tools import ask_about_history
+
+        cfg = MagicMock()
+        cfg.llm.default_provider = "ollama"
+        engine = MagicMock()
+        engine.describe_capabilities.side_effect = RuntimeError("service registry unavailable")
+
+        with (
+            patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+            patch("searchat.mcp.tools.build_services", return_value=(cfg, engine, MagicMock())),
+        ):
+            with pytest.raises(
+                RuntimeError,
+                match="Retrieval capability inspection failed: service registry unavailable",
+            ):
                 ask_about_history(question="What changed?", search_dir=str(tmp_path))
 
         engine.search.assert_not_called()
