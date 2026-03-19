@@ -168,7 +168,7 @@ def test_get_similar_conversations_nonexistent(client, mock_duckdb_store, mock_s
         response = client.get("/api/conversation/nonexistent/similar")
 
         assert response.status_code == 404
-        assert "not found" in response.json()["detail"].lower()
+        assert response.json()["detail"] == "Conversation not found: nonexistent"
 
 
 def test_get_similar_conversations_no_faiss_index(client, mock_duckdb_store):

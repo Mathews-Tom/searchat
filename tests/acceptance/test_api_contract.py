@@ -753,3 +753,14 @@ def test_search_and_similarity_routes_preserve_stable_error_messages() -> None:
 
     assert response.status_code == 404
     assert response.json()["detail"] == "No embeddings found for this conversation"
+
+    store.get_conversation_meta.return_value = None
+
+    with patch(
+        "searchat.api.routers.conversations.get_dataset_semantic_retrieval",
+        return_value=(dataset, search_engine),
+    ):
+        response = client.get("/api/conversation/conv-404/similar")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Conversation not found: conv-404"
