@@ -1053,7 +1053,7 @@ class TestResumeSessionEndpoint:
                 response = client.post("/api/resume", json={"conversation_id": "conv-1"})
 
                 assert response.status_code == 400
-                assert "Unknown conversation format" in response.json()["detail"]
+                assert response.json()["detail"] == f"Unknown conversation format: {conv_file}"
 
     def test_resume_with_path_normalization(self, client, mock_duckdb_store, mock_platform_manager, tmp_path):
         """Test that paths are normalized for the platform."""

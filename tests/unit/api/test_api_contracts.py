@@ -117,6 +117,7 @@ from searchat.contracts.errors import (
     snapshot_not_found_message,
     target_conversation_not_found_message,
     tech_docs_disabled_message,
+    unknown_conversation_format_message,
 )
 from searchat.models import SearchResult
 
@@ -634,6 +635,7 @@ def test_shared_error_contract_messages_are_stable() -> None:
     assert indexing_snapshot_disabled_message() == "Indexing is disabled in snapshot mode"
     assert resume_snapshot_disabled_message() == "Resume is disabled in snapshot mode"
     assert conversation_not_found_message_simple() == "Conversation not found"
+    assert unknown_conversation_format_message("/tmp/conv.txt") == "Unknown conversation format: /tmp/conv.txt"
     assert conversation_not_found_in_index_message() == "Conversation not found in index"
     assert conversation_not_found_in_snapshot_message() == "Conversation not found in snapshot"
     assert conversation_file_missing_with_record_message("/tmp/missing.jsonl").endswith(
