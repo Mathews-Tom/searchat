@@ -24,6 +24,7 @@ from searchat.contracts.errors import (
     backup_operations_disabled_message,
     backup_summary_unavailable_message,
     backup_validation_unavailable_message,
+    internal_server_error_message,
 )
 
 
@@ -52,7 +53,7 @@ async def create_backup(
 
     except Exception as e:
         logger.error(f"Failed to create backup: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from e
 
 
 @router.post("/incremental/create")
@@ -76,7 +77,7 @@ async def create_incremental_backup(
         )
     except Exception as e:
         logger.error(f"Failed to create incremental backup: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from e
 
 
 @router.get("/validate/{backup_name}")
@@ -96,7 +97,7 @@ async def validate_backup(
         raise
     except Exception as e:
         logger.error(f"Failed to validate backup: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from e
 
 
 @router.get("/chain/{backup_name}")
@@ -114,7 +115,7 @@ async def get_backup_chain(backup_name: str):
         raise
     except Exception as e:
         logger.error(f"Failed to resolve backup chain: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from e
 
 
 @router.get("/list")
@@ -161,7 +162,7 @@ async def list_backups():
         )
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from e
 
 
 @router.post("/restore")
@@ -197,7 +198,7 @@ async def restore_backup(
         raise
     except Exception as e:
         logger.error(f"Failed to restore backup: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from e
 
 
 @router.delete("/delete/{backup_name}")
@@ -224,4 +225,4 @@ async def delete_backup(
         raise
     except Exception as e:
         logger.error(f"Failed to delete backup: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from e
