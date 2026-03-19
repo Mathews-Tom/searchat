@@ -26,6 +26,7 @@ from searchat.api.utils import (
 from searchat.contracts.errors import (
     dashboard_not_found_message,
     dashboards_disabled_message,
+    internal_server_error_message,
     invalid_saved_query_mode_message,
     invalid_saved_query_tool_filter_message,
     saved_query_invalid_message,
@@ -78,7 +79,7 @@ async def list_dashboards():
         dashboards = service.list_dashboards()
         return serialize_dashboards_payload(dashboards)
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from exc
 
 
 @router.post("/dashboards")
@@ -94,7 +95,7 @@ async def create_dashboard(request: DashboardCreateRequest):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from exc
 
 
 @router.get("/dashboards/{dashboard_id}")
@@ -112,7 +113,7 @@ async def get_dashboard(dashboard_id: str):
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from exc
 
 
 @router.put("/dashboards/{dashboard_id}")
@@ -133,7 +134,7 @@ async def update_dashboard(dashboard_id: str, request: DashboardUpdateRequest):
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from exc
 
 
 @router.delete("/dashboards/{dashboard_id}")
@@ -151,7 +152,7 @@ async def delete_dashboard(dashboard_id: str):
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from exc
 
 
 @router.get("/dashboards/{dashboard_id}/export")
@@ -176,7 +177,7 @@ async def export_dashboard(dashboard_id: str):
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from exc
 
 
 @router.get("/dashboards/{dashboard_id}/render")
@@ -265,7 +266,7 @@ async def render_dashboard(dashboard_id: str):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from exc
 
 
 def _ensure_widgets(dashboard: dict[str, Any]) -> list[dict[str, Any]]:
