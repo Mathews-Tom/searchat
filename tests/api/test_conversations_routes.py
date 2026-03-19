@@ -1134,6 +1134,7 @@ def test_conversations_resolve_dataset_disabled_returns_404(monkeypatch: pytest.
     with pytest.raises(HTTPException) as excinfo:
         conv_router._resolve_dataset("backup_20250101_000000")
     assert excinfo.value.status_code == 404
+    assert excinfo.value.detail == "Snapshot mode is disabled"
 
 
 def test_conversations_messages_from_parquet_parses_dict_and_tuple() -> None:

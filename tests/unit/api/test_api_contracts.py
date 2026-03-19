@@ -115,6 +115,7 @@ from searchat.contracts.errors import (
     saved_query_missing_message,
     saved_query_text_required_message,
     saved_query_use_count_invalid_message,
+    snapshot_mode_disabled_message,
     snapshot_not_found_message,
     target_conversation_not_found_message,
     tech_docs_disabled_message,
@@ -593,6 +594,7 @@ def test_shared_error_contract_messages_are_stable() -> None:
     assert retrieval_capability_inspection_failed_message("service registry unavailable") == (
         "Retrieval capability inspection failed: service registry unavailable"
     )
+    assert snapshot_mode_disabled_message() == "Snapshot mode is disabled"
     assert snapshot_not_found_message() == "Snapshot not found"
     assert conversation_not_found_message("conv-123") == "Conversation not found: conv-123"
     assert bookmark_not_found_message("conv-123") == "Bookmark for conversation conv-123 not found"
