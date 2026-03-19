@@ -191,15 +191,17 @@ class TestSearchConversations:
 
         fake_engine.search.assert_not_called()
 
-    def test_hybrid_mode_fails_closed_from_capability_state_before_search(self, tmp_path: Path):
+    def test_hybrid_mode_uses_search_engine_fallback_policy(self, tmp_path: Path):
         from searchat.mcp.tools import search_conversations
 
         fake_engine = MagicMock()
-        fake_engine.describe_capabilities.return_value = SimpleNamespace(
-            semantic_available=False,
-            reranking_available=False,
-            semantic_reason="Embedding model unavailable: all-MiniLM-L6-v2",
-            reranking_reason=None,
+        fake_result = MagicMock()
+        fake_result.results = []
+        fake_result.mode_used = "keyword"
+        fake_result.search_time_ms = 6.0
+        fake_engine.search.return_value = fake_result
+        fake_engine.describe_capabilities.side_effect = AssertionError(
+            "hybrid mode should not preflight semantic capabilities"
         )
 
         with (
@@ -209,10 +211,10 @@ class TestSearchConversations:
                 return_value=(MagicMock(), fake_engine, MagicMock()),
             ),
         ):
-            with pytest.raises(RuntimeError, match="Embedding model unavailable: all-MiniLM-L6-v2"):
-                search_conversations(query="contract", mode="hybrid")
+            payload = json.loads(search_conversations(query="contract", mode="hybrid"))
 
-        fake_engine.search.assert_not_called()
+        assert payload["mode_used"] == "keyword"
+        fake_engine.search.assert_called_once()
 
     def test_semantic_mode_wraps_capability_introspection_failures(self, tmp_path: Path):
         from searchat.mcp.tools import search_conversations

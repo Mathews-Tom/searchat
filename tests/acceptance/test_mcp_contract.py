@@ -204,6 +204,43 @@ def test_search_conversations_fails_closed_from_semantic_capability_snapshot(tmp
     engine.search.assert_not_called()
 
 
+def test_search_conversations_hybrid_mode_preserves_keyword_fallback_contract(tmp_path: Path) -> None:
+    now = datetime.now(timezone.utc)
+    engine = MagicMock()
+    engine.describe_capabilities.side_effect = AssertionError(
+        "hybrid mode should not preflight semantic capabilities"
+    )
+    engine.search.return_value = SearchResults(
+        results=[
+            SearchResult(
+                conversation_id="conv-123",
+                project_id="project-a",
+                title="Keyword fallback",
+                created_at=now,
+                updated_at=now,
+                message_count=4,
+                file_path="/tmp/conv-123.jsonl",
+                score=0.9,
+                snippet="Grounded implementation detail.",
+            )
+        ],
+        total_count=1,
+        search_time_ms=2.0,
+        mode_used="keyword",
+    )
+
+    with (
+        patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+        patch("searchat.mcp.tools.build_services", return_value=(MagicMock(), engine, MagicMock())),
+    ):
+        payload = json.loads(
+            search_conversations(query="how to sort data structures", mode="hybrid", search_dir=str(tmp_path))
+        )
+
+    assert payload["mode_used"] == "keyword"
+    assert len(payload["results"]) == 1
+
+
 def test_search_conversations_wraps_capability_introspection_failures(tmp_path: Path) -> None:
     engine = MagicMock()
     engine.describe_capabilities.side_effect = RuntimeError("service registry unavailable")
