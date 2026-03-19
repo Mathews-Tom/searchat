@@ -11,10 +11,9 @@ from searchat.api.contracts import (
     serialize_agent_config_payload,
     serialize_docs_summary_payload,
 )
-from searchat.api.dataset_access import get_dataset_semantic_retrieval
 from searchat.api.utils import check_semantic_readiness, parse_date_filter, validate_provider
 from searchat.config.constants import AGENT_CONFIG_TEMPLATES
-from searchat.contracts.errors import tech_docs_disabled_message
+from searchat.contracts.errors import internal_server_error_message, tech_docs_disabled_message
 from searchat.models import SearchMode
 from searchat.services.pattern_mining import extract_patterns
 from searchat.services.tech_docs_service import build_search_filters, generate_doc
@@ -43,10 +42,10 @@ async def create_docs_summary(request: DocsSummaryRequest):
     if not config.export.enable_tech_docs:
         raise HTTPException(status_code=404, detail=tech_docs_disabled_message())
 
-    try:
-        _, search_engine = get_dataset_semantic_retrieval(None)
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    not_ready = check_semantic_readiness(retrieval_service=deps.get_search_engine)
+    if not_ready is not None:
+        return not_ready
+    search_engine = deps.get_search_engine()
 
     rendered_sections: list[dict[str, Any]] = []
     for section in request.sections:
@@ -122,7 +121,7 @@ async def generate_agent_config(request: AgentConfigRequest):
             retrieval_service=retrieval_service,
         )
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from exc
 
     # Format patterns into text
     pattern_lines: list[str] = []
