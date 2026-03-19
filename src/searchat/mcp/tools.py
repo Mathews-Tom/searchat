@@ -133,7 +133,7 @@ def search_conversations(
 
     dataset_dir = resolve_dataset(search_dir)
     _config, engine, _store = build_services(dataset_dir)
-    if mode_value != SearchMode.KEYWORD:
+    if mode_value == SearchMode.SEMANTIC:
         ensure_semantic_capability(engine)
 
     filters = SearchFilters()
