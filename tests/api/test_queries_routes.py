@@ -125,7 +125,27 @@ def test_queries_list_returns_500_on_service_error(client, monkeypatch):
     monkeypatch.setattr("searchat.api.routers.queries.deps.get_saved_queries_service", lambda: BoomService())
     resp = client.get("/api/queries")
     assert resp.status_code == 500
-    assert resp.json()["detail"] == "boom"
+    assert resp.json()["detail"] == "Internal server error"
+
+
+def test_queries_create_returns_500_on_service_error(client, monkeypatch):
+    class BoomService:
+        def create_query(self, _payload: dict) -> dict:
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr("searchat.api.routers.queries.deps.get_saved_queries_service", lambda: BoomService())
+    resp = client.post(
+        "/api/queries",
+        json={
+            "name": "n",
+            "description": None,
+            "query": "q",
+            "filters": {},
+            "mode": "hybrid",
+        },
+    )
+    assert resp.status_code == 500
+    assert resp.json()["detail"] == "Internal server error"
 
 
 def test_queries_create_returns_400_on_value_error(client, monkeypatch):
@@ -167,6 +187,17 @@ def test_queries_update_returns_404_when_not_found(client, monkeypatch):
     assert resp.json()["detail"] == "Saved query not found"
 
 
+def test_queries_update_returns_500_on_service_error(client, monkeypatch):
+    class BoomService:
+        def update_query(self, _qid: str, _updates: dict):
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr("searchat.api.routers.queries.deps.get_saved_queries_service", lambda: BoomService())
+    resp = client.put("/api/queries/q-1", json={"name": "x"})
+    assert resp.status_code == 500
+    assert resp.json()["detail"] == "Internal server error"
+
+
 def test_queries_delete_returns_404_when_not_found(client, monkeypatch):
     service = SimpleNamespace(delete_query=lambda _qid: False)
     monkeypatch.setattr("searchat.api.routers.queries.deps.get_saved_queries_service", lambda: service)
@@ -175,9 +206,31 @@ def test_queries_delete_returns_404_when_not_found(client, monkeypatch):
     assert resp.json()["detail"] == "Saved query not found"
 
 
+def test_queries_delete_returns_500_on_service_error(client, monkeypatch):
+    class BoomService:
+        def delete_query(self, _qid: str) -> bool:
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr("searchat.api.routers.queries.deps.get_saved_queries_service", lambda: BoomService())
+    resp = client.delete("/api/queries/missing")
+    assert resp.status_code == 500
+    assert resp.json()["detail"] == "Internal server error"
+
+
 def test_queries_run_returns_404_when_not_found(client, monkeypatch):
     service = SimpleNamespace(record_use=lambda _qid: None)
     monkeypatch.setattr("searchat.api.routers.queries.deps.get_saved_queries_service", lambda: service)
     resp = client.post("/api/queries/missing/run")
     assert resp.status_code == 404
     assert resp.json()["detail"] == "Saved query not found"
+
+
+def test_queries_run_returns_500_on_service_error(client, monkeypatch):
+    class BoomService:
+        def record_use(self, _qid: str):
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr("searchat.api.routers.queries.deps.get_saved_queries_service", lambda: BoomService())
+    resp = client.post("/api/queries/missing/run")
+    assert resp.status_code == 500
+    assert resp.json()["detail"] == "Internal server error"

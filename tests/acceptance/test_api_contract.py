@@ -360,6 +360,20 @@ def test_saved_state_routes_preserve_stable_contracts() -> None:
     ]
 
 
+def test_saved_query_routes_preserve_stable_internal_error_message() -> None:
+    client = TestClient(app)
+
+    class BoomService:
+        def list_queries(self):
+            raise RuntimeError("boom")
+
+    with patch("searchat.api.routers.queries.deps.get_saved_queries_service", return_value=BoomService()):
+        response = client.get("/api/queries")
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Internal server error"
+
+
 def test_bookmark_creation_preserves_stable_not_found_message() -> None:
     client = TestClient(app)
     bookmark_dataset = SimpleNamespace(
