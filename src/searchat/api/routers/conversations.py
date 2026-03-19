@@ -55,6 +55,7 @@ from searchat.contracts.errors import (
     internal_server_error_message,
     no_embeddings_for_conversation_message,
     no_similar_conversation_found_message,
+    retrieval_capability_inspection_failed_message,
     resume_command_not_found_message,
     resume_snapshot_disabled_message,
     snapshot_mode_disabled_message,
@@ -922,10 +923,13 @@ async def get_similar_conversations(
     except HTTPException:
         raise
     except RuntimeError as e:
-        raise HTTPException(status_code=503, detail=str(e)) from e
+        raise HTTPException(
+            status_code=503,
+            detail=retrieval_capability_inspection_failed_message(str(e)),
+        ) from e
     except Exception as e:
         logger.error(f"Failed to find similar conversations for {conversation_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=conversation_internal_server_error_message(str(e)))
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from e
 
 
 @router.get("/conversation/{conversation_id}/diff")
