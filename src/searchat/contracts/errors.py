@@ -39,6 +39,10 @@ def snapshot_not_found_message() -> str:
     return "Snapshot not found"
 
 
+def snapshot_mode_disabled_message() -> str:
+    return "Snapshot mode is disabled"
+
+
 def conversation_not_found_message(conversation_id: str) -> str:
     return f"Conversation not found: {conversation_id}"
 

@@ -54,6 +54,7 @@ from searchat.contracts.errors import (
     no_similar_conversation_found_message,
     resume_command_not_found_message,
     resume_snapshot_disabled_message,
+    snapshot_mode_disabled_message,
     snapshot_not_found_message,
     target_conversation_not_found_message,
     unknown_conversation_format_message,
@@ -75,7 +76,7 @@ def _resolve_dataset(snapshot: str | None) -> tuple[Path, str | None]:
 
     config = deps.get_config()
     if not config.snapshots.enabled:
-        raise HTTPException(status_code=404, detail="Snapshot mode is disabled")
+        raise HTTPException(status_code=404, detail=snapshot_mode_disabled_message())
 
     try:
         return deps.resolve_dataset_search_dir(snapshot)
