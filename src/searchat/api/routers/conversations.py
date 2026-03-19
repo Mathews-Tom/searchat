@@ -52,6 +52,7 @@ from searchat.contracts.errors import (
     invalid_target_conversation_id_message,
     invalid_export_format_message,
     invalid_tool_filter_message,
+    internal_server_error_message,
     no_embeddings_for_conversation_message,
     no_similar_conversation_found_message,
     resume_command_not_found_message,
@@ -468,7 +469,7 @@ async def get_all_conversations(
         )
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from e
 
 
 @router.get("/conversation/{conversation_id}")
@@ -712,7 +713,7 @@ async def resume_session(
         )
     except Exception as e:
         logger.error(f"Failed to resume session {request.conversation_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from e
 
 
 @router.get("/conversation/{conversation_id}/code")
