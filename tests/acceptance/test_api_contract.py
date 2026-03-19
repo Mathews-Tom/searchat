@@ -705,6 +705,37 @@ def test_agent_config_route_preserves_stable_internal_error_message() -> None:
     assert response.json()["detail"] == "Internal server error"
 
 
+def test_pattern_extract_route_preserves_stable_internal_error_message() -> None:
+    client = TestClient(app)
+    config = Mock()
+    readiness = Mock()
+    readiness.snapshot.return_value = Mock(
+        components={
+            "metadata": "ready",
+            "faiss": "ready",
+            "embedder": "ready",
+        },
+        watcher="disabled",
+        errors={},
+        warmup_started_at=None,
+    )
+
+    with patch("searchat.api.routers.patterns.get_config", return_value=config):
+        with patch("searchat.api.readiness.get_readiness", return_value=readiness):
+            with patch("searchat.api.routers.patterns.get_search_engine", return_value=Mock()):
+                with patch(
+                    "searchat.api.routers.patterns.extract_patterns",
+                    side_effect=RuntimeError("boom"),
+                ):
+                    response = client.post(
+                        "/api/patterns/extract",
+                        json={"topic": "test", "max_patterns": 10, "model_provider": "ollama"},
+                    )
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Internal server error"
+
+
 def test_admin_and_indexing_routes_preserve_stable_contracts() -> None:
     client = TestClient(app)
     watcher = Mock()
