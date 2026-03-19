@@ -1,7 +1,7 @@
 """Acceptance coverage for stable REST API contracts in Wave 3."""
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -9,6 +9,7 @@ from unittest.mock import Mock, patch
 from fastapi.testclient import TestClient
 
 from searchat.api.app import app
+from searchat.api.routers.expertise import prime_expertise
 from searchat.models import SearchResult, SearchResults
 from searchat.services.llm_service import LLMServiceError
 
@@ -916,3 +917,39 @@ def test_search_auxiliary_routes_preserve_stable_contracts() -> None:
 
     assert code_response.status_code == 200
     assert list(code_response.json()) == ["results", "total", "limit", "offset", "has_more"]
+
+
+def test_expertise_prime_content_formats_preserve_stable_contract() -> None:
+    record = SimpleNamespace(
+        type="convention",
+        domain="coding",
+        content="use snake_case",
+        project=None,
+        severity=None,
+        tags=[],
+        name=None,
+        example=None,
+        rationale=None,
+        alternatives_considered=None,
+        resolution=None,
+        source_conversation_id=None,
+        source_agent=None,
+        confidence=1.0,
+        validation_count=0,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+        last_validated=datetime.now(timezone.utc),
+        is_active=True,
+        id="exp-1",
+    )
+    store = Mock()
+    store.query.return_value = [record]
+    config = SimpleNamespace(expertise=SimpleNamespace(default_prime_tokens=4000))
+
+    with patch("searchat.api.routers.expertise.get_expertise_store", return_value=store):
+        with patch("searchat.api.routers.expertise.get_config", return_value=config):
+            markdown_response = prime_expertise(project=None, domain=None, max_tokens=None, format="markdown")
+            prompt_response = prime_expertise(project=None, domain=None, max_tokens=None, format="prompt")
+
+    assert list(markdown_response) == ["content"]
+    assert list(prompt_response) == ["content"]

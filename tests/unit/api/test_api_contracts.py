@@ -11,6 +11,7 @@ from searchat.api.contracts import (
     serialize_backup_summary_fallback,
     serialize_backups_payload,
     serialize_code_search_payload,
+    serialize_content_payload,
     serialize_conversations_payload,
     serialize_conversation_code_payload,
     serialize_conversation_diff_payload,
@@ -223,6 +224,13 @@ def test_serialize_search_suggestions_payload_preserves_stable_keys() -> None:
     )
 
     assert list(payload) == ["query", "suggestions"]
+
+
+def test_serialize_content_payload_preserves_stable_keys() -> None:
+    payload = serialize_content_payload("Hello")
+
+    assert list(payload) == ["content"]
+    assert payload["content"] == "Hello"
 
 
 def test_serialize_statistics_payload_preserves_stable_keys() -> None:

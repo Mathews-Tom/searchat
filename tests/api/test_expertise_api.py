@@ -365,6 +365,7 @@ class TestPrimeEndpoint:
 
         result = prime_expertise(project=None, domain=None, max_tokens=None, format="markdown")
 
+        assert list(result) == ["content"]
         assert "content" in result
         assert "## Project Expertise" in result["content"]
 
@@ -376,6 +377,7 @@ class TestPrimeEndpoint:
 
         result = prime_expertise(project=None, domain=None, max_tokens=None, format="prompt")
 
+        assert list(result) == ["content"]
         assert "content" in result
         assert "[PATTERN]" in result["content"]
 
