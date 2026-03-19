@@ -87,6 +87,70 @@ def dashboard_not_found_message() -> str:
     return "Dashboard not found"
 
 
+def dashboards_file_invalid_message() -> str:
+    return "Dashboards file is invalid."
+
+
+def dashboard_missing_created_at_message() -> str:
+    return "Dashboard is missing created_at."
+
+
+def dashboard_name_required_message() -> str:
+    return "Dashboard name is required."
+
+
+def dashboard_refresh_interval_invalid_message() -> str:
+    return "Dashboard refresh_interval must be an integer."
+
+
+def dashboard_layout_required_message() -> str:
+    return "Dashboard layout is required."
+
+
+def dashboard_layout_widgets_required_message() -> str:
+    return "Dashboard layout widgets are required."
+
+
+def dashboard_widget_object_required_message() -> str:
+    return "Dashboard widget must be an object."
+
+
+def dashboard_widget_query_id_required_message() -> str:
+    return "Dashboard widget query_id is required."
+
+
+def dashboard_widget_title_invalid_message() -> str:
+    return "Dashboard widget title must be a string."
+
+
+def dashboard_widget_limit_invalid_message() -> str:
+    return "Dashboard widget limit must be an integer."
+
+
+def dashboard_widget_sort_by_invalid_message() -> str:
+    return "Dashboard widget sort_by must be a string."
+
+
+def dashboard_widget_layout_invalid_message() -> str:
+    return "Dashboard widget layout must be an object."
+
+
+def dashboard_widget_id_invalid_message() -> str:
+    return "Dashboard widget id must be a string."
+
+
+def dashboard_layout_columns_invalid_message() -> str:
+    return "Dashboard layout columns must be an integer."
+
+
+def dashboard_queries_invalid_message() -> str:
+    return "Dashboard queries must be a list of strings."
+
+
+def dashboard_queries_missing_widget_ids_message() -> str:
+    return "Dashboard queries must include all widget query ids."
+
+
 def saved_query_missing_message(query_id: object) -> str:
     return f"Saved query {query_id} not found"
 
