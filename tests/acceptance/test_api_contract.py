@@ -604,6 +604,18 @@ def test_analytics_routes_preserve_stable_contracts() -> None:
     assert list(config_response.json()) == ["enabled", "retention_days"]
 
 
+def test_analytics_topics_route_preserves_stable_validation_message() -> None:
+    client = TestClient(app)
+    analytics = Mock()
+    analytics.get_topic_clusters.side_effect = ValueError("k must be between 2 and 20")
+
+    with patch("searchat.api.routers.stats.deps.get_analytics_service", return_value=analytics):
+        response = client.get("/api/stats/analytics/topics?days=30&k=8")
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Topic cluster count must be between 2 and 20"
+
+
 def test_backup_routes_preserve_stable_contracts() -> None:
     client = TestClient(app)
     backup_manager = Mock()

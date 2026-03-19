@@ -275,6 +275,7 @@ def test_analytics_topics_value_error_returns_400(client, mock_analytics_service
     with patch("searchat.api.routers.stats.deps.get_analytics_service", return_value=mock_analytics_service):
         resp = client.get("/api/stats/analytics/topics?days=30&k=8")
         assert resp.status_code == 400
+        assert resp.json()["detail"] == "Topic cluster count must be between 2 and 20"
 
 
 def test_analytics_config_error_handling(client, mock_analytics_service):
