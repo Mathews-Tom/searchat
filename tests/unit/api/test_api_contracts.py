@@ -89,7 +89,13 @@ from searchat.contracts.errors import (
     conversation_not_found_message_simple,
     conversation_not_found_message,
     export_disabled_message,
+    expertise_domain_not_found_message,
+    expertise_record_not_found_after_update_message,
+    expertise_record_not_found_after_validation_message,
+    expertise_record_not_found_message,
     highlight_provider_required_message,
+    invalid_expertise_severity_message,
+    invalid_expertise_type_message,
     invalid_highlight_provider_message,
     invalid_model_provider_message,
     invalid_export_format_message,
@@ -718,6 +724,24 @@ def test_shared_error_contract_messages_are_stable() -> None:
     assert conversation_encoding_error_message() == "Failed to read conversation file (encoding error)"
     assert export_disabled_message("Notebook") == "Notebook export is disabled"
     assert export_disabled_message("PDF") == "PDF export is disabled"
+    assert (
+        invalid_expertise_type_message("bad", "convention, pattern")
+        == "Invalid type 'bad'. Must be one of: convention, pattern"
+    )
+    assert (
+        invalid_expertise_severity_message("bad", "low, medium")
+        == "Invalid severity 'bad'. Must be one of: low, medium"
+    )
+    assert expertise_domain_not_found_message("missing") == "Domain not found: missing"
+    assert expertise_record_not_found_message("rec-1") == "Record not found: rec-1"
+    assert (
+        expertise_record_not_found_after_update_message("rec-1")
+        == "Record not found after update: rec-1"
+    )
+    assert (
+        expertise_record_not_found_after_validation_message("rec-1")
+        == "Record not found after validation: rec-1"
+    )
     assert invalid_export_format_message() == "Invalid format. Use: json, markdown, text, ipynb, or pdf"
     assert bulk_export_no_ids_message() == "No conversation IDs provided"
     assert bulk_export_too_many_message() == "Too many conversations (max 100)"

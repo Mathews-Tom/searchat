@@ -773,6 +773,35 @@ def test_expertise_and_knowledge_graph_delete_routes_preserve_stable_contract() 
     assert list(kg_response.json()) == ["status", "id"]
 
 
+def test_expertise_routes_preserve_stable_validation_and_not_found_messages() -> None:
+    client = TestClient(app)
+
+    expertise_store = Mock()
+    expertise_store.get.return_value = None
+    expertise_store.list_domains.return_value = []
+
+    with patch("searchat.api.routers.expertise.get_expertise_store", return_value=expertise_store):
+        invalid_type_response = client.post(
+            "/api/expertise",
+            json={"type": "bad", "domain": "coding", "content": "x"},
+        )
+        missing_record_response = client.get("/api/expertise/rec-404")
+        missing_domain_response = client.patch(
+            "/api/expertise/domains/missing",
+            json={"description": "updated"},
+        )
+
+    assert invalid_type_response.status_code == 422
+    assert (
+        invalid_type_response.json()["detail"]
+        == "Invalid type 'bad'. Must be one of: convention, pattern, failure, decision, boundary, insight"
+    )
+    assert missing_record_response.status_code == 404
+    assert missing_record_response.json()["detail"] == "Record not found: rec-404"
+    assert missing_domain_response.status_code == 404
+    assert missing_domain_response.json()["detail"] == "Domain not found: missing"
+
+
 def test_conversation_detail_code_and_diff_routes_preserve_stable_contracts() -> None:
     client = TestClient(app)
 

@@ -89,6 +89,10 @@ class TestCreateExpertise:
         )
 
         assert resp.status_code == 422
+        assert (
+            resp.json()["detail"]
+            == "Invalid type 'invalid_type'. Must be one of: convention, pattern, failure, decision, boundary, insight"
+        )
 
     def test_create_expertise_missing_required_fields(self, client, patched_store):
         resp = client.post(
@@ -214,6 +218,7 @@ class TestUpdateExpertise:
         )
 
         assert resp.status_code == 404
+        assert resp.json()["detail"] == "Record not found: nonexistent"
 
 
 class TestDeleteExpertise:
@@ -236,6 +241,7 @@ class TestDeleteExpertise:
         resp = client.delete("/api/expertise/nonexistent")
 
         assert resp.status_code == 404
+        assert resp.json()["detail"] == "Record not found: nonexistent"
 
 
 class TestValidateExpertise:
@@ -259,6 +265,7 @@ class TestValidateExpertise:
         resp = client.post("/api/expertise/nonexistent/validate")
 
         assert resp.status_code == 404
+        assert resp.json()["detail"] == "Record not found: nonexistent"
 
 
 class TestDomains:
@@ -280,6 +287,14 @@ class TestDomains:
         assert len(data) == 1
         assert data[0]["name"] == "coding"
         assert data[0]["record_count"] == 5
+
+    def test_patch_domain_not_found(self, client, patched_store):
+        patched_store.list_domains.return_value = []
+
+        resp = client.patch("/api/expertise/domains/missing", json={"description": "updated"})
+
+        assert resp.status_code == 404
+        assert resp.json()["detail"] == "Domain not found: missing"
 
     def test_create_domain(self, client, patched_store):
         resp = client.post(
