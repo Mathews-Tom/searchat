@@ -55,6 +55,7 @@ from searchat.contracts.errors import (
     resume_snapshot_disabled_message,
     snapshot_not_found_message,
     target_conversation_not_found_message,
+    unknown_conversation_format_message,
 )
 import searchat.api.dependencies as deps
 
@@ -673,7 +674,7 @@ async def resume_session(
                 cwd = data.get('metadata', {}).get('environment', {}).get('working_directory', None)
                 command = f'vibe --resume {session_id}'
         else:
-            raise HTTPException(status_code=400, detail=f"Unknown conversation format: {file_path}")
+            raise HTTPException(status_code=400, detail=unknown_conversation_format_message(file_path))
 
         # Normalize path for current platform
         if cwd:

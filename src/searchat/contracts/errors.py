@@ -273,6 +273,10 @@ def resume_command_not_found_message(tool_name: str) -> str:
     return f"Failed to execute command. Make sure {tool_name} is installed and in PATH."
 
 
+def unknown_conversation_format_message(file_path: str) -> str:
+    return f"Unknown conversation format: {file_path}"
+
+
 def no_embeddings_for_conversation_message() -> str:
     return "No embeddings found for this conversation"
 
