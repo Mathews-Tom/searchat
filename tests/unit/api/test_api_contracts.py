@@ -68,7 +68,9 @@ from searchat.contracts.errors import (
     dashboard_widget_title_invalid_message,
     dashboards_disabled_message,
     dashboards_file_invalid_message,
+    bookmark_notes_updated_message,
     bookmark_not_found_message,
+    bookmark_removed_message,
     bulk_export_no_ids_message,
     bulk_export_too_many_message,
     conversation_encoding_error_message,
@@ -592,6 +594,8 @@ def test_shared_error_contract_messages_are_stable() -> None:
     assert snapshot_not_found_message() == "Snapshot not found"
     assert conversation_not_found_message("conv-123") == "Conversation not found: conv-123"
     assert bookmark_not_found_message("conv-123") == "Bookmark for conversation conv-123 not found"
+    assert bookmark_removed_message("conv-123") == "Bookmark removed for conversation conv-123"
+    assert bookmark_notes_updated_message() == "Notes updated successfully"
     assert saved_query_not_found_message() == "Saved query not found"
     assert saved_queries_file_invalid_message() == "Saved queries file is invalid."
     assert saved_query_missing_created_at_message() == "Saved query is missing created_at."

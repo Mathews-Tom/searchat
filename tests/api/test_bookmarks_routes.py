@@ -172,7 +172,9 @@ def test_remove_bookmark(client, mock_bookmarks_service, mock_duckdb_store):
 
         assert response.status_code == 200
         data = response.json()
+        assert list(data) == ["success", "message"]
         assert data["success"] is True
+        assert data["message"] == "Bookmark removed for conversation conv-1"
 
 
 def test_remove_nonexistent_bookmark(client, mock_bookmarks_service):
@@ -201,7 +203,7 @@ def test_update_bookmark_notes(client, mock_bookmarks_service, mock_duckdb_store
         data = response.json()
         assert list(data) == ["success", "message"]
         assert data["success"] is True
-        assert "message" in data
+        assert data["message"] == "Notes updated successfully"
 
 
 def test_update_notes_nonexistent_bookmark(client, mock_bookmarks_service):

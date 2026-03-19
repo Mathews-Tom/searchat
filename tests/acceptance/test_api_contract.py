@@ -361,6 +361,31 @@ def test_bookmark_creation_preserves_stable_not_found_message() -> None:
     assert response.json()["detail"] == "Conversation not found: conv-404"
 
 
+def test_bookmark_mutation_routes_preserve_stable_success_messages() -> None:
+    client = TestClient(app)
+    bookmarks_service = Mock()
+    bookmarks_service.remove_bookmark.return_value = True
+    bookmarks_service.update_notes.return_value = True
+
+    with patch("searchat.api.routers.bookmarks.deps.get_bookmarks_service", return_value=bookmarks_service):
+        remove_response = client.delete("/api/bookmarks/conv-123")
+        notes_response = client.patch(
+            "/api/bookmarks/conv-123/notes",
+            json={"notes": "updated"},
+        )
+
+    assert remove_response.status_code == 200
+    assert remove_response.json() == {
+        "success": True,
+        "message": "Bookmark removed for conversation conv-123",
+    }
+    assert notes_response.status_code == 200
+    assert notes_response.json() == {
+        "success": True,
+        "message": "Notes updated successfully",
+    }
+
+
 def test_dashboard_routes_preserve_stable_contracts() -> None:
     client = TestClient(app)
     config = SimpleNamespace(dashboards=SimpleNamespace(enabled=True))
