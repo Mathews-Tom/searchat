@@ -1161,6 +1161,25 @@ def test_search_and_similarity_routes_preserve_stable_error_messages() -> None:
     assert response.status_code == 404
     assert response.json()["detail"] == "No embeddings found for this conversation"
 
+    failing_search_engine = Mock()
+    failing_search_engine.metadata_path = "/tmp/meta.parquet"
+    failing_search_engine.find_similar_vector_hits.side_effect = RuntimeError(
+        "FAISS index not available"
+    )
+    conn.execute.return_value.fetchone.return_value = ("chunk text",)
+
+    with patch(
+        "searchat.api.routers.conversations.get_dataset_semantic_retrieval",
+        return_value=(dataset, failing_search_engine),
+    ):
+        response = client.get("/api/conversation/conv-123/similar")
+
+    assert response.status_code == 503
+    assert (
+        response.json()["detail"]
+        == "Retrieval capability inspection failed: FAISS index not available"
+    )
+
     store.get_conversation_meta.return_value = None
 
     with patch(

@@ -191,7 +191,10 @@ def test_get_similar_conversations_no_faiss_index(client, mock_duckdb_store):
         response = client.get("/api/conversation/conv-123/similar")
 
         assert response.status_code == 503
-        assert "FAISS index not available" in response.json()["detail"]
+        assert (
+            response.json()["detail"]
+            == "Retrieval capability inspection failed: FAISS index not available"
+        )
 
 
 def test_get_similar_conversations_no_embedder(client, mock_duckdb_store, mock_search_engine):
@@ -206,7 +209,26 @@ def test_get_similar_conversations_no_embedder(client, mock_duckdb_store, mock_s
         response = client.get("/api/conversation/conv-123/similar")
 
         assert response.status_code == 503
-        assert "Embedder not available" in response.json()["detail"]
+        assert (
+            response.json()["detail"]
+            == "Retrieval capability inspection failed: Embedder not available"
+        )
+
+
+def test_get_similar_conversations_wraps_unexpected_failures(
+    client, mock_duckdb_store, mock_search_engine
+):
+    """Test similarity endpoint uses the shared internal-error envelope for unexpected failures."""
+    mock_search_engine.find_similar_vector_hits.side_effect = ValueError("boom")
+
+    with patch(
+        "searchat.api.routers.conversations.get_dataset_semantic_retrieval",
+        return_value=(_semantic_dataset(mock_duckdb_store), mock_search_engine),
+    ):
+        response = client.get("/api/conversation/conv-123/similar")
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Internal server error"
 
 
 def test_get_similar_conversations_no_embeddings(client, mock_duckdb_store, mock_search_engine):
