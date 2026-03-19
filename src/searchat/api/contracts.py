@@ -50,6 +50,19 @@ def serialize_projects_payload(projects: list[str]) -> list[str]:
     return projects
 
 
+def serialize_conversations_payload(
+    *,
+    results: list[SearchResultResponse],
+    total: int,
+    search_time_ms: int,
+) -> dict[str, Any]:
+    return {
+        "results": results,
+        "total": total,
+        "search_time_ms": search_time_ms,
+    }
+
+
 def serialize_statistics_payload(stats: Any) -> dict[str, Any]:
     return {
         "total_conversations": stats.total_conversations,

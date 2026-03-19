@@ -23,6 +23,7 @@ from searchat.api.models import (
     ResumeRequest,
 )
 from searchat.api.contracts import (
+    serialize_conversations_payload,
     serialize_conversation_code_payload,
     serialize_conversation_diff_payload,
     serialize_delete_conversations_payload,
@@ -460,11 +461,11 @@ async def get_all_conversations(
                 )
             )
 
-        return {
-            "results": response_results,
-            "total": total,
-            "search_time_ms": int((time.perf_counter() - started) * 1000.0),
-        }
+        return serialize_conversations_payload(
+            results=response_results,
+            total=total,
+            search_time_ms=int((time.perf_counter() - started) * 1000.0),
+        )
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
