@@ -17,11 +17,6 @@
                 <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
                 <input type="text" id="search" class="search-input" placeholder="Search conversations..."
                        x-model="$store.search.query"
-                       hx-get="/fragments/search-results"
-                       hx-trigger="keyup[key=='Enter']"
-                       hx-target="#results"
-                       hx-include="[name='mode'],[name='project'],[name='tool'],[name='date'],[name='sortBy'],[name='dateFrom'],[name='dateTo']"
-                       hx-indicator="#searchSpinner"
                        name="q" />
                 <span class="htmx-indicator spinner" id="searchSpinner"></span>
                 <kbd class="search-kbd">&#8984;K</kbd>
@@ -60,9 +55,7 @@
                 <div class="nav-section-label">NAVIGATION</div>
                 <button class="nav-item" :class="{ active: $store.layout.activeNav === 'search' }"
                         @click="$store.layout.setActiveNav('search')"
-                        hx-get="/fragments/search-results"
-                        hx-target="#results"
-                        hx-include="#search,[name='mode'],[name='project'],[name='tool'],[name='date'],[name='sortBy']">
+                        data-action="showSearchView">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
                     Search
                 </button>
@@ -248,18 +241,14 @@
 
             <div class="toolbar" role="toolbar" aria-label="Search actions">
                 <button class="glass-btn glass-btn-primary"
-                        hx-get="/fragments/search-results"
-                        hx-target="#results"
-                        hx-include="#search,[name='mode'],[name='project'],[name='tool'],[name='date'],[name='sortBy'],[name='dateFrom'],[name='dateTo']"
-                        hx-indicator="#searchSpinner">
+                        data-action="search">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg> Search
                 </button>
                 <button class="glass-btn" id="saveQueryButtonInline" type="button">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Save Query
                 </button>
                 <button class="glass-btn"
-                        hx-get="/fragments/search-results?show_all=true"
-                        hx-target="#results">
+                        data-action="showAllConversations">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg> Show All
                 </button>
                 <span class="toolbar-divider"></span>
