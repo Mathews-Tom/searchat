@@ -28,5 +28,5 @@ def test_manage_page_keeps_fragment_list_loading_for_now() -> None:
 
     html = resp.text
     assert 'id="manage-list"' in html
-    assert 'hx-get="/fragments/manage-conversations"' in html
-    assert 'hx-trigger="load, manage-reload from:body"' in html
+    assert 'fetch(\'/api/conversations/all?\'' in html
+    assert 'hx-get="/fragments/manage-conversations"' not in html
