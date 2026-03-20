@@ -174,6 +174,40 @@ def test_chat_routes_preserve_stable_internal_error_message() -> None:
     assert chat_rag_response.json()["detail"] == "Internal server error"
 
 
+def test_chat_routes_preserve_stable_validation_and_unavailability_messages() -> None:
+    client = TestClient(app)
+    config = SimpleNamespace(chat=SimpleNamespace(enable_rag=True, enable_citations=True))
+
+    with patch("searchat.api.routers.chat.check_semantic_readiness", return_value=None):
+        with patch("searchat.api.routers.chat.get_config", return_value=config):
+            with patch("searchat.api.routers.chat.get_search_engine", return_value=Mock()):
+                with patch(
+                    "searchat.api.routers.chat.generate_answer_stream",
+                    side_effect=ValueError("unexpected validator failure"),
+                ):
+                    chat_validation_response = client.post(
+                        "/api/chat",
+                        json={"query": "hello", "model_provider": "openai"},
+                    )
+
+                with patch(
+                    "searchat.api.routers.chat.generate_rag_response",
+                    side_effect=LLMServiceError("Ollama provider unreachable or returned an error."),
+                ):
+                    chat_rag_unavailable_response = client.post(
+                        "/api/chat-rag",
+                        json={"query": "hello", "model_provider": "ollama"},
+                    )
+
+    assert chat_validation_response.status_code == 400
+    assert chat_validation_response.json()["detail"] == "Invalid chat request."
+    assert chat_rag_unavailable_response.status_code == 503
+    assert (
+        chat_rag_unavailable_response.json()["detail"]
+        == "Ollama provider unreachable or returned an error."
+    )
+
+
 def test_search_highlight_provider_failure_degrades_to_plain_search() -> None:
     now = datetime.now()
     retrieval_service = Mock()
