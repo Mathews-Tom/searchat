@@ -307,6 +307,18 @@ function _renderRecordDetail(record, lineage) {
     `;
 }
 
+function _removeInlineRecordDetail(container) {
+    container.querySelector('.expertise-inline-detail')?.remove();
+}
+
+function _openInlineRecordDetail(container, item) {
+    _removeInlineRecordDetail(container);
+    const detailRow = document.createElement('div');
+    detailRow.className = 'expertise-inline-detail';
+    item.insertAdjacentElement('afterend', detailRow);
+    return detailRow;
+}
+
 // ── Tab rendering ────────────────────────────────────────────────────────────
 
 async function _renderDomainsTab(container) {
@@ -339,9 +351,8 @@ async function _renderRecordsTab(container) {
         const filterHtml = _renderFilterBar(domainsData);
         const listHtml = _renderRecordList(recordsData.results, recordsData.total);
         const paginationHtml = _renderPagination(recordsData.total, _state.page);
-        const detailAreaId = 'expertiseDetailArea';
 
-        container.innerHTML = filterHtml + listHtml + paginationHtml + `<div id="${detailAreaId}"></div>`;
+        container.innerHTML = filterHtml + listHtml + paginationHtml;
 
         // Pre-fill filter values from state
         const domainSel = container.querySelector('#expertiseDomainFilter');
@@ -378,11 +389,16 @@ async function _renderRecordsTab(container) {
             item.addEventListener('click', async () => {
                 const recordId = item.dataset.recordId;
                 if (!recordId) return;
+                if (_state.selectedRecordId === recordId) {
+                    _state.selectedRecordId = null;
+                    item.classList.remove('selected');
+                    _removeInlineRecordDetail(container);
+                    return;
+                }
                 _state.selectedRecordId = recordId;
                 container.querySelectorAll('.expertise-record-item').forEach(i => i.classList.remove('selected'));
                 item.classList.add('selected');
-                const detailArea = container.querySelector(`#${detailAreaId}`);
-                if (!detailArea) return;
+                const detailArea = _openInlineRecordDetail(container, item);
                 detailArea.innerHTML = '<div class="expertise-loading">Loading record...</div>';
                 try {
                     const [record, lineage] = await Promise.all([
@@ -391,11 +407,12 @@ async function _renderRecordsTab(container) {
                     ]);
                     detailArea.innerHTML = _renderRecordDetail(record, lineage);
                     detailArea.querySelector('#expertiseDetailClose')?.addEventListener('click', () => {
+                        _removeInlineRecordDetail(container);
                         detailArea.innerHTML = '';
                         _state.selectedRecordId = null;
                         item.classList.remove('selected');
                     });
-                    detailArea.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                 } catch (err) {
                     detailArea.innerHTML = `<div class="expertise-error">${_escapeHtml(err.message)}</div>`;
                 }

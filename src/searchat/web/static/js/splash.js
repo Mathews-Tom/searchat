@@ -36,6 +36,12 @@ let _warmupUIActive = false;
 const WARMUP_MAX_DURATION_MS = 120_000; // 2 minutes
 const SIDEBAR_POLL_MAX_FAILURES = 20;   // 10 seconds at 500ms
 
+function areCriticalComponentsReady(status) {
+    return CRITICAL_COMPONENTS.every(
+        name => status?.components?.[name] === 'ready'
+    );
+}
+
 /**
  * Check if user has seen splash before
  */
@@ -147,8 +153,17 @@ export async function checkAndShowSplash() {
 
         const serverStartedAt = status.server_started_at || status.warmup_started_at;
         _currentServerStartedAt = serverStartedAt || null;
+        const criticalReady = areCriticalComponentsReady(status);
 
-        // Show splash once per server start (requires manual dismissal).
+        // If the critical components are already ready, skip the blocking
+        // splash entirely and remember that this server start is already usable.
+        if (criticalReady) {
+            markSplashDismissedForServer(_currentServerStartedAt);
+            setWarmupUI(false);
+            return;
+        }
+
+        // Show splash once per server start when warmup is still in progress.
         if (hasDismissedSplashForServer(_currentServerStartedAt)) {
             return;
         }
@@ -361,9 +376,7 @@ function pollWarmupStatus() {
             // Update progress display
             updateProgress(status);
 
-            const criticalReady = CRITICAL_COMPONENTS.every(
-                name => status.components[name] === 'ready'
-            );
+            const criticalReady = areCriticalComponentsReady(status);
 
             // Once ready, stop polling to reduce overhead. Overlay stays until user dismisses.
             if (criticalReady && pollInterval) {
@@ -389,9 +402,7 @@ async function dismissSplash() {
         const response = await fetch('/api/status');
         if (!response.ok) throw new Error(`Status API returned ${response.status}`);
         const status = await response.json();
-        criticalReady = CRITICAL_COMPONENTS.every(
-            name => status.components[name] === 'ready'
-        );
+        criticalReady = areCriticalComponentsReady(status);
     } catch (err) {
         console.warn('dismissSplash: status check failed, assuming not ready', err);
     }
@@ -439,9 +450,7 @@ function showSidebarWarmupIndicator() {
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const status = await response.json();
 
-            const ready = CRITICAL_COMPONENTS.every(
-                name => status.components[name] === 'ready'
-            );
+            const ready = areCriticalComponentsReady(status);
             consecutiveFailures = 0;
 
             if (ready) {
