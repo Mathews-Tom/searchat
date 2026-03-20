@@ -11,7 +11,7 @@ pip install "searchat[mcp]"
 ## Run the MCP server
 
 ```bash
-searchat-mcp
+searchat mcp
 ```
 
 The MCP server uses stdio. It reads your Searchat config (`~/.searchat/config/settings.toml`) and defaults to the shared dataset directory (`~/.searchat/`).
@@ -25,6 +25,19 @@ Edit `~/.config/claude/claude_desktop_config.json`:
   "mcpServers": {
     "searchat": {
       "command": "searchat-mcp"
+    }
+  }
+}
+```
+
+If you prefer invoking through the root CLI, the equivalent command is:
+
+```json
+{
+  "mcpServers": {
+    "searchat": {
+      "command": "searchat",
+      "args": ["mcp"]
     }
   }
 }
