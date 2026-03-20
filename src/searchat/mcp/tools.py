@@ -8,19 +8,28 @@ from searchat.config import Config, PathResolver
 from searchat.config.constants import VALID_TOOL_NAMES, RAG_SYSTEM_PROMPT
 from searchat.contracts.errors import (
     conversation_not_found_message,
+    invalid_agent_config_format_message,
     invalid_model_provider_message,
+    invalid_mcp_expertise_severity_message,
+    invalid_mcp_expertise_type_message,
     invalid_mcp_mode_message,
     invalid_mcp_tool_message,
     mcp_offset_message,
+    mcp_prime_max_tokens_message,
     mcp_search_limit_message,
     mcp_similarity_limit_message,
     no_embeddings_for_conversation_message,
     retrieval_capability_inspection_failed_message,
 )
 from searchat.mcp.contracts import (
+    serialize_agent_config_payload,
     serialize_conversation_payload,
     serialize_history_answer_payload,
+    serialize_expertise_search_payload,
+    serialize_patterns_payload,
+    serialize_prime_expertise_payload,
     serialize_projects_payload,
+    serialize_record_expertise_payload,
     serialize_search_payload,
     serialize_similar_conversation,
     serialize_similar_conversations_payload,
@@ -403,25 +412,7 @@ def extract_patterns(
         retrieval_service=engine,
     )
 
-    return _json_dumps({
-        "patterns": [
-            {
-                "name": p.name,
-                "description": p.description,
-                "confidence": p.confidence,
-                "evidence": [
-                    {
-                        "conversation_id": e.conversation_id,
-                        "date": e.date,
-                        "snippet": e.snippet,
-                    }
-                    for e in p.evidence
-                ],
-            }
-            for p in patterns
-        ],
-        "total": len(patterns),
-    })
+    return _json_dumps(serialize_patterns_payload(patterns))
 
 
 def prime_expertise(
@@ -441,7 +432,7 @@ def prime_expertise(
     from searchat.expertise.store import ExpertiseStore
 
     if max_tokens < 100 or max_tokens > 32000:
-        raise ValueError("max_tokens must be between 100 and 32000")
+        raise ValueError(mcp_prime_max_tokens_message())
 
     dataset_dir = resolve_dataset(search_dir)
     config = Config.load()
@@ -464,7 +455,7 @@ def prime_expertise(
         contradiction_ids=getattr(prioritizer, "_contradiction_ids", None),
         qualifying_notes=getattr(prioritizer, "_qualifying_notes", None),
     )
-    return _json_dumps(payload)
+    return _json_dumps(serialize_prime_expertise_payload(payload))
 
 
 def record_expertise(
@@ -488,7 +479,9 @@ def record_expertise(
     try:
         record_type = ExpertiseType(type)
     except ValueError:
-        raise ValueError(f"Invalid type: {type!r}. Valid: {[t.value for t in ExpertiseType]}")
+        raise ValueError(
+            invalid_mcp_expertise_type_message(type, [item.value for item in ExpertiseType])
+        )
 
     severity_val = None
     if severity is not None:
@@ -496,7 +489,10 @@ def record_expertise(
             severity_val = ExpertiseSeverity(severity)
         except ValueError:
             raise ValueError(
-                f"Invalid severity: {severity!r}. Valid: {[s.value for s in ExpertiseSeverity]}"
+                invalid_mcp_expertise_severity_message(
+                    severity,
+                    [item.value for item in ExpertiseSeverity],
+                )
             )
 
     record = ExpertiseRecord(
@@ -513,16 +509,18 @@ def record_expertise(
     store = ExpertiseStore(dataset_dir)
     record_id = store.insert(record)
 
-    return _json_dumps({
-        "id": record_id,
-        "action": "created",
-        "type": record_type.value,
-        "domain": domain,
-        "content": content,
-        "project": project,
-        "severity": severity_val.value if severity_val else None,
-        "created_at": record.created_at,
-    })
+    return _json_dumps(
+        serialize_record_expertise_payload(
+            record_id=record_id,
+            action="created",
+            record_type=record_type.value,
+            domain=domain,
+            content=content,
+            project=project,
+            severity=severity_val.value if severity_val else None,
+            created_at=record.created_at,
+        )
+    )
 
 
 def search_expertise(
@@ -541,14 +539,16 @@ def search_expertise(
     from searchat.expertise.store import ExpertiseStore
 
     if limit < 1 or limit > 100:
-        raise ValueError("limit must be between 1 and 100")
+        raise ValueError(mcp_search_limit_message())
 
     type_filter = None
     if type is not None:
         try:
             type_filter = ExpertiseType(type)
         except ValueError:
-            raise ValueError(f"Invalid type: {type!r}. Valid: {[t.value for t in ExpertiseType]}")
+            raise ValueError(
+                invalid_mcp_expertise_type_message(type, [item.value for item in ExpertiseType])
+            )
 
     dataset_dir = resolve_dataset(search_dir)
     store = ExpertiseStore(dataset_dir)
@@ -562,34 +562,14 @@ def search_expertise(
     )
     records = store.query(q)
 
-    return _json_dumps({
-        "results": [
-            {
-                "id": r.id,
-                "type": r.type.value,
-                "domain": r.domain,
-                "content": r.content,
-                "project": r.project,
-                "confidence": r.confidence,
-                "severity": r.severity.value if r.severity else None,
-                "tags": r.tags,
-                "source_conversation_id": r.source_conversation_id,
-                "source_agent": r.source_agent,
-                "name": r.name,
-                "rationale": r.rationale,
-                "resolution": r.resolution,
-                "created_at": r.created_at,
-                "last_validated": r.last_validated,
-                "validation_count": r.validation_count,
-                "is_active": r.is_active,
-            }
-            for r in records
-        ],
-        "total": len(records),
-        "query": query,
-        "domain": domain,
-        "type": type,
-    })
+    return _json_dumps(
+        serialize_expertise_search_payload(
+            records=records,
+            query=query,
+            domain=domain,
+            type_filter=type,
+        )
+    )
 
 
 def generate_agent_config(
@@ -609,7 +589,7 @@ def generate_agent_config(
     from searchat.config.constants import AGENT_CONFIG_TEMPLATES
 
     if format not in ("claude.md", "copilot-instructions.md", "cursorrules"):
-        raise ValueError("format must be one of: claude.md, copilot-instructions.md, cursorrules")
+        raise ValueError(invalid_agent_config_format_message())
 
     provider_value = parse_generation_provider(model_provider)
     dataset_dir = resolve_dataset(search_dir)
@@ -647,8 +627,10 @@ def generate_agent_config(
     template = AGENT_CONFIG_TEMPLATES.get(format, AGENT_CONFIG_TEMPLATES["claude.md"])
     content = template.format(project_name=project_name, patterns=patterns_text)
 
-    return _json_dumps({
-        "format": format,
-        "content": content,
-        "pattern_count": len(patterns),
-    })
+    return _json_dumps(
+        serialize_agent_config_payload(
+            format=format,
+            content=content,
+            pattern_count=len(patterns),
+        )
+    )

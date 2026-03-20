@@ -117,3 +117,109 @@ def serialize_history_answer_payload(
     if sources is not None:
         payload["sources"] = [serialize_history_source(result) for result in sources]
     return payload
+
+
+def serialize_patterns_payload(patterns: list[Any]) -> dict[str, Any]:
+    return {
+        "patterns": [
+            {
+                "name": pattern.name,
+                "description": pattern.description,
+                "confidence": pattern.confidence,
+                "evidence": [
+                    {
+                        "conversation_id": evidence.conversation_id,
+                        "date": evidence.date,
+                        "snippet": evidence.snippet,
+                    }
+                    for evidence in pattern.evidence
+                ],
+            }
+            for pattern in patterns
+        ],
+        "total": len(patterns),
+    }
+
+
+def serialize_prime_expertise_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "expertise": payload["expertise"],
+        "token_count": payload["token_count"],
+        "domains_covered": payload["domains_covered"],
+        "records_total": payload["records_total"],
+        "records_included": payload["records_included"],
+        "records_filtered_inactive": payload["records_filtered_inactive"],
+    }
+
+
+def serialize_record_expertise_payload(
+    *,
+    record_id: str,
+    action: str,
+    record_type: str,
+    domain: str,
+    content: str,
+    project: str | None,
+    severity: str | None,
+    created_at: Any,
+) -> dict[str, Any]:
+    return {
+        "id": record_id,
+        "action": action,
+        "type": record_type,
+        "domain": domain,
+        "content": content,
+        "project": project,
+        "severity": severity,
+        "created_at": created_at,
+    }
+
+
+def serialize_expertise_search_payload(
+    *,
+    records: list[Any],
+    query: str,
+    domain: str | None,
+    type_filter: str | None,
+) -> dict[str, Any]:
+    return {
+        "results": [
+            {
+                "id": record.id,
+                "type": record.type.value,
+                "domain": record.domain,
+                "content": record.content,
+                "project": record.project,
+                "confidence": record.confidence,
+                "severity": record.severity.value if record.severity else None,
+                "tags": record.tags,
+                "source_conversation_id": record.source_conversation_id,
+                "source_agent": record.source_agent,
+                "name": record.name,
+                "rationale": record.rationale,
+                "resolution": record.resolution,
+                "created_at": record.created_at,
+                "last_validated": record.last_validated,
+                "validation_count": record.validation_count,
+                "is_active": record.is_active,
+            }
+            for record in records
+        ],
+        "total": len(records),
+        "query": query,
+        "domain": domain,
+        "type": type_filter,
+    }
+
+
+def serialize_agent_config_payload(
+    *,
+    format: str,
+    content: str,
+    pattern_count: int,
+) -> dict[str, Any]:
+    return {
+        "format": format,
+        "content": content,
+        "pattern_count": pattern_count,
+    }

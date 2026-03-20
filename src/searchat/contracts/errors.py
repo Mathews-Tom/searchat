@@ -434,6 +434,22 @@ def mcp_offset_message() -> str:
     return "offset must be >= 0"
 
 
+def mcp_prime_max_tokens_message() -> str:
+    return "max_tokens must be between 100 and 32000"
+
+
+def invalid_mcp_expertise_type_message(value: object, valid: list[str]) -> str:
+    return f"Invalid type: {value!r}. Valid: {valid}"
+
+
+def invalid_mcp_expertise_severity_message(value: object, valid: list[str]) -> str:
+    return f"Invalid severity: {value!r}. Valid: {valid}"
+
+
+def invalid_agent_config_format_message() -> str:
+    return "format must be one of: claude.md, copilot-instructions.md, cursorrules"
+
+
 def invalid_expertise_type_message(value: str, valid: str) -> str:
     return f"Invalid type '{value}'. Must be one of: {valid}"
 
