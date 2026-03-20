@@ -117,3 +117,15 @@ def test_index_page_saved_queries_panel_uses_js_module_contract() -> None:
     assert 'id="savedQueriesForm"' in html
     assert 'hx-get="/fragments/saved-queries-list"' not in html
     assert 'hx-post="/fragments/saved-query"' not in html
+
+
+def test_index_page_dataset_selector_uses_dataset_module_contract() -> None:
+    client = TestClient(app)
+    resp = client.get("/")
+    assert resp.status_code == 200
+
+    html = resp.text
+    assert 'id="datasetSelect"' in html
+    assert 'id="datasetBanner"' in html
+    assert 'hx-get="/fragments/dataset-options"' not in html
+    assert 'x-model="$store.dataset.snapshotName"' not in html
