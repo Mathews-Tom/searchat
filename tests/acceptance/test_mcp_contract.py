@@ -15,6 +15,9 @@ from searchat.mcp.tools import (
     find_similar_conversations,
     generate_agent_config,
     get_conversation,
+    prime_expertise,
+    record_expertise,
+    search_expertise,
 )
 from searchat.models import SearchMode, SearchResult, SearchResults
 from searchat.services.llm_service import LLMServiceError
@@ -585,3 +588,52 @@ def test_generate_agent_config_fails_closed_from_capability_snapshot(tmp_path: P
             match=r"^Embedding model unavailable: all-MiniLM-L6-v2$",
         ):
             generate_agent_config(format="claude.md", search_dir=str(tmp_path))
+
+
+def test_mcp_expertise_and_agent_config_contracts_are_stable(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match=r"^max_tokens must be between 100 and 32000$"):
+        prime_expertise(max_tokens=50, search_dir=str(tmp_path))
+
+    with pytest.raises(
+        ValueError,
+        match=r"^format must be one of: claude.md, copilot-instructions.md, cursorrules$",
+    ):
+        generate_agent_config(format="invalid.txt", search_dir=str(tmp_path))
+
+    with pytest.raises(ValueError, match=r"^Invalid type: 'invalid'\. Valid: \["):
+        record_expertise(
+            type="invalid",
+            domain="testing",
+            content="bad",
+            search_dir=str(tmp_path),
+        )
+
+    with pytest.raises(ValueError, match=r"^limit must be between 1 and 100$"):
+        search_expertise(query="testing", limit=0, search_dir=str(tmp_path))
+
+    config = SimpleNamespace(
+        llm=SimpleNamespace(
+            default_provider="ollama",
+            openai_model="gpt-4.1-mini",
+            ollama_model="llama3",
+        )
+    )
+    pattern = SimpleNamespace(
+        name="Test Pattern",
+        description="A stable MCP contract pattern.",
+        confidence=0.8,
+        evidence=[SimpleNamespace(date="2026-01-01", snippet="example", conversation_id="conv-1")],
+    )
+
+    with (
+        patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+        patch("searchat.mcp.tools.build_services", return_value=(config, MagicMock(), MagicMock())),
+        patch("searchat.services.pattern_mining.extract_patterns", return_value=[pattern]),
+    ):
+        payload = json.loads(generate_agent_config(format="claude.md", search_dir=str(tmp_path)))
+
+    assert payload == {
+        "format": "claude.md",
+        "content": payload["content"],
+        "pattern_count": 1,
+    }

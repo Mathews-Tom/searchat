@@ -462,7 +462,10 @@ class TestGenerateAgentConfig:
     def test_invalid_format_raises(self):
         from searchat.mcp.tools import generate_agent_config
 
-        with pytest.raises(ValueError, match="format must be"):
+        with pytest.raises(
+            ValueError,
+            match="^format must be one of: claude.md, copilot-instructions.md, cursorrules$",
+        ):
             generate_agent_config(format="invalid.txt")
 
     def test_invalid_provider_raises(self, tmp_path: Path):

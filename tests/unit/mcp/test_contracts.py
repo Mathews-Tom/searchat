@@ -3,9 +3,15 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
+from searchat.expertise.models import ExpertiseRecord, ExpertiseType
 from searchat.mcp.contracts import (
+    serialize_agent_config_payload,
     serialize_conversation_payload,
+    serialize_expertise_search_payload,
     serialize_history_answer_payload,
+    serialize_patterns_payload,
+    serialize_prime_expertise_payload,
+    serialize_record_expertise_payload,
     serialize_search_payload,
     serialize_similar_conversation,
     serialize_similar_conversations_payload,
@@ -28,6 +34,19 @@ def _search_result() -> SearchResult:
         snippet="Investigate the failing test first.",
         message_start_index=1,
         message_end_index=3,
+    )
+
+
+def _expertise_record() -> ExpertiseRecord:
+    now = datetime(2026, 3, 16, tzinfo=timezone.utc)
+    return ExpertiseRecord(
+        type=ExpertiseType.CONVENTION,
+        domain="python",
+        content="Use explicit test fixtures.",
+        project="project-a",
+        confidence=0.9,
+        created_at=now,
+        last_validated=now,
     )
 
 
@@ -167,3 +186,115 @@ def test_serialize_history_answer_payload_preserves_source_shape() -> None:
         "message_end_index",
         "tool",
     ]
+
+
+def test_serialize_patterns_payload_preserves_pattern_shape() -> None:
+    pattern = SimpleNamespace(
+        name="Testing conventions",
+        description="Start from failing tests.",
+        confidence=0.8,
+        evidence=[
+            SimpleNamespace(
+                conversation_id="conv-123",
+                date="2026-03-16T00:00:00+00:00",
+                snippet="Write the failing test first.",
+            )
+        ],
+    )
+
+    payload = serialize_patterns_payload([pattern])
+
+    assert list(payload) == ["patterns", "total"]
+    assert list(payload["patterns"][0]) == ["name", "description", "confidence", "evidence"]
+    assert list(payload["patterns"][0]["evidence"][0]) == ["conversation_id", "date", "snippet"]
+
+
+def test_serialize_prime_expertise_payload_preserves_top_level_shape() -> None:
+    payload = serialize_prime_expertise_payload(
+        {
+            "expertise": [{"id": "exp-1"}],
+            "token_count": 120,
+            "domains_covered": ["python"],
+            "records_total": 2,
+            "records_included": 1,
+            "records_filtered_inactive": 1,
+        }
+    )
+
+    assert list(payload) == [
+        "expertise",
+        "token_count",
+        "domains_covered",
+        "records_total",
+        "records_included",
+        "records_filtered_inactive",
+    ]
+
+
+def test_serialize_record_expertise_payload_preserves_stable_keys() -> None:
+    now = datetime(2026, 3, 16, tzinfo=timezone.utc)
+    payload = serialize_record_expertise_payload(
+        record_id="exp-1",
+        action="created",
+        record_type="convention",
+        domain="python",
+        content="Prefer pytest fixtures.",
+        project="project-a",
+        severity=None,
+        created_at=now,
+    )
+
+    assert list(payload) == [
+        "id",
+        "action",
+        "type",
+        "domain",
+        "content",
+        "project",
+        "severity",
+        "created_at",
+    ]
+
+
+def test_serialize_expertise_search_payload_preserves_result_shape() -> None:
+    payload = serialize_expertise_search_payload(
+        records=[_expertise_record()],
+        query="fixtures",
+        domain="python",
+        type_filter="convention",
+    )
+
+    assert list(payload) == ["results", "total", "query", "domain", "type"]
+    assert list(payload["results"][0]) == [
+        "id",
+        "type",
+        "domain",
+        "content",
+        "project",
+        "confidence",
+        "severity",
+        "tags",
+        "source_conversation_id",
+        "source_agent",
+        "name",
+        "rationale",
+        "resolution",
+        "created_at",
+        "last_validated",
+        "validation_count",
+        "is_active",
+    ]
+
+
+def test_serialize_agent_config_payload_preserves_stable_keys() -> None:
+    payload = serialize_agent_config_payload(
+        format="claude.md",
+        content="# CLAUDE.md",
+        pattern_count=3,
+    )
+
+    assert payload == {
+        "format": "claude.md",
+        "content": "# CLAUDE.md",
+        "pattern_count": 3,
+    }
