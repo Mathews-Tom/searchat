@@ -6,12 +6,15 @@ Semantic search and RAG-powered Q&A for AI coding agent conversations. Find past
 
 This repository is inspired by and built on the original [Process-Point-Technologies-Corporation/searchat](https://github.com/Process-Point-Technologies-Corporation/searchat).
 
+The original repository is also accompanied by and stems from the paper [Structured Distillation for Personalized Agent Memory: 11× Token Reduction with Retrieval Preservation](https://arxiv.org/html/2603.13017) (arXiv:2603.13017, March 13, 2026).
+
 Credit to the original repository and its authors for the foundation:
 
 - local-first semantic search for AI coding conversations
 - append-only indexing and live file watching
 - the initial FastAPI + web UI shape
 - the original Claude Code and Mistral Vibe support
+- the structured distillation and personalized agent memory framing described in the paper
 
 This fork has since expanded substantially beyond that baseline. It now includes:
 
