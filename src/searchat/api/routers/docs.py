@@ -42,12 +42,9 @@ async def create_docs_summary(request: DocsSummaryRequest):
     if not config.export.enable_tech_docs:
         raise HTTPException(status_code=404, detail=tech_docs_disabled_message())
 
-    not_ready = check_semantic_readiness(retrieval_service=deps.get_search_engine)
-    if not_ready is not None:
-        return not_ready
-    search_engine = deps.get_search_engine()
+    parsed_sections: list[tuple[DocSectionRequest, SearchMode, Any]] = []
+    requires_semantic = False
 
-    rendered_sections: list[dict[str, Any]] = []
     for section in request.sections:
         filters = section.filters or {}
         project = filters.get("project") if isinstance(filters.get("project"), str) else None
@@ -71,23 +68,39 @@ async def create_docs_summary(request: DocsSummaryRequest):
         except Exception:
             mode = SearchMode.HYBRID
 
-        results = search_engine.search(section.query, mode=mode, filters=search_filters)
-        rendered_sections.append(
-            {
-                "name": section.name,
-                "query": section.query,
-                "results": results.results[: section.max_results],
-            }
-        )
+        if mode != SearchMode.KEYWORD:
+            requires_semantic = True
 
-    doc = generate_doc(format=request.format, title=request.title, sections=rendered_sections)
-    return serialize_docs_summary_payload(
-        title=request.title,
-        format=request.format,
-        generated_at=doc.generated_at,
-        content=doc.content,
-        citations=[c.__dict__ for c in doc.citations],
-    )
+        parsed_sections.append((section, mode, search_filters))
+
+    if requires_semantic:
+        not_ready = check_semantic_readiness(retrieval_service=deps.get_search_engine)
+        if not_ready is not None:
+            return not_ready
+
+    try:
+        search_engine = deps.get_search_engine()
+        rendered_sections: list[dict[str, Any]] = []
+        for section, mode, search_filters in parsed_sections:
+            results = search_engine.search(section.query, mode=mode, filters=search_filters)
+            rendered_sections.append(
+                {
+                    "name": section.name,
+                    "query": section.query,
+                    "results": results.results[: section.max_results],
+                }
+            )
+
+        doc = generate_doc(format=request.format, title=request.title, sections=rendered_sections)
+        return serialize_docs_summary_payload(
+            title=request.title,
+            format=request.format,
+            generated_at=doc.generated_at,
+            content=doc.content,
+            citations=[c.__dict__ for c in doc.citations],
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from exc
 
 
 class AgentConfigRequest(BaseModel):
