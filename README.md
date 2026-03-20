@@ -2,7 +2,25 @@
 
 Semantic search and RAG-powered Q&A for AI coding agent conversations. Find past solutions by meaning, not just keywords, and ask questions about your conversation history.
 
-**Fork of:** [Process-Point-Technologies-Corporation/searchat](https://github.com/Process-Point-Technologies-Corporation/searchat)
+## Project Lineage
+
+This repository is inspired by and built on the original [Process-Point-Technologies-Corporation/searchat](https://github.com/Process-Point-Technologies-Corporation/searchat).
+
+Credit to the original repository and its authors for the foundation:
+
+- local-first semantic search for AI coding conversations
+- append-only indexing and live file watching
+- the initial FastAPI + web UI shape
+- the original Claude Code and Mistral Vibe support
+
+This fork has since expanded substantially beyond that baseline. It now includes:
+
+- 8 agent connectors across local coding tools and chat clients
+- RAG chat, session chat, MCP integration, and embedded local LLM support
+- an expertise layer for extraction, validation, priming, and onboarding workflows
+- an L3 knowledge graph for lineage, contradiction detection, and resolution
+- bookmarks, saved queries, dashboards, exports, backups, snapshots, and analytics
+- a materially larger API, CLI, frontend, documentation, and test surface
 
 ## Supported Agents
 
@@ -755,9 +773,10 @@ export OLLAMA_BASE_URL=http://localhost:11434
 
 ## Fork Enhancements
 
-This fork adds significant new features beyond the original:
+Compared with the original upstream repository, this fork adds significant new capabilities:
 
 - **RAG Chat** - AI-powered Q&A over conversation history
+- **Session Chat** - Multi-turn RAG with session persistence
 - **Bookmarks System** - Save and organize favorite conversations
 - **Search Analytics** - Track and analyze search patterns
 - **Conversation Similarity** - Discover related conversations
@@ -771,16 +790,20 @@ This fork adds significant new features beyond the original:
 - **Autocomplete** - Smart search suggestions
 - **Search History** - Persistent search history
 - **Keyboard Shortcuts** - Power user shortcuts
-- **OpenCode Support** - Added third agent support
-- **Tool Filtering** - Filter by specific agent
+- **Expanded Connector Coverage** - Support for OpenCode, Codex, Gemini CLI, Continue, Cursor, and Aider
+- **Tool Filtering** - Filter by specific agent across the broader connector set
+- **MCP Server** - Query local history from MCP clients
+- **Embedded LLM Support** - Run local GGUF-backed RAG without a hosted provider
+- **Expertise Store** - Extract, validate, search, and prime reusable engineering knowledge
+- **Knowledge Graph** - Track lineage, contradictions, and record relationships
+- **Pattern Mining** - Extract recurring patterns via LLM workflows
+- **Agent Config Export** - Generate agent config from patterns and expertise
+- **DuckDB FTS** - Replaced BM25 with DuckDB full-text search
+- **Cross-Encoder Re-ranking** - Optional result re-ranking
+- **Query Synonyms** - Automatic synonym expansion
+- **Operational Health Tooling** - Health endpoints, validation commands, CI checks, and release validation flows
 - **Modern Typing** - Python 3.12 type hints throughout
-- **Session Chat** — Multi-turn RAG with session persistence
-- **Pattern Mining** — Extract recurring patterns via LLM
-- **Agent Config Export** — Generate agent config from patterns
-- **DuckDB FTS** — Replaced BM25 with DuckDB full-text search
-- **Cross-Encoder Re-ranking** — Optional result re-ranking
-- **Query Synonyms** — Automatic synonym expansion
-- **CORS Hardening** — Configurable CORS origins (default localhost)
+- **CORS Hardening** - Configurable CORS origins (default localhost)
 
 See `docs/features.md` for complete feature documentation.
 
