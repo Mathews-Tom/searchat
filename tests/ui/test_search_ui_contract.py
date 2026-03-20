@@ -71,3 +71,33 @@ def test_template_filter_surface_no_longer_uses_fragment_backed_project_controls
     assert 'data-for="project"' in content
     assert 'hx-get="/fragments/project-dropdown"' not in content
     assert 'hx-get="/fragments/project-summary"' not in content
+
+
+def test_index_page_routes_secondary_views_and_actions_through_js_modules() -> None:
+    client = TestClient(app)
+    resp = client.get("/")
+    assert resp.status_code == 200
+
+    html = resp.text
+    for action in [
+        "showBookmarks",
+        "showAnalytics",
+        "showDashboards",
+        "showExpertise",
+        "showContradictions",
+        "indexMissing",
+        "createBackup",
+        "showBackups",
+        "shutdownServer",
+    ]:
+        assert f'data-action="{action}"' in html
+
+    assert 'hx-get="/fragments/bookmarks-list"' not in html
+    assert 'hx-get="/fragments/analytics-dashboard"' not in html
+    assert 'hx-get="/fragments/dashboards-view"' not in html
+    assert 'hx-get="/fragments/expertise-view"' not in html
+    assert 'hx-get="/fragments/contradictions-view"' not in html
+    assert 'hx-post="/fragments/index-missing"' not in html
+    assert 'hx-post="/fragments/backup-create"' not in html
+    assert 'hx-get="/fragments/backup-list"' not in html
+    assert 'hx-post="/fragments/shutdown"' not in html
