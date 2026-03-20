@@ -10,6 +10,8 @@ from datetime import datetime, timezone
 from threading import Lock
 from typing import Any, Literal
 
+from searchat.api.contracts import serialize_readiness_payload
+
 
 ComponentState = Literal["idle", "loading", "ready", "error"]
 WatcherState = Literal["disabled", "starting", "running", "error"]
@@ -88,22 +90,22 @@ def get_readiness() -> Readiness:
 
 def warming_payload(*, retry_after_ms: int = 500) -> dict[str, Any]:
     snap = _READINESS.snapshot()
-    return {
-        "status": "warming",
-        "retry_after_ms": retry_after_ms,
-        "warmup_started_at": snap.warmup_started_at,
-        "components": snap.components,
-        "watcher": snap.watcher,
-        "errors": snap.errors,
-    }
+    return serialize_readiness_payload(
+        status="warming",
+        retry_after_ms=retry_after_ms,
+        warmup_started_at=snap.warmup_started_at,
+        components=snap.components,
+        watcher=snap.watcher,
+        errors=snap.errors,
+    )
 
 
 def error_payload() -> dict[str, Any]:
     snap = _READINESS.snapshot()
-    return {
-        "status": "error",
-        "warmup_started_at": snap.warmup_started_at,
-        "components": snap.components,
-        "watcher": snap.watcher,
-        "errors": snap.errors,
-    }
+    return serialize_readiness_payload(
+        status="error",
+        warmup_started_at=snap.warmup_started_at,
+        components=snap.components,
+        watcher=snap.watcher,
+        errors=snap.errors,
+    )

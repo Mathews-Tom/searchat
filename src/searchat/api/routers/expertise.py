@@ -7,7 +7,16 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from searchat.api.contracts import serialize_content_payload, serialize_deleted_resource_payload
 from searchat.api.dependencies import get_expertise_store, get_config
+from searchat.contracts.errors import (
+    expertise_domain_not_found_message,
+    expertise_record_not_found_after_update_message,
+    expertise_record_not_found_after_validation_message,
+    expertise_record_not_found_message,
+    invalid_expertise_severity_message,
+    invalid_expertise_type_message,
+)
 from searchat.expertise.models import (
     ExpertiseQuery,
     ExpertiseRecord,
@@ -193,7 +202,7 @@ def _parse_type(value: str) -> ExpertiseType:
         return ExpertiseType(value)
     except ValueError:
         valid = ", ".join(t.value for t in ExpertiseType)
-        raise HTTPException(422, f"Invalid type '{value}'. Must be one of: {valid}")
+        raise HTTPException(422, invalid_expertise_type_message(value, valid))
 
 
 def _parse_severity(value: str | None) -> ExpertiseSeverity | None:
@@ -203,7 +212,7 @@ def _parse_severity(value: str | None) -> ExpertiseSeverity | None:
         return ExpertiseSeverity(value)
     except ValueError:
         valid = ", ".join(s.value for s in ExpertiseSeverity)
-        raise HTTPException(422, f"Invalid severity '{value}'. Must be one of: {valid}")
+        raise HTTPException(422, invalid_expertise_severity_message(value, valid))
 
 
 # ---------------------------------------------------------------------------
@@ -410,9 +419,9 @@ def prime_expertise(
 
     formatter = PrimeFormatter()
     if format == "markdown":
-        return {"content": formatter.format_markdown(result, project=project)}
+        return serialize_content_payload(formatter.format_markdown(result, project=project))
     if format == "prompt":
-        return {"content": formatter.format_prompt(result, project=project)}
+        return serialize_content_payload(formatter.format_prompt(result, project=project))
     return formatter.format_json(result)
 
 
@@ -578,7 +587,7 @@ def patch_domain(name: str, body: DomainPatchRequest) -> DomainResponse:
     domains = store.list_domains()
     target = next((d for d in domains if d["name"] == effective_name), None)
     if target is None:
-        raise HTTPException(404, f"Domain not found: {effective_name}")
+        raise HTTPException(404, expertise_domain_not_found_message(effective_name))
     return DomainResponse(
         name=target["name"],
         description=target.get("description"),
@@ -598,7 +607,7 @@ def get_expertise(record_id: str) -> ExpertiseResponse:
     store = get_expertise_store()
     record = store.get(record_id)
     if record is None:
-        raise HTTPException(404, f"Record not found: {record_id}")
+        raise HTTPException(404, expertise_record_not_found_message(record_id))
     return _record_to_response(record)
 
 
@@ -608,7 +617,7 @@ def update_expertise(record_id: str, body: ExpertiseUpdateRequest) -> ExpertiseR
     store = get_expertise_store()
     existing = store.get(record_id)
     if existing is None:
-        raise HTTPException(404, f"Record not found: {record_id}")
+        raise HTTPException(404, expertise_record_not_found_message(record_id))
 
     updates: dict[str, Any] = {}
     if body.content is not None:
@@ -639,7 +648,7 @@ def update_expertise(record_id: str, body: ExpertiseUpdateRequest) -> ExpertiseR
 
     updated = store.get(record_id)
     if updated is None:
-        raise HTTPException(404, f"Record not found after update: {record_id}")
+        raise HTTPException(404, expertise_record_not_found_after_update_message(record_id))
     return _record_to_response(updated)
 
 
@@ -649,9 +658,9 @@ def delete_expertise(record_id: str) -> dict[str, str]:
     store = get_expertise_store()
     existing = store.get(record_id)
     if existing is None:
-        raise HTTPException(404, f"Record not found: {record_id}")
+        raise HTTPException(404, expertise_record_not_found_message(record_id))
     store.soft_delete(record_id)
-    return {"status": "deleted", "id": record_id}
+    return serialize_deleted_resource_payload(record_id)
 
 
 @router.post("/{record_id}/validate", response_model=ExpertiseResponse)
@@ -660,9 +669,9 @@ def validate_expertise(record_id: str) -> ExpertiseResponse:
     store = get_expertise_store()
     existing = store.get(record_id)
     if existing is None:
-        raise HTTPException(404, f"Record not found: {record_id}")
+        raise HTTPException(404, expertise_record_not_found_message(record_id))
     store.validate_record(record_id)
     updated = store.get(record_id)
     if updated is None:
-        raise HTTPException(404, f"Record not found after validation: {record_id}")
+        raise HTTPException(404, expertise_record_not_found_after_validation_message(record_id))
     return _record_to_response(updated)

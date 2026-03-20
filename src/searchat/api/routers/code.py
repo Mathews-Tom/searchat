@@ -7,6 +7,11 @@ from pydantic import BaseModel, Field
 
 from searchat.api.models import CodeSearchResponse
 from searchat.api.dataset_access import get_dataset_store
+from searchat.contracts.errors import (
+    code_symbol_index_missing_message,
+    internal_server_error_message,
+    pygments_required_message,
+)
 from searchat.api.utils import (
     ensure_code_index_has_symbol_columns,
     rows_to_code_results,
@@ -50,7 +55,7 @@ async def highlight_code(request: CodeHighlightRequest) -> CodeHighlightResponse
         from pygments.formatters import HtmlFormatter
         from pygments.lexers import TextLexer, get_lexer_by_name, guess_lexer
     except Exception as exc:
-        raise HTTPException(status_code=500, detail="Pygments is required for code highlighting") from exc
+        raise HTTPException(status_code=500, detail=pygments_required_message()) from exc
 
     formatter = HtmlFormatter(nowrap=True)
     results: list[CodeHighlightResult] = []
@@ -97,10 +102,7 @@ async def get_conversation_code_symbols(
 
         code_dir = search_dir / "data" / "code"
         if not code_dir.exists() or not any(code_dir.glob("*.parquet")):
-            raise HTTPException(
-                status_code=503,
-                detail="Code index not found. Rebuild the index to enable code symbol endpoints.",
-            )
+            raise HTTPException(status_code=503, detail=code_symbol_index_missing_message())
 
         parquet_glob = str(code_dir / "*.parquet")
         conn = dataset.store._connect()
@@ -131,7 +133,7 @@ async def get_conversation_code_symbols(
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from exc
 
 
 @router.get("/code/functions", response_model=CodeSearchResponse)
@@ -195,10 +197,7 @@ async def _search_code_symbol(
 
         code_dir = search_dir / "data" / "code"
         if not code_dir.exists() or not any(code_dir.glob("*.parquet")):
-            raise HTTPException(
-                status_code=503,
-                detail="Code index not found. Rebuild the index to enable code symbol endpoints.",
-            )
+            raise HTTPException(status_code=503, detail=code_symbol_index_missing_message())
 
         parquet_glob = str(code_dir / "*.parquet")
         conn = dataset.store._connect()
@@ -247,4 +246,4 @@ async def _search_code_symbol(
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from exc

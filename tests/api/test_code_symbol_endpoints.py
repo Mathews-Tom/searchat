@@ -126,3 +126,47 @@ def test_code_symbol_endpoints_return_503_when_no_code_index(client: TestClient,
 
     assert resp.status_code == 503
     assert resp2.status_code == 503
+    assert resp.json()["detail"] == "Code index not found. Rebuild the index to enable code symbol endpoints."
+    assert resp2.json()["detail"] == "Code index not found. Rebuild the index to enable code symbol endpoints."
+
+
+@pytest.mark.unit
+def test_conversation_code_symbols_returns_500_on_store_error(client: TestClient, tmp_path: Path) -> None:
+    search_dir = tmp_path / "search"
+    code_dir = search_dir / "data" / "code"
+    code_dir.mkdir(parents=True, exist_ok=True)
+    (code_dir / "dummy.parquet").write_text("x")
+
+    class BoomStore:
+        def _connect(self):
+            raise RuntimeError("boom")
+
+    with patch(
+        "searchat.api.routers.code.get_dataset_store",
+        return_value=SimpleNamespace(search_dir=search_dir, snapshot_name=None, store=BoomStore()),
+    ):
+        resp = client.get("/api/conversation/conv-1/code-symbols")
+
+    assert resp.status_code == 500
+    assert resp.json()["detail"] == "Internal server error"
+
+
+@pytest.mark.unit
+def test_code_functions_endpoint_returns_500_on_store_error(client: TestClient, tmp_path: Path) -> None:
+    search_dir = tmp_path / "search"
+    code_dir = search_dir / "data" / "code"
+    code_dir.mkdir(parents=True, exist_ok=True)
+    (code_dir / "dummy.parquet").write_text("x")
+
+    class BoomStore:
+        def _connect(self):
+            raise RuntimeError("boom")
+
+    with patch(
+        "searchat.api.routers.code.get_dataset_store",
+        return_value=SimpleNamespace(search_dir=search_dir, snapshot_name=None, store=BoomStore()),
+    ):
+        resp = client.get("/api/code/functions?name=greet")
+
+    assert resp.status_code == 500
+    assert resp.json()["detail"] == "Internal server error"

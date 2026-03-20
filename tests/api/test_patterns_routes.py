@@ -365,7 +365,7 @@ def test_extract_patterns_service_error(client):
             )
 
     assert resp.status_code == 500
-    assert "Pattern extraction failed" in resp.json()["detail"]
+    assert resp.json()["detail"] == "Internal server error"
 
 
 def test_extract_patterns_default_values(client, mock_patterns):

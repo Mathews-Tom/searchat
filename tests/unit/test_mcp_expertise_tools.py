@@ -91,13 +91,13 @@ class TestPrimeExpertise:
     def test_invalid_max_tokens_raises(self):
         from searchat.mcp.tools import prime_expertise
 
-        with pytest.raises(ValueError, match="max_tokens"):
+        with pytest.raises(ValueError, match="^max_tokens must be between 100 and 32000$"):
             prime_expertise(max_tokens=50)
 
     def test_max_tokens_too_large_raises(self):
         from searchat.mcp.tools import prime_expertise
 
-        with pytest.raises(ValueError, match="max_tokens"):
+        with pytest.raises(ValueError, match="^max_tokens must be between 100 and 32000$"):
             prime_expertise(max_tokens=99999)
 
     def test_with_domain_filter(self):
@@ -237,7 +237,7 @@ class TestRecordExpertise:
     def test_invalid_type_raises(self):
         from searchat.mcp.tools import record_expertise
 
-        with pytest.raises(ValueError, match="Invalid type"):
+        with pytest.raises(ValueError, match=r"^Invalid type: 'not_valid'\. Valid: \["):
             record_expertise(
                 type="not_valid",
                 domain="testing",
@@ -247,7 +247,7 @@ class TestRecordExpertise:
     def test_invalid_severity_raises(self):
         from searchat.mcp.tools import record_expertise
 
-        with pytest.raises(ValueError, match="Invalid severity"):
+        with pytest.raises(ValueError, match=r"^Invalid severity: 'ultra_critical'\. Valid: \["):
             record_expertise(
                 type="failure",
                 domain="testing",
@@ -394,16 +394,16 @@ class TestSearchExpertise:
     def test_invalid_type_raises(self):
         from searchat.mcp.tools import search_expertise
 
-        with pytest.raises(ValueError, match="Invalid type"):
+        with pytest.raises(ValueError, match=r"^Invalid type: 'not_valid'\. Valid: \["):
             search_expertise(query="test", type="not_valid")
 
     def test_limit_out_of_range_raises(self):
         from searchat.mcp.tools import search_expertise
 
-        with pytest.raises(ValueError, match="limit"):
+        with pytest.raises(ValueError, match="^limit must be between 1 and 100$"):
             search_expertise(query="test", limit=0)
 
-        with pytest.raises(ValueError, match="limit"):
+        with pytest.raises(ValueError, match="^limit must be between 1 and 100$"):
             search_expertise(query="test", limit=200)
 
     def test_limit_applied_to_query(self):

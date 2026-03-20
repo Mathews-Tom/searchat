@@ -12,6 +12,13 @@ from searchat.api.utils import (
     check_semantic_readiness,
 )
 from searchat.api.dependencies import get_config, get_search_engine
+from searchat.contracts.errors import (
+    chat_unavailable_message,
+    chat_validation_message,
+    chat_snapshot_disabled_message,
+    internal_server_error_message,
+    rag_chat_disabled_message,
+)
 from searchat.services.chat_service import generate_answer_stream, generate_rag_response
 from searchat.services.llm_service import LLMServiceError
 
@@ -25,7 +32,7 @@ async def chat(
     snapshot: str | None = Query(None, description="Backup snapshot name (read-only)"),
 ):
     if snapshot is not None:
-        raise HTTPException(status_code=403, detail="Chat is disabled in snapshot mode")
+        raise HTTPException(status_code=403, detail=chat_snapshot_disabled_message())
     provider = validate_provider(request.model_provider)
 
     extra = ["embedded_model"] if provider == "embedded" else None
@@ -45,11 +52,11 @@ async def chat(
             session_id=request.session_id,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=chat_validation_message(str(exc))) from exc
     except LLMServiceError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=503, detail=chat_unavailable_message(str(exc))) from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from exc
 
     return StreamingResponse(
         stream,
@@ -64,12 +71,12 @@ async def chat_rag(
     snapshot: str | None = Query(None, description="Backup snapshot name (read-only)"),
 ):
     if snapshot is not None:
-        raise HTTPException(status_code=403, detail="Chat is disabled in snapshot mode")
+        raise HTTPException(status_code=403, detail=chat_snapshot_disabled_message())
     provider = validate_provider(request.model_provider)
     config = get_config()
     chat_config = getattr(config, "chat", None)
     if getattr(chat_config, "enable_rag", True) is False:
-        raise HTTPException(status_code=404, detail="RAG chat endpoint is disabled.")
+        raise HTTPException(status_code=404, detail=rag_chat_disabled_message())
 
     extra = ["embedded_model"] if provider == "embedded" else None
     not_ready = check_semantic_readiness(extra, retrieval_service=get_search_engine)
@@ -90,11 +97,11 @@ async def chat_rag(
             session_id=request.session_id,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=chat_validation_message(str(exc))) from exc
     except LLMServiceError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=503, detail=chat_unavailable_message(str(exc))) from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from exc
 
     sources: list[ConversationSource]
     if not config.chat.enable_citations:

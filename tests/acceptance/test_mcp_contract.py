@@ -9,9 +9,20 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from searchat.mcp.tools import ask_about_history, extract_patterns, find_similar_conversations
-from searchat.models import SearchResult, SearchResults
+from searchat.mcp.tools import (
+    ask_about_history,
+    extract_patterns,
+    find_similar_conversations,
+    generate_agent_config,
+    get_conversation,
+    prime_expertise,
+    record_expertise,
+    search_expertise,
+)
+from searchat.models import SearchMode, SearchResult, SearchResults
 from searchat.services.llm_service import LLMServiceError
+from searchat.mcp.tools import get_statistics, list_projects, search_conversations
+from searchat.services.retrieval_service import SemanticVectorHit
 
 
 def test_ask_about_history_generation_outage_returns_grounded_fallback(tmp_path: Path) -> None:
@@ -59,6 +70,304 @@ def test_ask_about_history_generation_outage_returns_grounded_fallback(tmp_path:
 
     assert payload["answer"].startswith("Generation is temporarily unavailable.")
     assert payload["sources"][0]["conversation_id"] == "conv-123"
+    assert list(payload["sources"][0]) == [
+        "conversation_id",
+        "project_id",
+        "title",
+        "score",
+        "snippet",
+        "message_start_index",
+        "message_end_index",
+        "tool",
+    ]
+
+
+def test_ask_about_history_fails_closed_from_capability_snapshot(tmp_path: Path) -> None:
+    config = SimpleNamespace(
+        llm=SimpleNamespace(
+            default_provider="ollama",
+            openai_model="gpt-4.1-mini",
+            ollama_model="llama3",
+        )
+    )
+    engine = MagicMock()
+    engine.describe_capabilities.return_value = SimpleNamespace(
+        semantic_available=False,
+        reranking_available=False,
+        semantic_reason="Embedding model unavailable: all-MiniLM-L6-v2",
+        reranking_reason=None,
+    )
+
+    with (
+        patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+        patch("searchat.mcp.tools.build_services", return_value=(config, engine, MagicMock())),
+    ):
+        with pytest.raises(
+            RuntimeError,
+            match=r"^Embedding model unavailable: all-MiniLM-L6-v2$",
+        ):
+            ask_about_history(question="What changed?", search_dir=str(tmp_path))
+
+    engine.search.assert_not_called()
+
+
+def test_ask_about_history_wraps_capability_introspection_failures(tmp_path: Path) -> None:
+    config = SimpleNamespace(
+        llm=SimpleNamespace(
+            default_provider="ollama",
+            openai_model="gpt-4.1-mini",
+            ollama_model="llama3",
+        )
+    )
+    engine = MagicMock()
+    engine.describe_capabilities.side_effect = RuntimeError("service registry unavailable")
+
+    with (
+        patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+        patch("searchat.mcp.tools.build_services", return_value=(config, engine, MagicMock())),
+    ):
+        with pytest.raises(
+            RuntimeError,
+            match=r"^Retrieval capability inspection failed: service registry unavailable$",
+        ):
+            ask_about_history(question="What changed?", search_dir=str(tmp_path))
+
+    engine.search.assert_not_called()
+
+
+def test_search_conversations_preserves_stable_result_contract(tmp_path: Path) -> None:
+    now = datetime.now(timezone.utc)
+    engine = MagicMock()
+    engine.search.return_value = SearchResults(
+        results=[
+            SearchResult(
+                conversation_id="conv-123",
+                project_id="project-a",
+                title="Contract result",
+                created_at=now,
+                updated_at=now,
+                message_count=5,
+                file_path="/tmp/conv-123.jsonl",
+                score=0.8,
+                snippet="Wave 4 contract coverage.",
+                message_start_index=1,
+                message_end_index=2,
+            )
+        ],
+        total_count=1,
+        search_time_ms=3.0,
+        mode_used="hybrid",
+    )
+
+    with (
+        patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+        patch("searchat.mcp.tools.build_services", return_value=(MagicMock(), engine, MagicMock())),
+    ):
+        payload = json.loads(search_conversations(query="contract", search_dir=str(tmp_path)))
+
+    assert list(payload) == ["results", "total", "limit", "offset", "mode_used", "search_time_ms"]
+    assert list(payload["results"][0]) == [
+        "conversation_id",
+        "project_id",
+        "title",
+        "created_at",
+        "updated_at",
+        "message_count",
+        "file_path",
+        "snippet",
+        "score",
+        "message_start_index",
+        "message_end_index",
+    ]
+
+
+def test_search_conversations_fails_closed_from_semantic_capability_snapshot(tmp_path: Path) -> None:
+    engine = MagicMock()
+    engine.describe_capabilities.return_value = SimpleNamespace(
+        semantic_available=False,
+        reranking_available=False,
+        semantic_reason="Embedding model unavailable: all-MiniLM-L6-v2",
+        reranking_reason=None,
+    )
+
+    with (
+        patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+        patch("searchat.mcp.tools.build_services", return_value=(MagicMock(), engine, MagicMock())),
+    ):
+        with pytest.raises(
+            RuntimeError,
+            match=r"^Embedding model unavailable: all-MiniLM-L6-v2$",
+        ):
+            search_conversations(
+                query="how to sort data structures",
+                mode="semantic",
+                search_dir=str(tmp_path),
+            )
+
+    engine.search.assert_not_called()
+
+
+def test_search_conversations_hybrid_mode_preserves_keyword_fallback_contract(tmp_path: Path) -> None:
+    now = datetime.now(timezone.utc)
+    engine = MagicMock()
+    engine.describe_capabilities.side_effect = AssertionError(
+        "hybrid mode should not preflight semantic capabilities"
+    )
+    engine.search.return_value = SearchResults(
+        results=[
+            SearchResult(
+                conversation_id="conv-123",
+                project_id="project-a",
+                title="Keyword fallback",
+                created_at=now,
+                updated_at=now,
+                message_count=4,
+                file_path="/tmp/conv-123.jsonl",
+                score=0.9,
+                snippet="Grounded implementation detail.",
+            )
+        ],
+        total_count=1,
+        search_time_ms=2.0,
+        mode_used="keyword",
+    )
+
+    with (
+        patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+        patch("searchat.mcp.tools.build_services", return_value=(MagicMock(), engine, MagicMock())),
+    ):
+        payload = json.loads(
+            search_conversations(query="how to sort data structures", mode="hybrid", search_dir=str(tmp_path))
+        )
+
+    assert payload["mode_used"] == "keyword"
+    assert len(payload["results"]) == 1
+
+
+def test_search_conversations_wraps_capability_introspection_failures(tmp_path: Path) -> None:
+    engine = MagicMock()
+    engine.describe_capabilities.side_effect = RuntimeError("service registry unavailable")
+
+    with (
+        patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+        patch("searchat.mcp.tools.build_services", return_value=(MagicMock(), engine, MagicMock())),
+    ):
+        with pytest.raises(
+            RuntimeError,
+            match=r"^Retrieval capability inspection failed: service registry unavailable$",
+        ):
+            search_conversations(
+                query="how to sort data structures",
+                mode="semantic",
+                search_dir=str(tmp_path),
+            )
+
+    engine.search.assert_not_called()
+
+
+def test_search_conversations_star_query_preserves_keyword_fallback_contract(tmp_path: Path) -> None:
+    now = datetime.now(timezone.utc)
+    engine = MagicMock()
+    engine.describe_capabilities.return_value = SimpleNamespace(
+        semantic_available=False,
+        reranking_available=False,
+        semantic_reason="Embedding model unavailable: all-MiniLM-L6-v2",
+        reranking_reason=None,
+    )
+    engine.search.return_value = SearchResults(
+        results=[
+            SearchResult(
+                conversation_id="conv-123",
+                project_id="project-a",
+                title="Archival Context",
+                created_at=now,
+                updated_at=now,
+                message_count=4,
+                file_path="/tmp/conv-123.jsonl",
+                score=0.9,
+                snippet="Grounded implementation detail.",
+            )
+        ],
+        total_count=1,
+        search_time_ms=2.0,
+        mode_used="keyword",
+    )
+
+    with (
+        patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+        patch("searchat.mcp.tools.build_services", return_value=(MagicMock(), engine, MagicMock())),
+    ):
+        payload = json.loads(
+            search_conversations(query="*", mode="semantic", search_dir=str(tmp_path))
+        )
+
+    assert payload["mode_used"] == "keyword"
+    assert len(payload["results"]) == 1
+    assert engine.search.call_args.kwargs["mode"] == SearchMode.KEYWORD
+
+
+def test_project_and_statistics_tools_preserve_stable_top_level_contracts(tmp_path: Path) -> None:
+    stats = SimpleNamespace(
+        total_conversations=10,
+        total_messages=100,
+        avg_messages=10.0,
+        total_projects=2,
+        earliest_date="2025-01-01",
+        latest_date="2025-06-01",
+    )
+    store = MagicMock()
+    store.list_projects.return_value = ["proj-a", "proj-b"]
+    store.get_statistics.return_value = stats
+
+    with (
+        patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+        patch("searchat.mcp.tools.build_services", return_value=(MagicMock(), MagicMock(), store)),
+    ):
+        projects_payload = json.loads(list_projects(search_dir=str(tmp_path)))
+        stats_payload = json.loads(get_statistics(search_dir=str(tmp_path)))
+
+    assert list(projects_payload) == ["projects"]
+    assert projects_payload["projects"] == ["proj-a", "proj-b"]
+    assert list(stats_payload) == [
+        "total_conversations",
+        "total_messages",
+        "avg_messages",
+        "total_projects",
+        "earliest_date",
+        "latest_date",
+    ]
+
+
+def test_get_conversation_preserves_stable_payload_contract(tmp_path: Path) -> None:
+    store = MagicMock()
+    store.get_conversation_record.return_value = {
+        "conversation_id": "conv-123",
+        "project_id": "project-a",
+        "title": "Contract conversation",
+        "created_at": "2026-01-20T10:00:00+00:00",
+        "updated_at": "2026-01-21T10:00:00+00:00",
+        "message_count": 2,
+        "file_path": "/tmp/conv-123.jsonl",
+        "messages": [{"role": "user", "content": "hello"}],
+        "ignored": "extra",
+    }
+
+    with (
+        patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+        patch("searchat.mcp.tools.build_services", return_value=(MagicMock(), MagicMock(), store)),
+    ):
+        payload = json.loads(get_conversation(conversation_id="conv-123", search_dir=str(tmp_path)))
+
+    assert list(payload) == [
+        "conversation_id",
+        "project_id",
+        "title",
+        "created_at",
+        "updated_at",
+        "message_count",
+        "file_path",
+        "messages",
+    ]
 
 
 def test_find_similar_conversations_surfaces_semantic_capability_failure(tmp_path: Path) -> None:
@@ -111,3 +420,220 @@ def test_extract_patterns_generation_outage_returns_fallback_payload(tmp_path: P
     assert payload["total"] == 1
     assert payload["patterns"][0]["name"] == "testing conventions"
     assert payload["patterns"][0]["confidence"] == pytest.approx(0.3)
+
+
+def test_find_similar_conversations_preserves_stable_similarity_contract(tmp_path: Path) -> None:
+    engine = MagicMock()
+    engine.metadata_path = tmp_path / "metadata.parquet"
+    engine.conversations_glob = str(tmp_path / "*.parquet")
+    engine.find_similar_vector_hits.return_value = [
+        SemanticVectorHit(vector_id=100, distance=0.25),
+    ]
+    store = MagicMock()
+    store.get_conversation_meta.return_value = {
+        "conversation_id": "conv-123",
+        "title": "Original conversation",
+    }
+    conn = MagicMock()
+    conn.execute.return_value.fetchone.return_value = ("representative chunk",)
+    conn.execute.return_value.fetchall.return_value = [
+        (
+            "conv-456",
+            "project-a",
+            "Similar conversation",
+            "2026-01-20T10:00:00+00:00",
+            "2026-01-21T10:00:00+00:00",
+            4,
+            "/tmp/conv-456.jsonl",
+            0.25,
+        )
+    ]
+    store._connect.return_value = conn
+
+    with (
+        patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+        patch("searchat.mcp.tools.build_services", return_value=(MagicMock(), engine, store)),
+    ):
+        payload = json.loads(
+            find_similar_conversations(conversation_id="conv-123", search_dir=str(tmp_path))
+        )
+
+    assert list(payload) == ["conversation_id", "title", "similar_count", "similar_conversations"]
+    assert payload["similar_count"] == 1
+    assert list(payload["similar_conversations"][0]) == [
+        "conversation_id",
+        "project_id",
+        "title",
+        "created_at",
+        "updated_at",
+        "message_count",
+        "similarity_score",
+        "tool",
+    ]
+
+
+def test_find_similar_conversations_empty_results_preserves_full_envelope(tmp_path: Path) -> None:
+    engine = MagicMock()
+    engine.metadata_path = tmp_path / "metadata.parquet"
+    engine.conversations_glob = str(tmp_path / "*.parquet")
+    engine.find_similar_vector_hits.return_value = []
+    store = MagicMock()
+    store.get_conversation_meta.return_value = {
+        "conversation_id": "conv-123",
+        "title": "Original conversation",
+    }
+    conn = MagicMock()
+    conn.execute.return_value.fetchone.return_value = ("representative chunk",)
+    store._connect.return_value = conn
+
+    with (
+        patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+        patch("searchat.mcp.tools.build_services", return_value=(MagicMock(), engine, store)),
+    ):
+        payload = json.loads(
+            find_similar_conversations(conversation_id="conv-123", search_dir=str(tmp_path))
+        )
+
+    assert payload == {
+        "conversation_id": "conv-123",
+        "title": "Original conversation",
+        "similar_count": 0,
+        "similar_conversations": [],
+    }
+
+
+def test_mcp_tools_preserve_stable_validation_and_not_found_messages(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="^Invalid mode; expected: hybrid, semantic, keyword$"):
+        search_conversations(query="contract", mode="invalid", search_dir=str(tmp_path))
+
+    with pytest.raises(ValueError, match="^Invalid tool; expected one of: "):
+        search_conversations(query="contract", tool="invalid", search_dir=str(tmp_path))
+
+    with pytest.raises(ValueError, match="^limit must be between 1 and 100$"):
+        search_conversations(query="contract", limit=0, search_dir=str(tmp_path))
+
+    with pytest.raises(ValueError, match="^offset must be >= 0$"):
+        search_conversations(query="contract", offset=-1, search_dir=str(tmp_path))
+
+    store = MagicMock()
+    store.get_conversation_meta.return_value = None
+    with (
+        patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+        patch("searchat.mcp.tools.build_services", return_value=(MagicMock(), MagicMock(), store)),
+    ):
+        with pytest.raises(ValueError, match=r"^Conversation not found: conv-404$"):
+            find_similar_conversations(conversation_id="conv-404", search_dir=str(tmp_path))
+
+    with patch("searchat.mcp.tools.build_services", side_effect=AssertionError("should not build")):
+        with pytest.raises(
+            ValueError,
+            match=r"^model_provider must be 'openai', 'ollama', or 'embedded'\.$",
+        ):
+            ask_about_history(
+                question="What changed?",
+                model_provider="azure",
+                search_dir=str(tmp_path),
+            )
+
+
+def test_find_similar_conversations_fails_closed_from_capability_snapshot(tmp_path: Path) -> None:
+    engine = MagicMock()
+    engine.describe_capabilities.return_value = SimpleNamespace(
+        semantic_available=False,
+        reranking_available=False,
+        semantic_reason="Embedding model unavailable: all-MiniLM-L6-v2",
+        reranking_reason=None,
+    )
+    store = MagicMock()
+
+    with (
+        patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+        patch("searchat.mcp.tools.build_services", return_value=(MagicMock(), engine, store)),
+    ):
+        with pytest.raises(
+            RuntimeError,
+            match=r"^Embedding model unavailable: all-MiniLM-L6-v2$",
+        ):
+            find_similar_conversations(conversation_id="conv-123", search_dir=str(tmp_path))
+
+    store.get_conversation_meta.assert_not_called()
+
+
+def test_generate_agent_config_fails_closed_from_capability_snapshot(tmp_path: Path) -> None:
+    config = SimpleNamespace(
+        llm=SimpleNamespace(
+            default_provider="ollama",
+            openai_model="gpt-4.1-mini",
+            ollama_model="llama3",
+        )
+    )
+    engine = MagicMock()
+    engine.describe_capabilities.return_value = SimpleNamespace(
+        semantic_available=False,
+        reranking_available=False,
+        semantic_reason="Embedding model unavailable: all-MiniLM-L6-v2",
+        reranking_reason=None,
+    )
+
+    with (
+        patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+        patch("searchat.mcp.tools.build_services", return_value=(config, engine, MagicMock())),
+        patch(
+            "searchat.services.pattern_mining.extract_patterns",
+            side_effect=AssertionError("should not extract"),
+        ),
+    ):
+        with pytest.raises(
+            RuntimeError,
+            match=r"^Embedding model unavailable: all-MiniLM-L6-v2$",
+        ):
+            generate_agent_config(format="claude.md", search_dir=str(tmp_path))
+
+
+def test_mcp_expertise_and_agent_config_contracts_are_stable(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match=r"^max_tokens must be between 100 and 32000$"):
+        prime_expertise(max_tokens=50, search_dir=str(tmp_path))
+
+    with pytest.raises(
+        ValueError,
+        match=r"^format must be one of: claude.md, copilot-instructions.md, cursorrules$",
+    ):
+        generate_agent_config(format="invalid.txt", search_dir=str(tmp_path))
+
+    with pytest.raises(ValueError, match=r"^Invalid type: 'invalid'\. Valid: \["):
+        record_expertise(
+            type="invalid",
+            domain="testing",
+            content="bad",
+            search_dir=str(tmp_path),
+        )
+
+    with pytest.raises(ValueError, match=r"^limit must be between 1 and 100$"):
+        search_expertise(query="testing", limit=0, search_dir=str(tmp_path))
+
+    config = SimpleNamespace(
+        llm=SimpleNamespace(
+            default_provider="ollama",
+            openai_model="gpt-4.1-mini",
+            ollama_model="llama3",
+        )
+    )
+    pattern = SimpleNamespace(
+        name="Test Pattern",
+        description="A stable MCP contract pattern.",
+        confidence=0.8,
+        evidence=[SimpleNamespace(date="2026-01-01", snippet="example", conversation_id="conv-1")],
+    )
+
+    with (
+        patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+        patch("searchat.mcp.tools.build_services", return_value=(config, MagicMock(), MagicMock())),
+        patch("searchat.services.pattern_mining.extract_patterns", return_value=[pattern]),
+    ):
+        payload = json.loads(generate_agent_config(format="claude.md", search_dir=str(tmp_path)))
+
+    assert payload == {
+        "format": "claude.md",
+        "content": payload["content"],
+        "pattern_count": 1,
+    }

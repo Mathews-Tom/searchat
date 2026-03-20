@@ -6,7 +6,23 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from searchat.api.contracts import serialize_deleted_resource_payload
 from searchat.api.dependencies import get_knowledge_graph_store, get_expertise_store, get_config
+from searchat.contracts.errors import (
+    invalid_knowledge_graph_edge_type_message,
+    invalid_knowledge_graph_strategy_message,
+    knowledge_graph_dismiss_reason_required_message,
+    knowledge_graph_edge_not_contradiction_message,
+    knowledge_graph_edge_not_found_message,
+    knowledge_graph_keep_both_reason_required_message,
+    knowledge_graph_merge_content_required_message,
+    knowledge_graph_record_not_found_message,
+    knowledge_graph_scope_both_required_message,
+    knowledge_graph_source_record_not_found_message,
+    knowledge_graph_supersede_winner_required_message,
+    knowledge_graph_target_record_not_found_message,
+    knowledge_graph_unsupported_strategy_message,
+)
 from searchat.knowledge_graph.models import EdgeType, KnowledgeEdge, ResolutionStrategy
 
 router = APIRouter(prefix="/api/knowledge-graph", tags=["knowledge_graph"])
@@ -132,7 +148,7 @@ def _parse_edge_type(value: str) -> EdgeType:
         return EdgeType(value)
     except ValueError:
         valid = ", ".join(t.value for t in EdgeType)
-        raise HTTPException(422, f"Invalid edge_type '{value}'. Must be one of: {valid}")
+        raise HTTPException(422, invalid_knowledge_graph_edge_type_message(value, valid))
 
 
 def _parse_resolution_strategy(value: str) -> ResolutionStrategy:
@@ -140,7 +156,7 @@ def _parse_resolution_strategy(value: str) -> ResolutionStrategy:
         return ResolutionStrategy(value)
     except ValueError:
         valid = ", ".join(s.value for s in ResolutionStrategy)
-        raise HTTPException(422, f"Invalid strategy '{value}'. Must be one of: {valid}")
+        raise HTTPException(422, invalid_knowledge_graph_strategy_message(value, valid))
 
 
 # ---------------------------------------------------------------------------
@@ -204,10 +220,11 @@ def resolve_contradiction(body: ResolutionRequest) -> ResolutionResponse:
 
     edge = kg_store.get_edge(body.edge_id)
     if edge is None:
-        raise HTTPException(404, f"Edge not found: {body.edge_id}")
+        raise HTTPException(404, knowledge_graph_edge_not_found_message(body.edge_id))
     if edge.edge_type != EdgeType.CONTRADICTS:
         raise HTTPException(
-            422, f"Edge {body.edge_id} is not a CONTRADICTS edge (type={edge.edge_type.value})"
+            422,
+            knowledge_graph_edge_not_contradiction_message(body.edge_id, edge.edge_type.value),
         )
 
     strategy = _parse_resolution_strategy(body.strategy)
@@ -220,31 +237,31 @@ def resolve_contradiction(body: ResolutionRequest) -> ResolutionResponse:
     if strategy == ResolutionStrategy.SUPERSEDE:
         winner_id = params.get("winner_id")
         if not winner_id:
-            raise HTTPException(422, "params.winner_id required for supersede strategy")
+            raise HTTPException(422, knowledge_graph_supersede_winner_required_message())
         result = engine.supersede(body.edge_id, winner_id)
     elif strategy == ResolutionStrategy.SCOPE_BOTH:
         scope_a = params.get("scope_a", "")
         scope_b = params.get("scope_b", "")
         if not scope_a or not scope_b:
-            raise HTTPException(422, "params.scope_a and params.scope_b required for scope_both strategy")
+            raise HTTPException(422, knowledge_graph_scope_both_required_message())
         result = engine.scope_both(body.edge_id, scope_a, scope_b)
     elif strategy == ResolutionStrategy.MERGE:
         merged_content = params.get("merged_content", "")
         if not merged_content:
-            raise HTTPException(422, "params.merged_content required for merge strategy")
+            raise HTTPException(422, knowledge_graph_merge_content_required_message())
         result = engine.merge(body.edge_id, merged_content)
     elif strategy == ResolutionStrategy.DISMISS:
         reason = params.get("reason", "")
         if not reason:
-            raise HTTPException(422, "params.reason required for dismiss strategy")
+            raise HTTPException(422, knowledge_graph_dismiss_reason_required_message())
         result = engine.dismiss(body.edge_id, reason)
     elif strategy == ResolutionStrategy.KEEP_BOTH:
         reason = params.get("reason", "")
         if not reason:
-            raise HTTPException(422, "params.reason required for keep_both strategy")
+            raise HTTPException(422, knowledge_graph_keep_both_reason_required_message())
         result = engine.keep_both(body.edge_id, reason)
     else:
-        raise HTTPException(422, f"Unsupported strategy: {strategy}")
+        raise HTTPException(422, knowledge_graph_unsupported_strategy_message(strategy))
 
     return ResolutionResponse(
         strategy=result.strategy.value,
@@ -266,7 +283,7 @@ def get_lineage(record_id: str) -> LineageResponse:
 
     record = expertise_store.get(record_id)
     if record is None:
-        raise HTTPException(404, f"Record not found: {record_id}")
+        raise HTTPException(404, knowledge_graph_record_not_found_message(record_id))
 
     from searchat.knowledge_graph.provenance import ProvenanceTracker
 
@@ -292,7 +309,7 @@ def get_related(
 
     record = expertise_store.get(record_id)
     if record is None:
-        raise HTTPException(404, f"Record not found: {record_id}")
+        raise HTTPException(404, knowledge_graph_record_not_found_message(record_id))
 
     parsed_types: list[EdgeType] | None = None
     if edge_types:
@@ -403,9 +420,9 @@ def create_edge(body: EdgeCreateRequest) -> EdgeResponse:
     expertise_store = get_expertise_store()
 
     if expertise_store.get(body.source_id) is None:
-        raise HTTPException(404, f"Source record not found: {body.source_id}")
+        raise HTTPException(404, knowledge_graph_source_record_not_found_message(body.source_id))
     if expertise_store.get(body.target_id) is None:
-        raise HTTPException(404, f"Target record not found: {body.target_id}")
+        raise HTTPException(404, knowledge_graph_target_record_not_found_message(body.target_id))
 
     edge_type = _parse_edge_type(body.edge_type)
     edge = KnowledgeEdge(
@@ -425,6 +442,6 @@ def delete_edge(edge_id: str) -> dict[str, str]:
     kg_store = get_knowledge_graph_store()
     edge = kg_store.get_edge(edge_id)
     if edge is None:
-        raise HTTPException(404, f"Edge not found: {edge_id}")
+        raise HTTPException(404, knowledge_graph_edge_not_found_message(edge_id))
     kg_store.delete_edge(edge_id)
-    return {"status": "deleted", "id": edge_id}
+    return serialize_deleted_resource_payload(edge_id)

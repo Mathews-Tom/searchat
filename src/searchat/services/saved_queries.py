@@ -8,6 +8,15 @@ from typing import Any
 from uuid import uuid4
 
 from searchat.config import Config
+from searchat.contracts.errors import (
+    saved_queries_file_invalid_message,
+    saved_query_filters_required_message,
+    saved_query_missing_created_at_message,
+    saved_query_mode_required_message,
+    saved_query_name_required_message,
+    saved_query_text_required_message,
+    saved_query_use_count_invalid_message,
+)
 
 
 class SavedQueriesService:
@@ -27,7 +36,7 @@ class SavedQueriesService:
         with open(self._queries_file, encoding="utf-8") as handle:
             data = json.load(handle)
         if not isinstance(data, dict):
-            raise ValueError("Saved queries file is invalid.")
+            raise ValueError(saved_queries_file_invalid_message())
         return data
 
     def _save_queries(self, queries: dict[str, dict[str, Any]]) -> None:
@@ -40,7 +49,7 @@ class SavedQueriesService:
         for query in query_list:
             created_at = query.get("created_at")
             if not isinstance(created_at, str) or not created_at:
-                raise ValueError("Saved query is missing created_at.")
+                raise ValueError(saved_query_missing_created_at_message())
         query_list.sort(key=lambda q: q["created_at"], reverse=True)
         return query_list
 
@@ -51,19 +60,19 @@ class SavedQueriesService:
     def create_query(self, payload: dict[str, Any]) -> dict[str, Any]:
         name = payload.get("name")
         if not isinstance(name, str) or not name.strip():
-            raise ValueError("Saved query name is required.")
+            raise ValueError(saved_query_name_required_message())
 
         query_text = payload.get("query")
         if not isinstance(query_text, str):
-            raise ValueError("Saved query text is required.")
+            raise ValueError(saved_query_text_required_message())
 
         filters = payload.get("filters")
         if not isinstance(filters, dict):
-            raise ValueError("Saved query filters must be provided.")
+            raise ValueError(saved_query_filters_required_message())
 
         mode = payload.get("mode")
         if not isinstance(mode, str) or not mode.strip():
-            raise ValueError("Saved query mode is required.")
+            raise ValueError(saved_query_mode_required_message())
 
         queries = self._load_queries()
         query_id = str(uuid4())
@@ -92,22 +101,22 @@ class SavedQueriesService:
         if "name" in updates:
             name = updates["name"]
             if not isinstance(name, str) or not name.strip():
-                raise ValueError("Saved query name is required.")
+                raise ValueError(saved_query_name_required_message())
 
         if "query" in updates:
             query_text = updates["query"]
             if not isinstance(query_text, str):
-                raise ValueError("Saved query text is required.")
+                raise ValueError(saved_query_text_required_message())
 
         if "filters" in updates:
             filters = updates["filters"]
             if not isinstance(filters, dict):
-                raise ValueError("Saved query filters must be provided.")
+                raise ValueError(saved_query_filters_required_message())
 
         if "mode" in updates:
             mode = updates["mode"]
             if not isinstance(mode, str) or not mode.strip():
-                raise ValueError("Saved query mode is required.")
+                raise ValueError(saved_query_mode_required_message())
 
         for field in ("name", "description", "query", "filters", "mode"):
             if field in updates:
@@ -134,7 +143,7 @@ class SavedQueriesService:
         query["last_used"] = datetime.now().isoformat()
         use_count = query.get("use_count")
         if not isinstance(use_count, int):
-            raise ValueError("Saved query use_count is invalid.")
+            raise ValueError(saved_query_use_count_invalid_message())
         query["use_count"] = use_count + 1
         queries[query_id] = query
         self._save_queries(queries)

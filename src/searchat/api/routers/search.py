@@ -5,6 +5,19 @@ from functools import lru_cache
 
 from fastapi import APIRouter, Query, HTTPException
 
+from searchat.api.contracts import (
+    serialize_code_search_payload,
+    serialize_projects_payload,
+    serialize_search_payload,
+    serialize_search_suggestions_payload,
+)
+from searchat.contracts.errors import (
+    code_search_index_missing_message,
+    highlight_provider_required_message,
+    internal_server_error_message,
+    invalid_highlight_provider_message,
+    invalid_search_mode_message,
+)
 from searchat.models import SearchMode, SearchFilters
 from searchat.services.highlight_service import extract_highlight_terms
 from searchat.services.llm_service import LLMServiceError
@@ -13,7 +26,6 @@ from searchat.api.utils import (
     parse_date_filter,
     validate_tool,
     sort_results,
-    search_result_to_response,
     ensure_code_index_has_symbol_columns,
     rows_to_code_results,
 )
@@ -70,10 +82,7 @@ async def search_code(
 
         code_dir = search_dir / "data" / "code"
         if not code_dir.exists() or not any(code_dir.glob("*.parquet")):
-            raise HTTPException(
-                status_code=503,
-                detail="Code index not found. Rebuild the index to enable /api/search/code.",
-            )
+            raise HTTPException(status_code=503, detail=code_search_index_missing_message())
 
         filters: list[str] = []
         params: list[object] = []
@@ -132,17 +141,16 @@ async def search_code(
 
         total, results = rows_to_code_results(rows)
 
-        return {
-            "results": results,
-            "total": total,
-            "limit": limit,
-            "offset": offset,
-            "has_more": (offset + limit) < total,
-        }
+        return serialize_code_search_payload(
+            results=results,
+            total=total,
+            limit=limit,
+            offset=offset,
+        )
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from exc
 
 
 @router.get("/search")
@@ -171,7 +179,7 @@ async def search(
             "keyword": SearchMode.KEYWORD,
         }
         if mode not in mode_map:
-            raise HTTPException(status_code=400, detail="Invalid search mode")
+            raise HTTPException(status_code=400, detail=invalid_search_mode_message())
         search_mode = mode_map[mode]
 
         if q.strip() == "*":
@@ -199,10 +207,10 @@ async def search(
         highlight_terms = None
         if highlight and len(q.strip()) >= 4 and mode != "keyword":
             if highlight_provider is None:
-                raise HTTPException(status_code=400, detail="Highlight provider is required")
+                raise HTTPException(status_code=400, detail=highlight_provider_required_message())
             provider = highlight_provider.lower()
             if provider not in ("openai", "ollama"):
-                raise HTTPException(status_code=400, detail="Invalid highlight provider")
+                raise HTTPException(status_code=400, detail=invalid_highlight_provider_message())
             highlight_terms = _resolve_highlight_terms(
                 str(search_dir), q, provider, highlight_model
             )
@@ -226,22 +234,19 @@ async def search(
         total_results = len(sorted_results)
         paginated_results = sorted_results[offset:offset + limit]
 
-        response_results = [search_result_to_response(r) for r in paginated_results]
-
-        return {
-            "results": response_results,
-            "total": total_results,
-            "search_time_ms": results.search_time_ms,
-            "limit": limit,
-            "offset": offset,
-            "has_more": (offset + limit) < total_results,
-            "highlight_terms": highlight_terms,
-        }
+        return serialize_search_payload(
+            results=paginated_results,
+            total=total_results,
+            search_time_ms=results.search_time_ms,
+            limit=limit,
+            offset=offset,
+            highlight_terms=highlight_terms,
+        )
 
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from e
 
 
 @router.get("/projects")
@@ -252,10 +257,10 @@ async def get_projects(snapshot: str | None = Query(None, description="Backup sn
     store = dataset.store
 
     if snapshot_name is not None:
-        return store.list_projects()
+        return serialize_projects_payload(store.list_projects())
 
     if api_state.projects_cache is None:
-        api_state.projects_cache = store.list_projects()
+        api_state.projects_cache = serialize_projects_payload(store.list_projects())
     return api_state.projects_cache
 
 
@@ -340,10 +345,10 @@ async def get_search_suggestions(
             )
         )
 
-        return {
-            "query": q,
-            "suggestions": sorted_suggestions[:limit]
-        }
+        return serialize_search_suggestions_payload(
+            query=q,
+            suggestions=sorted_suggestions[:limit],
+        )
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from e

@@ -11,6 +11,7 @@ from pathlib import Path
 import re
 from typing import TYPE_CHECKING
 
+from searchat.contracts.errors import snapshot_mode_disabled_message
 from searchat.services import BackupManager, PlatformManager
 from searchat.config import Config, PathResolver
 from searchat.api.readiness import get_readiness
@@ -173,7 +174,7 @@ def resolve_dataset_search_dir(snapshot: str | None) -> tuple[Path, str | None]:
         return get_search_dir(), None
 
     if not get_config().snapshots.enabled:
-        raise ValueError("Snapshot mode is disabled")
+        raise ValueError(snapshot_mode_disabled_message())
 
     if not _is_valid_snapshot_name(snapshot):
         raise ValueError("Invalid snapshot name")

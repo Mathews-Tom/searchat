@@ -8,6 +8,12 @@ from fastapi import HTTPException
 from fastapi.responses import JSONResponse
 
 from searchat.config.constants import VALID_TOOL_NAMES
+from searchat.contracts.errors import (
+    invalid_model_provider_message,
+    invalid_tool_filter_message,
+    retrieval_capability_inspection_failed_message,
+    snapshot_not_found_message,
+)
 from searchat.models import SearchResult
 
 VALID_PROVIDERS: frozenset[str] = frozenset({"openai", "ollama", "embedded"})
@@ -126,8 +132,8 @@ def resolve_dataset(snapshot: str | None) -> tuple[Path, str | None]:
         return deps.resolve_dataset_search_dir(snapshot)
     except ValueError as exc:
         msg = str(exc)
-        if msg == "Snapshot not found":
-            raise HTTPException(status_code=404, detail="Snapshot not found") from exc
+        if msg == snapshot_not_found_message():
+            raise HTTPException(status_code=404, detail=snapshot_not_found_message()) from exc
         raise HTTPException(status_code=400, detail=msg) from exc
 
 
@@ -135,7 +141,7 @@ def validate_tool(tool: str) -> str:
     """Validate and normalize a tool filter value. Returns lowered value."""
     tool_value = tool.lower()
     if tool_value not in VALID_TOOL_NAMES:
-        raise HTTPException(status_code=400, detail="Invalid tool filter")
+        raise HTTPException(status_code=400, detail=invalid_tool_filter_message())
     return tool_value
 
 
@@ -145,7 +151,7 @@ def validate_provider(provider: str) -> str:
     if value not in VALID_PROVIDERS:
         raise HTTPException(
             status_code=400,
-            detail="model_provider must be 'openai', 'ollama', or 'embedded'.",
+            detail=invalid_model_provider_message(),
         )
     return value
 
@@ -232,7 +238,7 @@ def _get_retrieval_capabilities(retrieval_service=None, *, fail_closed: bool = F
         except Exception as exc:
             if fail_closed:
                 raise RetrievalCapabilitiesUnavailable(
-                    f"Retrieval capability inspection failed: {exc}"
+                    retrieval_capability_inspection_failed_message(str(exc))
                 ) from exc
             return None
 
@@ -245,7 +251,7 @@ def _get_retrieval_capabilities(retrieval_service=None, *, fail_closed: bool = F
     except Exception as exc:
         if fail_closed:
             raise RetrievalCapabilitiesUnavailable(
-                f"Retrieval capability inspection failed: {exc}"
+                retrieval_capability_inspection_failed_message(str(exc))
             ) from exc
         return None
 
@@ -264,23 +270,9 @@ def sort_results(results: list[SearchResult], sort_by: str) -> list[SearchResult
 
 def search_result_to_response(r: SearchResult) -> object:
     """Convert a SearchResult domain object to a SearchResultResponse dict."""
-    from searchat.api.models import SearchResultResponse
+    from searchat.api.contracts import serialize_search_result
 
-    return SearchResultResponse(
-        conversation_id=r.conversation_id,
-        project_id=r.project_id,
-        title=r.title,
-        created_at=r.created_at.isoformat(),
-        updated_at=r.updated_at.isoformat(),
-        message_count=r.message_count,
-        file_path=r.file_path,
-        snippet=r.snippet,
-        score=r.score,
-        message_start_index=r.message_start_index,
-        message_end_index=r.message_end_index,
-        source=detect_source_from_path(r.file_path),
-        tool=detect_tool_from_path(r.file_path),
-    )
+    return serialize_search_result(r)
 
 
 def ensure_code_index_has_symbol_columns(conn, parquet_glob: str) -> None:

@@ -168,6 +168,106 @@ class TestSearchConversations:
         assert parsed["results"] == []
         assert parsed["mode_used"] == "hybrid"
 
+    def test_semantic_mode_fails_closed_from_capability_state_before_search(self, tmp_path: Path):
+        from searchat.mcp.tools import search_conversations
+
+        fake_engine = MagicMock()
+        fake_engine.describe_capabilities.return_value = SimpleNamespace(
+            semantic_available=False,
+            reranking_available=False,
+            semantic_reason="Embedding model unavailable: all-MiniLM-L6-v2",
+            reranking_reason=None,
+        )
+
+        with (
+            patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+            patch(
+                "searchat.mcp.tools.build_services",
+                return_value=(MagicMock(), fake_engine, MagicMock()),
+            ),
+        ):
+            with pytest.raises(RuntimeError, match="Embedding model unavailable: all-MiniLM-L6-v2"):
+                search_conversations(query="how to sort data structures", mode="semantic")
+
+        fake_engine.search.assert_not_called()
+
+    def test_hybrid_mode_uses_search_engine_fallback_policy(self, tmp_path: Path):
+        from searchat.mcp.tools import search_conversations
+
+        fake_engine = MagicMock()
+        fake_result = MagicMock()
+        fake_result.results = []
+        fake_result.mode_used = "keyword"
+        fake_result.search_time_ms = 6.0
+        fake_engine.search.return_value = fake_result
+        fake_engine.describe_capabilities.side_effect = AssertionError(
+            "hybrid mode should not preflight semantic capabilities"
+        )
+
+        with (
+            patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+            patch(
+                "searchat.mcp.tools.build_services",
+                return_value=(MagicMock(), fake_engine, MagicMock()),
+            ),
+        ):
+            payload = json.loads(search_conversations(query="contract", mode="hybrid"))
+
+        assert payload["mode_used"] == "keyword"
+        fake_engine.search.assert_called_once()
+
+    def test_semantic_mode_wraps_capability_introspection_failures(self, tmp_path: Path):
+        from searchat.mcp.tools import search_conversations
+
+        fake_engine = MagicMock()
+        fake_engine.describe_capabilities.side_effect = RuntimeError("service registry unavailable")
+
+        with (
+            patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+            patch(
+                "searchat.mcp.tools.build_services",
+                return_value=(MagicMock(), fake_engine, MagicMock()),
+            ),
+        ):
+            with pytest.raises(
+                RuntimeError,
+                match="Retrieval capability inspection failed: service registry unavailable",
+            ):
+                search_conversations(query="contract", mode="semantic")
+
+        fake_engine.search.assert_not_called()
+
+    def test_star_query_forces_keyword_mode_without_semantic_gate(self, tmp_path: Path):
+        from searchat.mcp.tools import search_conversations
+
+        fake_result = MagicMock()
+        fake_result.results = []
+        fake_result.mode_used = "keyword"
+        fake_result.search_time_ms = 1.0
+
+        fake_engine = MagicMock()
+        fake_engine.describe_capabilities.return_value = SimpleNamespace(
+            semantic_available=False,
+            reranking_available=False,
+            semantic_reason="Embedding model unavailable: all-MiniLM-L6-v2",
+            reranking_reason=None,
+        )
+        fake_engine.search.return_value = fake_result
+
+        with (
+            patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+            patch(
+                "searchat.mcp.tools.build_services",
+                return_value=(MagicMock(), fake_engine, MagicMock()),
+            ),
+        ):
+            result = search_conversations(query="*", mode="semantic")
+
+        parsed = json.loads(result)
+        assert parsed["mode_used"] == "keyword"
+        fake_engine.search.assert_called_once()
+        assert fake_engine.search.call_args.kwargs["mode"] == SearchMode.KEYWORD
+
 
 class TestGetConversation:
     def test_raises_when_not_found(self, tmp_path: Path):
@@ -187,7 +287,17 @@ class TestGetConversation:
         from searchat.mcp.tools import get_conversation
 
         fake_store = MagicMock()
-        fake_store.get_conversation_record.return_value = {"id": "abc", "title": "Test"}
+        fake_store.get_conversation_record.return_value = {
+            "conversation_id": "abc",
+            "project_id": "project-a",
+            "title": "Test",
+            "created_at": "2026-03-16T00:00:00+00:00",
+            "updated_at": "2026-03-16T00:00:00+00:00",
+            "message_count": 1,
+            "file_path": "/tmp/abc.jsonl",
+            "messages": [{"role": "user", "content": "hi"}],
+            "ignored": "extra",
+        }
 
         with (
             patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
@@ -196,7 +306,17 @@ class TestGetConversation:
             result = get_conversation(conversation_id="abc")
 
         parsed = json.loads(result)
-        assert parsed["id"] == "abc"
+        assert list(parsed) == [
+            "conversation_id",
+            "project_id",
+            "title",
+            "created_at",
+            "updated_at",
+            "message_count",
+            "file_path",
+            "messages",
+        ]
+        assert parsed["conversation_id"] == "abc"
 
 
 class TestListProjects:
@@ -243,6 +363,29 @@ class TestGetStatistics:
 
 
 class TestFindSimilarConversations:
+    def test_fails_closed_from_capability_state_before_lookup(self, tmp_path: Path):
+        fake_engine = MagicMock()
+        fake_engine.describe_capabilities.return_value = SimpleNamespace(
+            semantic_available=False,
+            reranking_available=False,
+            semantic_reason="Embedding model unavailable: all-MiniLM-L6-v2",
+            reranking_reason=None,
+        )
+
+        fake_store = MagicMock()
+
+        with (
+            patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+            patch(
+                "searchat.mcp.tools.build_services",
+                return_value=(MagicMock(), fake_engine, fake_store),
+            ),
+        ):
+            with pytest.raises(RuntimeError, match="Embedding model unavailable: all-MiniLM-L6-v2"):
+                find_similar_conversations(conversation_id="conv-123", search_dir=str(tmp_path))
+
+        fake_store.get_conversation_meta.assert_not_called()
+
     def test_routes_vector_hits_through_retrieval_contract(self, tmp_path: Path):
         fake_engine = MagicMock()
         fake_engine.metadata_path = tmp_path / "metadata.parquet"
@@ -319,20 +462,20 @@ class TestGenerateAgentConfig:
     def test_invalid_format_raises(self):
         from searchat.mcp.tools import generate_agent_config
 
-        with pytest.raises(ValueError, match="format must be"):
+        with pytest.raises(
+            ValueError,
+            match="^format must be one of: claude.md, copilot-instructions.md, cursorrules$",
+        ):
             generate_agent_config(format="invalid.txt")
 
     def test_invalid_provider_raises(self, tmp_path: Path):
         from searchat.mcp.tools import generate_agent_config
 
-        cfg = MagicMock()
-        cfg.llm.default_provider = "openai"
-
-        with (
-            patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
-            patch("searchat.mcp.tools.build_services", return_value=(cfg, MagicMock(), MagicMock())),
-        ):
-            with pytest.raises(ValueError, match="model_provider must be"):
+        with patch("searchat.mcp.tools.build_services", side_effect=AssertionError("should not build")):
+            with pytest.raises(
+                ValueError,
+                match="model_provider must be 'openai', 'ollama', or 'embedded'.",
+            ):
                 generate_agent_config(model_provider="azure")
 
     def test_returns_json_with_content(self, tmp_path: Path):
@@ -358,3 +501,118 @@ class TestGenerateAgentConfig:
         assert parsed["format"] == "claude.md"
         assert parsed["pattern_count"] == 1
         assert "content" in parsed
+
+    def test_fails_closed_from_capability_state_before_pattern_extraction(self, tmp_path: Path):
+        from searchat.mcp.tools import generate_agent_config
+
+        cfg = MagicMock()
+        cfg.llm.default_provider = "ollama"
+        engine = MagicMock()
+        engine.describe_capabilities.return_value = SimpleNamespace(
+            semantic_available=False,
+            reranking_available=False,
+            semantic_reason="Embedding model unavailable: all-MiniLM-L6-v2",
+            reranking_reason=None,
+        )
+
+        with (
+            patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+            patch("searchat.mcp.tools.build_services", return_value=(cfg, engine, MagicMock())),
+            patch(
+                "searchat.services.pattern_mining.extract_patterns",
+                side_effect=AssertionError("should not extract"),
+            ),
+        ):
+            with pytest.raises(RuntimeError, match="Embedding model unavailable: all-MiniLM-L6-v2"):
+                generate_agent_config(format="claude.md", search_dir=str(tmp_path))
+
+
+class TestProviderValidation:
+    def test_ask_about_history_invalid_provider_fails_fast(self):
+        from searchat.mcp.tools import ask_about_history
+
+        with patch("searchat.mcp.tools.build_services", side_effect=AssertionError("should not build")):
+            with pytest.raises(
+                ValueError,
+                match="model_provider must be 'openai', 'ollama', or 'embedded'.",
+            ):
+                ask_about_history(question="What changed?", model_provider="azure")
+
+    def test_ask_about_history_fails_closed_from_capability_state_before_search(self, tmp_path: Path):
+        from searchat.mcp.tools import ask_about_history
+
+        cfg = MagicMock()
+        cfg.llm.default_provider = "ollama"
+        engine = MagicMock()
+        engine.describe_capabilities.return_value = SimpleNamespace(
+            semantic_available=False,
+            reranking_available=False,
+            semantic_reason="Embedding model unavailable: all-MiniLM-L6-v2",
+            reranking_reason=None,
+        )
+
+        with (
+            patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+            patch("searchat.mcp.tools.build_services", return_value=(cfg, engine, MagicMock())),
+        ):
+            with pytest.raises(RuntimeError, match="Embedding model unavailable: all-MiniLM-L6-v2"):
+                ask_about_history(question="What changed?", search_dir=str(tmp_path))
+
+        engine.search.assert_not_called()
+
+    def test_ask_about_history_wraps_capability_introspection_failures(self, tmp_path: Path):
+        from searchat.mcp.tools import ask_about_history
+
+        cfg = MagicMock()
+        cfg.llm.default_provider = "ollama"
+        engine = MagicMock()
+        engine.describe_capabilities.side_effect = RuntimeError("service registry unavailable")
+
+        with (
+            patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+            patch("searchat.mcp.tools.build_services", return_value=(cfg, engine, MagicMock())),
+        ):
+            with pytest.raises(
+                RuntimeError,
+                match="Retrieval capability inspection failed: service registry unavailable",
+            ):
+                ask_about_history(question="What changed?", search_dir=str(tmp_path))
+
+        engine.search.assert_not_called()
+
+    def test_extract_patterns_invalid_provider_fails_fast(self):
+        from searchat.mcp.tools import extract_patterns
+
+        with patch("searchat.mcp.tools.build_services", side_effect=AssertionError("should not build")):
+            with pytest.raises(
+                ValueError,
+                match="model_provider must be 'openai', 'ollama', or 'embedded'.",
+            ):
+                extract_patterns(topic="testing", model_provider="azure")
+
+    def test_extract_patterns_fails_closed_from_capability_state_before_pattern_extraction(
+        self,
+        tmp_path: Path,
+    ):
+        from searchat.mcp.tools import extract_patterns
+
+        cfg = MagicMock()
+        cfg.llm.default_provider = "ollama"
+        engine = MagicMock()
+        engine.describe_capabilities.return_value = SimpleNamespace(
+            semantic_available=False,
+            reranking_available=False,
+            semantic_reason="Embedding model unavailable: all-MiniLM-L6-v2",
+            reranking_reason=None,
+        )
+
+        with (
+            patch("searchat.mcp.tools.resolve_dataset", return_value=tmp_path),
+            patch("searchat.mcp.tools.build_services", return_value=(cfg, engine, MagicMock())),
+            patch(
+                "searchat.services.pattern_mining.extract_patterns",
+                side_effect=AssertionError("should not extract"),
+            ),
+        ):
+            with pytest.raises(RuntimeError, match="Embedding model unavailable: all-MiniLM-L6-v2"):
+                extract_patterns(topic="testing", search_dir=str(tmp_path))

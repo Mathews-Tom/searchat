@@ -230,6 +230,7 @@ class TestResolveContradiction:
         )
 
         assert resp.status_code == 404
+        assert resp.json()["detail"] == "Edge not found: nonexistent"
 
     def test_non_contradiction_edge_returns_422(self, client, patched_stores):
         kg_store, _ = patched_stores
@@ -242,6 +243,7 @@ class TestResolveContradiction:
         )
 
         assert resp.status_code == 422
+        assert resp.json()["detail"] == f"Edge {edge.id} is not a CONTRADICTS edge (type=supersedes)"
 
     def test_invalid_strategy_returns_422(self, client, patched_stores):
         kg_store, _ = patched_stores
@@ -254,6 +256,7 @@ class TestResolveContradiction:
         )
 
         assert resp.status_code == 422
+        assert resp.json()["detail"].startswith("Invalid strategy 'invalid_strategy'. Must be one of:")
 
     def test_missing_required_param_returns_422(self, client, patched_stores):
         kg_store, _ = patched_stores
@@ -266,6 +269,7 @@ class TestResolveContradiction:
         )
 
         assert resp.status_code == 422
+        assert resp.json()["detail"] == "params.reason required for dismiss strategy"
 
 
 # ---------------------------------------------------------------------------
@@ -303,6 +307,7 @@ class TestGetLineage:
         resp = client.get("/api/knowledge-graph/lineage/nonexistent")
 
         assert resp.status_code == 404
+        assert resp.json()["detail"] == "Record not found: nonexistent"
 
     def test_empty_lineage(self, client, patched_stores):
         kg_store, expertise_store = patched_stores
@@ -352,6 +357,7 @@ class TestGetRelated:
         resp = client.get("/api/knowledge-graph/related/nonexistent")
 
         assert resp.status_code == 404
+        assert resp.json()["detail"] == "Record not found: nonexistent"
 
     def test_filters_by_edge_types(self, client, patched_stores):
         kg_store, expertise_store = patched_stores
@@ -374,6 +380,7 @@ class TestGetRelated:
         resp = client.get("/api/knowledge-graph/related/rec_123?edge_types=invalid_type")
 
         assert resp.status_code == 422
+        assert resp.json()["detail"].startswith("Invalid edge_type 'invalid_type'. Must be one of:")
 
 
 # ---------------------------------------------------------------------------
@@ -527,6 +534,7 @@ class TestCreateEdge:
         )
 
         assert resp.status_code == 404
+        assert resp.json()["detail"] == "Source record not found: rec_aaa"
 
     def test_missing_target_record_returns_404(self, client, patched_stores):
         _, expertise_store = patched_stores
@@ -548,6 +556,7 @@ class TestCreateEdge:
         )
 
         assert resp.status_code == 404
+        assert resp.json()["detail"] == "Target record not found: rec_bbb"
 
     def test_invalid_edge_type_returns_422(self, client, patched_stores):
         _, expertise_store = patched_stores
@@ -563,6 +572,7 @@ class TestCreateEdge:
         )
 
         assert resp.status_code == 422
+        assert resp.json()["detail"].startswith("Invalid edge_type 'bad_type'. Must be one of:")
 
     def test_with_metadata(self, client, patched_stores):
         kg_store, expertise_store = patched_stores
@@ -600,6 +610,7 @@ class TestDeleteEdge:
 
         assert resp.status_code == 200
         data = resp.json()
+        assert list(data) == ["status", "id"]
         assert data["status"] == "deleted"
         assert data["id"] == edge.id
         kg_store.delete_edge.assert_called_once_with(edge.id)
@@ -611,4 +622,5 @@ class TestDeleteEdge:
         resp = client.delete("/api/knowledge-graph/edges/nonexistent")
 
         assert resp.status_code == 404
+        assert resp.json()["detail"] == "Edge not found: nonexistent"
         kg_store.delete_edge.assert_not_called()

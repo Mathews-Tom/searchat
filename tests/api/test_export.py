@@ -122,7 +122,7 @@ def test_export_conversation_invalid_format(client, mock_conversation_response):
         response = client.get("/api/conversation/conv-123/export?format=xml")
 
         assert response.status_code == 400
-        assert "Invalid format" in response.json()["detail"]
+        assert response.json()["detail"] == "Invalid format. Use: json, markdown, text, ipynb, or pdf"
 
 
 def test_export_conversation_not_found(client):
@@ -235,7 +235,7 @@ def test_bulk_export_empty_list(client):
     )
 
     assert response.status_code == 400
-    assert "No conversation IDs" in response.json()["detail"]
+    assert response.json()["detail"] == "No conversation IDs provided"
 
 
 def test_bulk_export_too_many_conversations(client):
@@ -249,7 +249,7 @@ def test_bulk_export_too_many_conversations(client):
     )
 
     assert response.status_code == 400
-    assert "Too many conversations" in response.json()["detail"]
+    assert response.json()["detail"] == "Too many conversations (max 100)"
 
 
 def test_bulk_export_invalid_format(client):
@@ -263,7 +263,7 @@ def test_bulk_export_invalid_format(client):
     )
 
     assert response.status_code == 400
-    assert "Invalid format" in response.json()["detail"]
+    assert response.json()["detail"] == "Invalid format. Use: json, markdown, text, ipynb, or pdf"
 
 
 def test_bulk_export_default_format(client, mock_conversation_response):

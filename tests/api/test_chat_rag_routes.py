@@ -106,6 +106,7 @@ def test_chat_rag_disabled_returns_404(client):
     with patch("searchat.api.routers.chat.get_config", return_value=config):
         resp = client.post("/api/chat-rag", json={"query": "x", "model_provider": "ollama"})
     assert resp.status_code == 404
+    assert resp.json()["detail"] == "RAG chat endpoint is disabled."
 
 
 def test_chat_rag_citations_disabled_returns_no_sources(client):
@@ -137,10 +138,13 @@ def test_chat_rag_warming_until_ready(client, monkeypatch):
         components={"metadata": "idle", "faiss": "ready", "embedder": "ready"}
     )
     warmup = Mock()
+    config = Mock()
+    config.chat = Mock(enable_rag=True, enable_citations=True)
 
     monkeypatch.setattr("searchat.api.warmup.trigger_search_engine_warmup", warmup)
     with patch("searchat.api.readiness.get_readiness", return_value=readiness):
-        resp = client.post("/api/chat-rag", json={"query": "x", "model_provider": "ollama"})
+        with patch("searchat.api.routers.chat.get_config", return_value=config):
+            resp = client.post("/api/chat-rag", json={"query": "x", "model_provider": "ollama"})
 
     assert resp.status_code == 503
     warmup.assert_called_once()
@@ -151,8 +155,11 @@ def test_chat_rag_error_payload_when_component_error(client):
     readiness.snapshot.return_value = Mock(
         components={"metadata": "error", "faiss": "ready", "embedder": "ready"}
     )
+    config = Mock()
+    config.chat = Mock(enable_rag=True, enable_citations=True)
     with patch("searchat.api.readiness.get_readiness", return_value=readiness):
-        resp = client.post("/api/chat-rag", json={"query": "x", "model_provider": "ollama"})
+        with patch("searchat.api.routers.chat.get_config", return_value=config):
+            resp = client.post("/api/chat-rag", json={"query": "x", "model_provider": "ollama"})
 
     assert resp.status_code == 500
     assert resp.json()["status"] == "error"
@@ -170,10 +177,13 @@ def test_chat_rag_reports_semantic_capability_error_when_components_look_ready(c
         semantic_reason="Embedding model unavailable: all-MiniLM-L6-v2",
         reranking_reason=None,
     )
+    config = Mock()
+    config.chat = Mock(enable_rag=True, enable_citations=True)
 
     with patch("searchat.api.readiness.get_readiness", return_value=readiness):
-        with patch("searchat.api.routers.chat.get_search_engine", return_value=retrieval_service):
-            resp = client.post("/api/chat-rag", json={"query": "x", "model_provider": "ollama"})
+        with patch("searchat.api.routers.chat.get_config", return_value=config):
+            with patch("searchat.api.routers.chat.get_search_engine", return_value=retrieval_service):
+                resp = client.post("/api/chat-rag", json={"query": "x", "model_provider": "ollama"})
 
     assert resp.status_code == 500
     data = resp.json()
@@ -187,13 +197,16 @@ def test_chat_rag_fails_closed_when_capability_inspection_errors(client):
     readiness.snapshot.return_value = Mock(
         components={"metadata": "ready", "faiss": "ready", "embedder": "ready"}
     )
+    config = Mock()
+    config.chat = Mock(enable_rag=True, enable_citations=True)
 
     with patch("searchat.api.readiness.get_readiness", return_value=readiness):
-        with patch(
-            "searchat.api.routers.chat.get_search_engine",
-            side_effect=RuntimeError("service registry unavailable"),
-        ):
-            resp = client.post("/api/chat-rag", json={"query": "x", "model_provider": "ollama"})
+        with patch("searchat.api.routers.chat.get_config", return_value=config):
+            with patch(
+                "searchat.api.routers.chat.get_search_engine",
+                side_effect=RuntimeError("service registry unavailable"),
+            ):
+                resp = client.post("/api/chat-rag", json={"query": "x", "model_provider": "ollama"})
 
     assert resp.status_code == 500
     data = resp.json()
@@ -204,8 +217,6 @@ def test_chat_rag_fails_closed_when_capability_inspection_errors(client):
 
 
 def test_chat_rag_value_error_returns_400(client):
-    from searchat.services.llm_service import LLMServiceError
-
     config = Mock()
     config.chat = Mock(enable_rag=True, enable_citations=True)
     with patch("searchat.api.routers.chat.get_config", return_value=config):
@@ -214,7 +225,22 @@ def test_chat_rag_value_error_returns_400(client):
                 resp = client.post("/api/chat-rag", json={"query": "x", "model_provider": "ollama"})
 
     assert resp.status_code == 400
-    assert resp.json()["detail"] == "bad"
+    assert resp.json()["detail"] == "Invalid chat request."
+
+
+def test_chat_rag_stable_value_error_is_preserved(client):
+    config = Mock()
+    config.chat = Mock(enable_rag=True, enable_citations=True)
+    with patch("searchat.api.routers.chat.get_config", return_value=config):
+        with patch("searchat.api.routers.chat.get_search_engine", return_value=Mock()):
+            with patch(
+                "searchat.api.routers.chat.generate_rag_response",
+                side_effect=ValueError("model_name must be provided or configured for this provider."),
+            ):
+                resp = client.post("/api/chat-rag", json={"query": "x", "model_provider": "ollama"})
+
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "model_name must be provided or configured for this provider."
 
 
 def test_chat_rag_llm_error_returns_503(client):
@@ -231,7 +257,24 @@ def test_chat_rag_llm_error_returns_503(client):
                 resp = client.post("/api/chat-rag", json={"query": "x", "model_provider": "ollama"})
 
     assert resp.status_code == 503
-    assert resp.json()["detail"] == "nope"
+    assert resp.json()["detail"] == "Generation service unavailable."
+
+
+def test_chat_rag_stable_llm_error_is_preserved(client):
+    from searchat.services.llm_service import LLMServiceError
+
+    config = Mock()
+    config.chat = Mock(enable_rag=True, enable_citations=True)
+    with patch("searchat.api.routers.chat.get_config", return_value=config):
+        with patch("searchat.api.routers.chat.get_search_engine", return_value=Mock()):
+            with patch(
+                "searchat.api.routers.chat.generate_rag_response",
+                side_effect=LLMServiceError("Ollama provider unreachable or returned an error."),
+            ):
+                resp = client.post("/api/chat-rag", json={"query": "x", "model_provider": "ollama"})
+
+    assert resp.status_code == 503
+    assert resp.json()["detail"] == "Ollama provider unreachable or returned an error."
 
 
 def test_chat_rag_generation_outage_returns_archival_fallback(client):
@@ -293,4 +336,4 @@ def test_chat_rag_unexpected_error_returns_500(client):
                 resp = client.post("/api/chat-rag", json={"query": "x", "model_provider": "ollama"})
 
     assert resp.status_code == 500
-    assert resp.json()["detail"] == "boom"
+    assert resp.json()["detail"] == "Internal server error"

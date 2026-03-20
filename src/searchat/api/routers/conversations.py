@@ -22,9 +22,47 @@ from searchat.api.models import (
     ConversationResponse,
     ResumeRequest,
 )
+from searchat.api.contracts import (
+    serialize_conversations_payload,
+    serialize_conversation_code_payload,
+    serialize_conversation_diff_payload,
+    serialize_delete_conversations_payload,
+    serialize_resume_session_payload,
+)
+from searchat.contracts.similarity import (
+    serialize_similar_conversation,
+    serialize_similar_conversations_payload,
+)
 from searchat.api.dataset_access import get_dataset_semantic_retrieval, get_dataset_store
 from searchat.api.warmup import invalidate_search_index
 from searchat.api.utils import detect_tool_from_path, detect_source_from_path, parse_date_filter
+from searchat.contracts.errors import (
+    bulk_export_no_ids_message,
+    bulk_export_too_many_message,
+    conversation_internal_server_error_message,
+    conversation_encoding_error_message,
+    conversation_file_missing_message,
+    conversation_file_missing_with_record_message,
+    conversation_invalid_json_message,
+    conversation_not_found_in_index_message,
+    conversation_not_found_in_snapshot_message,
+    conversation_not_found_message,
+    conversation_not_found_message_simple,
+    export_disabled_message,
+    invalid_target_conversation_id_message,
+    invalid_export_format_message,
+    invalid_tool_filter_message,
+    internal_server_error_message,
+    no_embeddings_for_conversation_message,
+    no_similar_conversation_found_message,
+    retrieval_capability_inspection_failed_message,
+    resume_command_not_found_message,
+    resume_snapshot_disabled_message,
+    snapshot_mode_disabled_message,
+    snapshot_not_found_message,
+    target_conversation_not_found_message,
+    unknown_conversation_format_message,
+)
 import searchat.api.dependencies as deps
 
 from searchat.services.export_service import export_conversation as render_export
@@ -42,14 +80,14 @@ def _resolve_dataset(snapshot: str | None) -> tuple[Path, str | None]:
 
     config = deps.get_config()
     if not config.snapshots.enabled:
-        raise HTTPException(status_code=404, detail="Snapshot mode is disabled")
+        raise HTTPException(status_code=404, detail=snapshot_mode_disabled_message())
 
     try:
         return deps.resolve_dataset_search_dir(snapshot)
     except ValueError as exc:
         msg = str(exc)
-        if msg == "Snapshot not found":
-            raise HTTPException(status_code=404, detail="Snapshot not found") from exc
+        if msg == snapshot_not_found_message():
+            raise HTTPException(status_code=404, detail=snapshot_not_found_message()) from exc
         raise HTTPException(status_code=400, detail=msg) from exc
 
 
@@ -378,7 +416,7 @@ async def get_all_conversations(
         if tool:
             tool_value = tool.lower()
             if tool_value not in VALID_TOOL_NAMES:
-                raise HTTPException(status_code=400, detail="Invalid tool filter")
+                raise HTTPException(status_code=400, detail=invalid_tool_filter_message())
             tool = tool_value
 
         count_kwargs: dict = {
@@ -425,14 +463,14 @@ async def get_all_conversations(
                 )
             )
 
-        return {
-            "results": response_results,
-            "total": total,
-            "search_time_ms": int((time.perf_counter() - started) * 1000.0),
-        }
+        return serialize_conversations_payload(
+            results=response_results,
+            total=total,
+            search_time_ms=int((time.perf_counter() - started) * 1000.0),
+        )
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from e
 
 
 @router.get("/conversation/{conversation_id}")
@@ -451,13 +489,13 @@ async def get_conversation(
         conv = store.get_conversation_meta(conversation_id)
         if conv is None:
             logger.warning(f"Conversation not found in index: {conversation_id}")
-            raise HTTPException(status_code=404, detail="Conversation not found in index")
+            raise HTTPException(status_code=404, detail=conversation_not_found_in_index_message())
         file_path = conv["file_path"]
 
         if snapshot_name is not None:
             record = store.get_conversation_record(conversation_id)
             if record is None:
-                raise HTTPException(status_code=404, detail="Conversation not found in snapshot")
+                raise HTTPException(status_code=404, detail=conversation_not_found_in_snapshot_message())
             messages = _messages_from_parquet(record.get("messages"))
             tool_name = detect_tool_from_path(file_path)
             return ConversationResponse(
@@ -482,10 +520,7 @@ async def get_conversation(
                 )
                 raise HTTPException(
                     status_code=404,
-                    detail=(
-                        "Conversation file not found and no indexed record is available. "
-                        f"The file may have been moved or deleted: {file_path}"
-                    ),
+                    detail=conversation_file_missing_with_record_message(file_path),
                 )
 
             try:
@@ -493,7 +528,7 @@ async def get_conversation(
             except TypeError:
                 raise HTTPException(
                     status_code=404,
-                    detail=f"Conversation file not found. The file may have been moved or deleted: {file_path}",
+                    detail=conversation_file_missing_message(file_path),
                 )
             tool_name = detect_tool_from_path(file_path)
             return ConversationResponse(
@@ -517,13 +552,13 @@ async def get_conversation(
                 logger.error(f"Invalid JSON in conversation file {file_path}: {e}")
                 raise HTTPException(
                     status_code=500,
-                    detail="Failed to parse conversation file (invalid JSON)"
+                    detail=conversation_invalid_json_message()
                 )
             except UnicodeDecodeError as e:
                 logger.error(f"Encoding error reading {file_path}: {e}")
                 raise HTTPException(
                     status_code=500,
-                    detail="Failed to read conversation file (encoding error)"
+                    detail=conversation_encoding_error_message()
                 )
 
             for entry in lines:
@@ -555,13 +590,13 @@ async def get_conversation(
                 logger.error(f"Invalid JSON in conversation file {file_path}: {e}")
                 raise HTTPException(
                     status_code=500,
-                    detail="Failed to parse conversation file (invalid JSON)"
+                    detail=conversation_invalid_json_message()
                 )
             except UnicodeDecodeError as e:
                 logger.error(f"Encoding error reading {file_path}: {e}")
                 raise HTTPException(
                     status_code=500,
-                    detail="Failed to read conversation file (encoding error)"
+                    detail=conversation_encoding_error_message()
                 )
 
             file_path_lower = file_path.lower()
@@ -597,7 +632,7 @@ async def get_conversation(
         raise
     except Exception as e:
         logger.error(f"Unexpected error loading conversation {conversation_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from e
 
 
 @router.post("/resume")
@@ -607,14 +642,14 @@ async def resume_session(
 ):
     """Resume a conversation session in its original tool (Claude Code or Vibe)."""
     if snapshot is not None:
-        raise HTTPException(status_code=403, detail="Resume is disabled in snapshot mode")
+        raise HTTPException(status_code=403, detail=resume_snapshot_disabled_message())
     try:
         store = deps.get_duckdb_store()
         platform_manager = get_platform_manager()
 
         conv = store.get_conversation_meta(request.conversation_id)
         if conv is None:
-            raise HTTPException(status_code=404, detail="Conversation not found")
+            raise HTTPException(status_code=404, detail=conversation_not_found_message_simple())
         file_path = conv["file_path"]
         session_id = conv["conversation_id"]
 
@@ -645,7 +680,7 @@ async def resume_session(
                 cwd = data.get('metadata', {}).get('environment', {}).get('working_directory', None)
                 command = f'vibe --resume {session_id}'
         else:
-            raise HTTPException(status_code=400, detail=f"Unknown conversation format: {file_path}")
+            raise HTTPException(status_code=400, detail=unknown_conversation_format_message(file_path))
 
         # Normalize path for current platform
         if cwd:
@@ -660,13 +695,12 @@ async def resume_session(
         # Path translation happens automatically in open_terminal_with_command
         platform_manager.open_terminal_with_command(command, cwd)
 
-        return {
-            "success": True,
-            "tool": tool,
-            "cwd": cwd,
-            "command": command,
-            "platform": platform_manager.platform
-        }
+        return serialize_resume_session_payload(
+            tool=tool,
+            cwd=cwd,
+            command=command,
+            platform=platform_manager.platform,
+        )
 
     except HTTPException:
         raise
@@ -676,11 +710,11 @@ async def resume_session(
         tool_name = locals().get('tool', 'claude/vibe')
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to execute command. Make sure {tool_name} is installed and in PATH."
+            detail=resume_command_not_found_message(tool_name)
         )
     except Exception as e:
         logger.error(f"Failed to resume session {request.conversation_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from e
 
 
 @router.get("/conversation/{conversation_id}/code")
@@ -729,18 +763,17 @@ async def get_conversation_code(
                     'lines': len(code.splitlines())
                 })
 
-        return {
-            'conversation_id': conversation_id,
-            'title': conv_response.title,
-            'total_blocks': len(code_blocks),
-            'code_blocks': code_blocks
-        }
+        return serialize_conversation_code_payload(
+            conversation_id=conversation_id,
+            title=conv_response.title,
+            code_blocks=code_blocks,
+        )
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Failed to extract code from conversation {conversation_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from e
 
 
 def _detect_language(code: str) -> str:
@@ -760,7 +793,10 @@ async def get_similar_conversations(
         try:
             dataset, search_engine = get_dataset_semantic_retrieval(snapshot)
         except RuntimeError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
+            raise HTTPException(
+                status_code=503,
+                detail=retrieval_capability_inspection_failed_message(str(exc)),
+            ) from exc
         store = dataset.store
 
         # Verify conversation exists
@@ -768,7 +804,7 @@ async def get_similar_conversations(
         if not conv_meta:
             raise HTTPException(
                 status_code=404,
-                detail=f"Conversation {conversation_id} not found"
+                detail=conversation_not_found_message(conversation_id),
             )
 
         # Get representative text from the conversation to generate embedding
@@ -790,7 +826,7 @@ async def get_similar_conversations(
             if not result:
                 raise HTTPException(
                     status_code=404,
-                    detail="No embeddings found for this conversation"
+                    detail=no_embeddings_for_conversation_message()
                 )
 
             chunk_text = result[0]
@@ -803,10 +839,11 @@ async def get_similar_conversations(
             ]
 
             if not hits:
-                return {
-                    'conversation_id': conversation_id,
-                    'similar_conversations': []
-                }
+                return serialize_similar_conversations_payload(
+                    conversation_id=conversation_id,
+                    title=conv_meta["title"],
+                    similar_conversations=[],
+                )
 
             # Query metadata and conversations to get details
             values_clause = ", ".join(["(?, ?)"] * len(hits))
@@ -867,38 +904,35 @@ async def get_similar_conversations(
             file_path,
             distance,
         ) in rows:
-            # Calculate similarity score (inverse of distance)
-            score = 1.0 / (1.0 + float(distance))
+            similar_conversations.append(
+                serialize_similar_conversation(
+                    conversation_id=sim_conv_id,
+                    project_id=project_id,
+                    title=title,
+                    created_at=created_at,
+                    updated_at=updated_at,
+                    message_count=message_count,
+                    tool=detect_tool_from_path(file_path),
+                    distance=distance,
+                )
+            )
 
-            # Handle both string and datetime types for timestamps
-            created_at_str = created_at if isinstance(created_at, str) else created_at.isoformat()
-            updated_at_str = updated_at if isinstance(updated_at, str) else updated_at.isoformat()
-
-            similar_conversations.append({
-                'conversation_id': sim_conv_id,
-                'project_id': project_id,
-                'title': title,
-                'created_at': created_at_str,
-                'updated_at': updated_at_str,
-                'message_count': message_count,
-                'similarity_score': round(score, 3),
-                'tool': detect_tool_from_path(file_path)
-            })
-
-        return {
-            'conversation_id': conversation_id,
-            'title': conv_meta['title'],
-            'similar_count': len(similar_conversations),
-            'similar_conversations': similar_conversations
-        }
+        return serialize_similar_conversations_payload(
+            conversation_id=conversation_id,
+            title=conv_meta["title"],
+            similar_conversations=similar_conversations,
+        )
 
     except HTTPException:
         raise
     except RuntimeError as e:
-        raise HTTPException(status_code=503, detail=str(e)) from e
+        raise HTTPException(
+            status_code=503,
+            detail=retrieval_capability_inspection_failed_message(str(e)),
+        ) from e
     except Exception as e:
         logger.error(f"Failed to find similar conversations for {conversation_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from e
 
 
 @router.get("/conversation/{conversation_id}/diff")
@@ -915,13 +949,13 @@ async def get_conversation_diff(
             similar_payload = await get_similar_conversations(conversation_id, limit=1, snapshot=snapshot)
             similar_list = similar_payload.get("similar_conversations", [])
             if not similar_list:
-                raise HTTPException(status_code=404, detail="No similar conversation found")
+                raise HTTPException(status_code=404, detail=no_similar_conversation_found_message())
             target_id = similar_list[0]["conversation_id"]
 
         if target_id is None:
-            raise HTTPException(status_code=404, detail="Target conversation not found")
+            raise HTTPException(status_code=404, detail=target_conversation_not_found_message())
         if not isinstance(target_id, str):
-            raise HTTPException(status_code=400, detail="Invalid target conversation id")
+            raise HTTPException(status_code=400, detail=invalid_target_conversation_id_message())
 
         source_conv = await get_conversation(conversation_id, snapshot=snapshot)
         target_conv = await get_conversation(target_id, snapshot=snapshot)
@@ -944,24 +978,19 @@ async def get_conversation_diff(
             elif line.startswith("  "):
                 unchanged.append(line[2:])
 
-        return {
-            "source_conversation_id": conversation_id,
-            "target_conversation_id": target_id,
-            "summary": {
-                "added": len(added),
-                "removed": len(removed),
-                "unchanged": len(unchanged),
-            },
-            "added": added,
-            "removed": removed,
-            "unchanged": unchanged,
-        }
+        return serialize_conversation_diff_payload(
+            source_conversation_id=conversation_id,
+            target_conversation_id=target_id,
+            added=added,
+            removed=removed,
+            unchanged=unchanged,
+        )
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Failed to build diff for {conversation_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from e
 
 
 @router.get("/conversation/{conversation_id}/export")
@@ -982,14 +1011,14 @@ async def export_conversation(
         if format_lower in ("ipynb", "pdf"):
             config = deps.get_config()
             if format_lower == "ipynb" and not config.export.enable_ipynb:
-                raise HTTPException(status_code=404, detail="Notebook export is disabled")
+                raise HTTPException(status_code=404, detail=export_disabled_message("Notebook"))
             if format_lower == "pdf" and not config.export.enable_pdf:
-                raise HTTPException(status_code=404, detail="PDF export is disabled")
+                raise HTTPException(status_code=404, detail=export_disabled_message("PDF"))
 
         if format_lower not in ("json", "markdown", "text", "ipynb", "pdf"):
             raise HTTPException(
                 status_code=400,
-                detail="Invalid format. Use: json, markdown, text, ipynb, or pdf",
+                detail=invalid_export_format_message(),
             )
 
         exported = render_export(conv_response, format=format_lower)  # type: ignore[arg-type]
@@ -1006,7 +1035,7 @@ async def export_conversation(
         raise
     except Exception as e:
         logger.error(f"Failed to export conversation {conversation_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from e
 
 
 class BulkExportRequest(BaseModel):
@@ -1028,26 +1057,26 @@ async def bulk_export_conversations(
         from datetime import datetime
 
         if not request.conversation_ids:
-            raise HTTPException(status_code=400, detail="No conversation IDs provided")
+            raise HTTPException(status_code=400, detail=bulk_export_no_ids_message())
 
         if len(request.conversation_ids) > 100:
             raise HTTPException(
                 status_code=400,
-                detail="Too many conversations (max 100)"
+                detail=bulk_export_too_many_message()
             )
 
         format_lower = request.format.lower()
         if format_lower in ("ipynb", "pdf"):
             config = deps.get_config()
             if format_lower == "ipynb" and not config.export.enable_ipynb:
-                raise HTTPException(status_code=404, detail="Notebook export is disabled")
+                raise HTTPException(status_code=404, detail=export_disabled_message("Notebook"))
             if format_lower == "pdf" and not config.export.enable_pdf:
-                raise HTTPException(status_code=404, detail="PDF export is disabled")
+                raise HTTPException(status_code=404, detail=export_disabled_message("PDF"))
 
         if format_lower not in ("json", "markdown", "text", "ipynb", "pdf"):
             raise HTTPException(
                 status_code=400,
-                detail="Invalid format. Use: json, markdown, text, ipynb, or pdf"
+                detail=invalid_export_format_message()
             )
 
         # Determine file extension
@@ -1107,7 +1136,7 @@ async def bulk_export_conversations(
         raise
     except Exception as e:
         logger.error(f"Failed to bulk export conversations: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from e
 
 
 # ---------------------------------------------------------------------------
@@ -1131,4 +1160,8 @@ async def delete_conversations(request: DeleteConversationsRequest):
 
     invalidate_search_index()
 
-    return result
+    return serialize_delete_conversations_payload(
+        deleted=result["deleted"],
+        removed_vectors=result["removed_vectors"],
+        source_files_deleted=result["source_files_deleted"],
+    )

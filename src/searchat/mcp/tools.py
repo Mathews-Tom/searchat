@@ -4,9 +4,37 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from searchat.api.utils import detect_tool_from_path
 from searchat.config import Config, PathResolver
 from searchat.config.constants import VALID_TOOL_NAMES, RAG_SYSTEM_PROMPT
+from searchat.contracts.errors import (
+    conversation_not_found_message,
+    invalid_agent_config_format_message,
+    invalid_model_provider_message,
+    invalid_mcp_expertise_severity_message,
+    invalid_mcp_expertise_type_message,
+    invalid_mcp_mode_message,
+    invalid_mcp_tool_message,
+    mcp_offset_message,
+    mcp_prime_max_tokens_message,
+    mcp_search_limit_message,
+    mcp_similarity_limit_message,
+    no_embeddings_for_conversation_message,
+    retrieval_capability_inspection_failed_message,
+)
+from searchat.mcp.contracts import (
+    serialize_agent_config_payload,
+    serialize_conversation_payload,
+    serialize_history_answer_payload,
+    serialize_expertise_search_payload,
+    serialize_patterns_payload,
+    serialize_prime_expertise_payload,
+    serialize_projects_payload,
+    serialize_record_expertise_payload,
+    serialize_search_payload,
+    serialize_similar_conversation,
+    serialize_similar_conversations_payload,
+    serialize_statistics_payload,
+)
 from searchat.models import SearchFilters, SearchMode
 from searchat.services.llm_service import (
     LLMServiceError,
@@ -54,7 +82,7 @@ def parse_mode(mode: str) -> SearchMode:
         return SearchMode.SEMANTIC
     if value == "keyword":
         return SearchMode.KEYWORD
-    raise ValueError("Invalid mode; expected: hybrid, semantic, keyword")
+    raise ValueError(invalid_mcp_mode_message())
 
 
 def parse_tool(tool: str | None) -> str | None:
@@ -64,8 +92,32 @@ def parse_tool(tool: str | None) -> str | None:
     if not value:
         return None
     if value not in VALID_TOOL_NAMES:
-        raise ValueError(f"Invalid tool; expected one of: {', '.join(sorted(VALID_TOOL_NAMES))}")
+        raise ValueError(invalid_mcp_tool_message())
     return value
+
+
+def parse_generation_provider(provider: str | None) -> str | None:
+    if provider is None:
+        return None
+    value = provider.lower().strip()
+    if not value:
+        return None
+    if value not in {"openai", "ollama", "embedded"}:
+        raise ValueError(invalid_model_provider_message())
+    return value
+
+
+def ensure_semantic_capability(engine: SemanticRetrievalService) -> None:
+    describe = getattr(engine, "describe_capabilities", None)
+    if not callable(describe):
+        return
+    try:
+        capabilities = describe()
+    except Exception as exc:
+        raise RuntimeError(retrieval_capability_inspection_failed_message(str(exc))) from exc
+    if capabilities.semantic_available:
+        return
+    raise RuntimeError(capabilities.semantic_reason or "Semantic search unavailable")
 
 
 def search_conversations(
@@ -79,47 +131,29 @@ def search_conversations(
     search_dir: str | None = None,
 ) -> str:
     if limit < 1 or limit > 100:
-        raise ValueError("limit must be between 1 and 100")
+        raise ValueError(mcp_search_limit_message())
     if offset < 0:
-        raise ValueError("offset must be >= 0")
+        raise ValueError(mcp_offset_message())
+
+    mode_value = parse_mode(mode)
+    if query.strip() == "*":
+        mode_value = SearchMode.KEYWORD
+    tool_value = parse_tool(tool)
 
     dataset_dir = resolve_dataset(search_dir)
     _config, engine, _store = build_services(dataset_dir)
+    if mode_value == SearchMode.SEMANTIC:
+        ensure_semantic_capability(engine)
 
     filters = SearchFilters()
     if project_id:
         filters.project_ids = [project_id]
 
-    tool_value = parse_tool(tool)
     if tool_value is not None:
         filters.tool = tool_value
 
-    results = engine.search(query, mode=parse_mode(mode), filters=filters)
-
-    sliced = results.results[offset : offset + limit]
-    payload = {
-        "results": [
-            {
-                "conversation_id": r.conversation_id,
-                "project_id": r.project_id,
-                "title": r.title,
-                "created_at": r.created_at,
-                "updated_at": r.updated_at,
-                "message_count": r.message_count,
-                "file_path": r.file_path,
-                "snippet": r.snippet,
-                "score": r.score,
-                "message_start_index": r.message_start_index,
-                "message_end_index": r.message_end_index,
-            }
-            for r in sliced
-        ],
-        "total": len(results.results),
-        "limit": limit,
-        "offset": offset,
-        "mode_used": results.mode_used,
-        "search_time_ms": results.search_time_ms,
-    }
+    results = engine.search(query, mode=mode_value, filters=filters)
+    payload = serialize_search_payload(results, limit=limit, offset=offset)
     return _json_dumps(payload)
 
 
@@ -129,31 +163,22 @@ def get_conversation(*, conversation_id: str, search_dir: str | None = None) -> 
 
     record = store.get_conversation_record(conversation_id)
     if record is None:
-        raise ValueError(f"Conversation not found: {conversation_id}")
+        raise ValueError(conversation_not_found_message(conversation_id))
 
-    return _json_dumps(record)
+    return _json_dumps(serialize_conversation_payload(record))
 
 
 def list_projects(*, search_dir: str | None = None) -> str:
     dataset_dir = resolve_dataset(search_dir)
     _config, _engine, store = build_services(dataset_dir)
-    return _json_dumps({"projects": store.list_projects()})
+    return _json_dumps(serialize_projects_payload(store.list_projects()))
 
 
 def get_statistics(*, search_dir: str | None = None) -> str:
     dataset_dir = resolve_dataset(search_dir)
     _config, _engine, store = build_services(dataset_dir)
     stats = store.get_statistics()
-    return _json_dumps(
-        {
-            "total_conversations": stats.total_conversations,
-            "total_messages": stats.total_messages,
-            "avg_messages": stats.avg_messages,
-            "total_projects": stats.total_projects,
-            "earliest_date": stats.earliest_date,
-            "latest_date": stats.latest_date,
-        }
-    )
+    return _json_dumps(serialize_statistics_payload(stats))
 
 
 def find_similar_conversations(
@@ -163,14 +188,15 @@ def find_similar_conversations(
     search_dir: str | None = None,
 ) -> str:
     if limit < 1 or limit > 20:
-        raise ValueError("limit must be between 1 and 20")
+        raise ValueError(mcp_similarity_limit_message())
 
     dataset_dir = resolve_dataset(search_dir)
     _config, engine, store = build_services(dataset_dir)
+    ensure_semantic_capability(engine)
 
     conv_meta = store.get_conversation_meta(conversation_id)
     if not conv_meta:
-        raise ValueError(f"Conversation not found: {conversation_id}")
+        raise ValueError(conversation_not_found_message(conversation_id))
 
     con = store._connect()
     try:
@@ -188,7 +214,7 @@ def find_similar_conversations(
         con.close()
 
     if row is None:
-        raise ValueError("No embeddings found for this conversation")
+        raise ValueError(no_embeddings_for_conversation_message())
 
     chunk_text = row[0]
     representative_text = f"{conv_meta['title']} {chunk_text}"
@@ -198,7 +224,13 @@ def find_similar_conversations(
     ]
 
     if not hits:
-        return _json_dumps({"conversation_id": conversation_id, "similar_conversations": []})
+        return _json_dumps(
+            serialize_similar_conversations_payload(
+                conversation_id=conversation_id,
+                title=conv_meta.get("title"),
+                similar_conversations=[],
+            )
+        )
 
     values_clause = ", ".join(["(?, ?)"] * len(hits))
     params: list[object] = []
@@ -256,29 +288,25 @@ def find_similar_conversations(
         file_path,
         distance,
     ) in rows:
-        score = 1.0 / (1.0 + float(distance))
-        created_at_str = created_at if isinstance(created_at, str) else created_at.isoformat()
-        updated_at_str = updated_at if isinstance(updated_at, str) else updated_at.isoformat()
         similar.append(
-            {
-                "conversation_id": sim_id,
-                "project_id": project_id,
-                "title": title,
-                "created_at": created_at_str,
-                "updated_at": updated_at_str,
-                "message_count": message_count,
-                "similarity_score": round(score, 3),
-                "tool": detect_tool_from_path(file_path),
-            }
+            serialize_similar_conversation(
+                conversation_id=sim_id,
+                project_id=project_id,
+                title=title,
+                created_at=created_at,
+                updated_at=updated_at,
+                message_count=message_count,
+                file_path=file_path,
+                distance=distance,
+            )
         )
 
     return _json_dumps(
-        {
-            "conversation_id": conversation_id,
-            "title": conv_meta.get("title"),
-            "similar_count": len(similar),
-            "similar_conversations": similar,
-        }
+        serialize_similar_conversations_payload(
+            conversation_id=conversation_id,
+            title=conv_meta.get("title"),
+            similar_conversations=similar,
+        )
     )
 
 
@@ -290,22 +318,26 @@ def ask_about_history(
     model_name: str | None = None,
     search_dir: str | None = None,
 ) -> str:
+    provider_value = parse_generation_provider(model_provider)
     dataset_dir = resolve_dataset(search_dir)
     config, engine, _store = build_services(dataset_dir)
+    ensure_semantic_capability(engine)
 
     target = resolve_generation_target(
         config.llm,
-        provider=model_provider,
+        provider=provider_value,
         model_name=model_name,
     )
 
     results = engine.search(question, mode=SearchMode.HYBRID, filters=SearchFilters())
     top_results = results.results[:8]
     if not top_results:
-        payload: dict[str, object] = {"answer": "I cannot find the information in the archives."}
-        if include_sources:
-            payload["sources"] = []
-        return _json_dumps(payload)
+        return _json_dumps(
+            serialize_history_answer_payload(
+                answer="I cannot find the information in the archives.",
+                sources=[] if include_sources else None,
+            )
+        )
 
     context_lines: list[str] = []
     for idx, r in enumerate(top_results, start=1):
@@ -337,22 +369,12 @@ def ask_about_history(
     except LLMServiceError:
         answer = build_grounded_fallback_answer(top_results)
 
-    payload: dict[str, object] = {"answer": answer}
-    if include_sources:
-        payload["sources"] = [
-            {
-                "conversation_id": r.conversation_id,
-                "project_id": r.project_id,
-                "title": r.title,
-                "score": r.score,
-                "snippet": r.snippet,
-                "message_start_index": r.message_start_index,
-                "message_end_index": r.message_end_index,
-                "tool": detect_tool_from_path(r.file_path),
-            }
-            for r in top_results
-        ]
-    return _json_dumps(payload)
+    return _json_dumps(
+        serialize_history_answer_payload(
+            answer=answer,
+            sources=top_results if include_sources else None,
+        )
+    )
 
 
 def extract_patterns(
@@ -370,12 +392,14 @@ def extract_patterns(
     """
     from searchat.services.pattern_mining import extract_patterns as _extract_patterns
 
+    provider_value = parse_generation_provider(model_provider)
     dataset_dir = resolve_dataset(search_dir)
     config, engine, _store = build_services(dataset_dir)
+    ensure_semantic_capability(engine)
 
     target = resolve_generation_target(
         config.llm,
-        provider=model_provider,
+        provider=provider_value,
         model_name=model_name,
     )
 
@@ -388,25 +412,7 @@ def extract_patterns(
         retrieval_service=engine,
     )
 
-    return _json_dumps({
-        "patterns": [
-            {
-                "name": p.name,
-                "description": p.description,
-                "confidence": p.confidence,
-                "evidence": [
-                    {
-                        "conversation_id": e.conversation_id,
-                        "date": e.date,
-                        "snippet": e.snippet,
-                    }
-                    for e in p.evidence
-                ],
-            }
-            for p in patterns
-        ],
-        "total": len(patterns),
-    })
+    return _json_dumps(serialize_patterns_payload(patterns))
 
 
 def prime_expertise(
@@ -426,7 +432,7 @@ def prime_expertise(
     from searchat.expertise.store import ExpertiseStore
 
     if max_tokens < 100 or max_tokens > 32000:
-        raise ValueError("max_tokens must be between 100 and 32000")
+        raise ValueError(mcp_prime_max_tokens_message())
 
     dataset_dir = resolve_dataset(search_dir)
     config = Config.load()
@@ -449,7 +455,7 @@ def prime_expertise(
         contradiction_ids=getattr(prioritizer, "_contradiction_ids", None),
         qualifying_notes=getattr(prioritizer, "_qualifying_notes", None),
     )
-    return _json_dumps(payload)
+    return _json_dumps(serialize_prime_expertise_payload(payload))
 
 
 def record_expertise(
@@ -473,7 +479,9 @@ def record_expertise(
     try:
         record_type = ExpertiseType(type)
     except ValueError:
-        raise ValueError(f"Invalid type: {type!r}. Valid: {[t.value for t in ExpertiseType]}")
+        raise ValueError(
+            invalid_mcp_expertise_type_message(type, [item.value for item in ExpertiseType])
+        )
 
     severity_val = None
     if severity is not None:
@@ -481,7 +489,10 @@ def record_expertise(
             severity_val = ExpertiseSeverity(severity)
         except ValueError:
             raise ValueError(
-                f"Invalid severity: {severity!r}. Valid: {[s.value for s in ExpertiseSeverity]}"
+                invalid_mcp_expertise_severity_message(
+                    severity,
+                    [item.value for item in ExpertiseSeverity],
+                )
             )
 
     record = ExpertiseRecord(
@@ -498,16 +509,18 @@ def record_expertise(
     store = ExpertiseStore(dataset_dir)
     record_id = store.insert(record)
 
-    return _json_dumps({
-        "id": record_id,
-        "action": "created",
-        "type": record_type.value,
-        "domain": domain,
-        "content": content,
-        "project": project,
-        "severity": severity_val.value if severity_val else None,
-        "created_at": record.created_at,
-    })
+    return _json_dumps(
+        serialize_record_expertise_payload(
+            record_id=record_id,
+            action="created",
+            record_type=record_type.value,
+            domain=domain,
+            content=content,
+            project=project,
+            severity=severity_val.value if severity_val else None,
+            created_at=record.created_at,
+        )
+    )
 
 
 def search_expertise(
@@ -526,14 +539,16 @@ def search_expertise(
     from searchat.expertise.store import ExpertiseStore
 
     if limit < 1 or limit > 100:
-        raise ValueError("limit must be between 1 and 100")
+        raise ValueError(mcp_search_limit_message())
 
     type_filter = None
     if type is not None:
         try:
             type_filter = ExpertiseType(type)
         except ValueError:
-            raise ValueError(f"Invalid type: {type!r}. Valid: {[t.value for t in ExpertiseType]}")
+            raise ValueError(
+                invalid_mcp_expertise_type_message(type, [item.value for item in ExpertiseType])
+            )
 
     dataset_dir = resolve_dataset(search_dir)
     store = ExpertiseStore(dataset_dir)
@@ -547,34 +562,14 @@ def search_expertise(
     )
     records = store.query(q)
 
-    return _json_dumps({
-        "results": [
-            {
-                "id": r.id,
-                "type": r.type.value,
-                "domain": r.domain,
-                "content": r.content,
-                "project": r.project,
-                "confidence": r.confidence,
-                "severity": r.severity.value if r.severity else None,
-                "tags": r.tags,
-                "source_conversation_id": r.source_conversation_id,
-                "source_agent": r.source_agent,
-                "name": r.name,
-                "rationale": r.rationale,
-                "resolution": r.resolution,
-                "created_at": r.created_at,
-                "last_validated": r.last_validated,
-                "validation_count": r.validation_count,
-                "is_active": r.is_active,
-            }
-            for r in records
-        ],
-        "total": len(records),
-        "query": query,
-        "domain": domain,
-        "type": type,
-    })
+    return _json_dumps(
+        serialize_expertise_search_payload(
+            records=records,
+            query=query,
+            domain=domain,
+            type_filter=type,
+        )
+    )
 
 
 def generate_agent_config(
@@ -594,14 +589,16 @@ def generate_agent_config(
     from searchat.config.constants import AGENT_CONFIG_TEMPLATES
 
     if format not in ("claude.md", "copilot-instructions.md", "cursorrules"):
-        raise ValueError("format must be one of: claude.md, copilot-instructions.md, cursorrules")
+        raise ValueError(invalid_agent_config_format_message())
 
+    provider_value = parse_generation_provider(model_provider)
     dataset_dir = resolve_dataset(search_dir)
     config, engine, _store = build_services(dataset_dir)
+    ensure_semantic_capability(engine)
 
     target = resolve_generation_target(
         config.llm,
-        provider=model_provider,
+        provider=provider_value,
         model_name=model_name,
     )
 
@@ -630,8 +627,10 @@ def generate_agent_config(
     template = AGENT_CONFIG_TEMPLATES.get(format, AGENT_CONFIG_TEMPLATES["claude.md"])
     content = template.format(project_name=project_name, patterns=patterns_text)
 
-    return _json_dumps({
-        "format": format,
-        "content": content,
-        "pattern_count": len(patterns),
-    })
+    return _json_dumps(
+        serialize_agent_config_payload(
+            format=format,
+            content=content,
+            pattern_count=len(patterns),
+        )
+    )

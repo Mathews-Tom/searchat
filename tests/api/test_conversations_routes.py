@@ -381,7 +381,10 @@ def test_conversation_diff_requires_search_engine(client):
         response = client.get("/api/conversation/conv-1/diff")
 
         assert response.status_code == 503
-        assert response.json()["detail"] == "Search engine not ready"
+        assert (
+            response.json()["detail"]
+            == "Retrieval capability inspection failed: Search engine not ready"
+        )
 
 
 @pytest.mark.unit
@@ -396,6 +399,7 @@ class TestGetAllConversationsEndpoint:
             assert response.status_code == 200
             data = response.json()
 
+            assert list(data) == ["results", "total", "search_time_ms"]
             assert "results" in data
             assert "total" in data
             assert data["total"] == 2  # conv-3 filtered out (0 messages)
@@ -565,7 +569,7 @@ class TestGetAllConversationsEndpoint:
             response = client.get("/api/conversations/all")
 
             assert response.status_code == 500
-            assert "Database error" in response.json()["detail"]
+            assert response.json()["detail"] == "Internal server error"
 
     def test_get_all_conversations_filter_by_project(self, client, mock_duckdb_store):
         """Test filtering conversations by project."""
@@ -862,7 +866,7 @@ class TestGetConversationEndpoint:
             response = client.get("/api/conversation/nonexistent")
 
             assert response.status_code == 404
-            assert "not found in index" in response.json()["detail"]
+            assert response.json()["detail"] == "Conversation not found in index"
 
     def test_get_conversation_file_not_found(self, client, mock_duckdb_store):
         """Test error when conversation file doesn't exist."""
@@ -871,7 +875,10 @@ class TestGetConversationEndpoint:
             response = client.get("/api/conversation/conv-1")
 
             assert response.status_code == 404
-            assert "file not found" in response.json()["detail"].lower()
+            assert response.json()["detail"] == (
+                "Conversation file not found. The file may have been moved or deleted: "
+                "/home/user/.claude/conv-1.jsonl"
+            )
 
     def test_get_conversation_invalid_json(self, client, mock_duckdb_store, tmp_path):
         """Test error handling for invalid JSON in conversation file."""
@@ -887,7 +894,7 @@ class TestGetConversationEndpoint:
             response = client.get("/api/conversation/conv-1")
 
             assert response.status_code == 500
-            assert "invalid JSON" in response.json()["detail"]
+            assert response.json()["detail"] == "Failed to parse conversation file (invalid JSON)"
 
     def test_get_conversation_with_list_content(self, client, mock_duckdb_store, tmp_path):
         """Test handling of content as list (text blocks)."""
@@ -976,6 +983,7 @@ class TestResumeSessionEndpoint:
                 assert response.status_code == 200
                 data = response.json()
 
+                assert list(data) == ["success", "tool", "cwd", "command", "platform"]
                 assert data["success"] is True
                 assert data["tool"] == "claude"
                 assert data["cwd"] == "/home/user/project"
@@ -1019,6 +1027,7 @@ class TestResumeSessionEndpoint:
                 assert response.status_code == 200
                 data = response.json()
 
+                assert list(data) == ["success", "tool", "cwd", "command", "platform"]
                 assert data["success"] is True
                 assert data["tool"] == "vibe"
                 assert data["cwd"] == "/home/user/vibe-project"
@@ -1031,7 +1040,7 @@ class TestResumeSessionEndpoint:
                 response = client.post("/api/resume", json={"conversation_id": "nonexistent"})
 
                 assert response.status_code == 404
-                assert "not found" in response.json()["detail"]
+                assert response.json()["detail"] == "Conversation not found"
 
     def test_resume_unknown_format(self, client, mock_duckdb_store, mock_platform_manager, tmp_path):
         """Test error for unknown conversation format."""
@@ -1048,7 +1057,7 @@ class TestResumeSessionEndpoint:
                 response = client.post("/api/resume", json={"conversation_id": "conv-1"})
 
                 assert response.status_code == 400
-                assert "Unknown conversation format" in response.json()["detail"]
+                assert response.json()["detail"] == f"Unknown conversation format: {conv_file}"
 
     def test_resume_with_path_normalization(self, client, mock_duckdb_store, mock_platform_manager, tmp_path):
         """Test that paths are normalized for the platform."""
@@ -1072,6 +1081,7 @@ class TestResumeSessionEndpoint:
                 assert response.status_code == 200
                 data = response.json()
 
+                assert list(data) == ["success", "tool", "cwd", "command", "platform"]
                 # Path should be normalized
                 assert data["cwd"] == "C:\\Users\\Test\\project"
                 mock_platform_manager.normalize_path.assert_called_once_with("/mnt/c/Users/Test/project")
@@ -1098,10 +1108,82 @@ class TestResumeSessionEndpoint:
                 assert response.status_code == 200
                 data = response.json()
 
+                assert list(data) == ["success", "tool", "cwd", "command", "platform"]
                 # cwd should be None
                 assert data["cwd"] is None
                 # Should still open terminal
                 mock_platform_manager.open_terminal_with_command.assert_called_once()
+
+    def test_resume_wraps_internal_errors(self, client, mock_duckdb_store, mock_platform_manager, tmp_path):
+        conv_file = tmp_path / "conv-1.jsonl"
+        messages = [
+            {"type": "user", "message": {"content": "Test"}, "cwd": "/tmp/project"},
+            {"type": "assistant", "message": {"content": "Response"}},
+        ]
+        with open(conv_file, 'w') as f:
+            for msg in messages:
+                f.write(json.dumps(msg) + '\n')
+
+        for row in mock_duckdb_store._data:
+            if row["conversation_id"] == "conv-1":
+                row["file_path"] = str(conv_file)
+
+        mock_platform_manager.open_terminal_with_command.side_effect = RuntimeError("boom")
+
+        with patch('searchat.api.routers.conversations.deps.get_duckdb_store', return_value=mock_duckdb_store):
+            with patch('searchat.api.routers.conversations.get_platform_manager', return_value=mock_platform_manager):
+                response = client.post("/api/resume", json={"conversation_id": "conv-1"})
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Internal server error"
+
+    def test_export_conversation_wraps_internal_errors(self, client):
+        with patch("searchat.api.routers.conversations.get_conversation", side_effect=Exception("boom")):
+            response = client.get("/api/conversation/conv-1/export")
+
+            assert response.status_code == 500
+            assert response.json()["detail"] == "Internal server error"
+
+    def test_get_conversation_wraps_internal_errors(self, client):
+        dataset = SimpleNamespace(store=Mock(), snapshot_name=None)
+        dataset.store.get_conversation_meta.return_value = {
+            "conversation_id": "conv-1",
+            "title": "Conversation",
+            "project_id": "proj-1",
+            "file_path": "/tmp/conv-1.jsonl",
+        }
+
+        with patch("searchat.api.routers.conversations.get_dataset_store", return_value=dataset):
+            with patch("searchat.api.routers.conversations.Path.exists", return_value=True):
+                with patch("searchat.api.routers.conversations.read_file_async", side_effect=RuntimeError("boom")):
+                    response = client.get("/api/conversation/conv-1")
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Internal server error"
+
+    def test_conversation_code_wraps_internal_errors(self, client):
+        with patch("searchat.api.routers.conversations.get_conversation", side_effect=RuntimeError("boom")):
+            response = client.get("/api/conversation/conv-1/code")
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Internal server error"
+
+    def test_conversation_diff_wraps_internal_errors(self, client):
+        with patch("searchat.api.routers.conversations.get_conversation", side_effect=RuntimeError("boom")):
+            response = client.get("/api/conversation/conv-1/diff?target_id=conv-2")
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Internal server error"
+
+    def test_bulk_export_wraps_internal_errors(self, client):
+        with patch("zipfile.ZipFile", side_effect=RuntimeError("boom")):
+            response = client.post(
+                "/api/conversations/bulk-export",
+                json={"conversation_ids": ["conv-1"], "format": "json"},
+            )
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Internal server error"
 
 
 def test_conversations_resolve_dataset_requires_snapshot() -> None:
@@ -1109,6 +1191,32 @@ def test_conversations_resolve_dataset_requires_snapshot() -> None:
 
     with pytest.raises(RuntimeError):
         conv_router._resolve_dataset(None)
+
+
+def test_delete_conversations_preserves_stable_payload(client, monkeypatch: pytest.MonkeyPatch):
+    indexer = Mock()
+    indexer.delete_conversations.return_value = {
+        "deleted": 3,
+        "removed_vectors": 7,
+        "source_files_deleted": 2,
+    }
+    monkeypatch.setattr("searchat.api.routers.conversations.deps.get_indexer", lambda: indexer)
+    invalidate = Mock()
+    monkeypatch.setattr("searchat.api.routers.conversations.invalidate_search_index", invalidate)
+
+    response = client.request(
+        "DELETE",
+        "/api/conversations/delete",
+        json={"conversation_ids": ["conv-1"], "delete_source_files": False},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "deleted": 3,
+        "removed_vectors": 7,
+        "source_files_deleted": 2,
+    }
+    invalidate.assert_called_once()
 
 
 def test_conversations_resolve_dataset_disabled_returns_404(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1120,6 +1228,7 @@ def test_conversations_resolve_dataset_disabled_returns_404(monkeypatch: pytest.
     with pytest.raises(HTTPException) as excinfo:
         conv_router._resolve_dataset("backup_20250101_000000")
     assert excinfo.value.status_code == 404
+    assert excinfo.value.detail == "Snapshot mode is disabled"
 
 
 def test_conversations_messages_from_parquet_parses_dict_and_tuple() -> None:
@@ -1168,6 +1277,7 @@ async def test_conversation_diff_rejects_invalid_target_id_type() -> None:
     with pytest.raises(HTTPException) as excinfo:
         await conv_router.get_conversation_diff("conv-1", target_id=123)  # type: ignore[arg-type]
     assert excinfo.value.status_code == 400
+    assert excinfo.value.detail == "Invalid target conversation id"
 
 
 @pytest.mark.asyncio
@@ -1207,5 +1317,41 @@ async def test_conversation_diff_computes_added_removed_counts(monkeypatch: pyte
         source_start=0,
         source_end=1,
     )
+    assert list(payload) == [
+        "source_conversation_id",
+        "target_conversation_id",
+        "summary",
+        "added",
+        "removed",
+        "unchanged",
+    ]
     assert payload["summary"]["added"] >= 1
     assert payload["summary"]["removed"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_get_conversation_code_preserves_stable_payload(monkeypatch: pytest.MonkeyPatch) -> None:
+    from searchat.api.routers import conversations as conv_router
+    from searchat.api.models import ConversationMessage
+
+    conversation = SimpleNamespace(
+        title="Code review",
+        messages=[
+            ConversationMessage(
+                role="assistant",
+                content="```python\nprint('hi')\n```",
+                timestamp="2026-03-16T00:00:00Z",
+            )
+        ],
+    )
+
+    async def _fake_get_conversation(conversation_id: str, snapshot=None):
+        return conversation
+
+    monkeypatch.setattr(conv_router, "get_conversation", _fake_get_conversation)
+
+    payload = await conv_router.get_conversation_code("conv-1")
+
+    assert list(payload) == ["conversation_id", "title", "total_blocks", "code_blocks"]
+    assert payload["conversation_id"] == "conv-1"
+    assert payload["total_blocks"] == 1

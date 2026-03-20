@@ -15,9 +15,15 @@ import searchat.api.dependencies as deps
 from searchat.api import state as api_state
 from searchat.api.warmup import invalidate_search_index
 
+from searchat.api.contracts import serialize_index_missing_payload
 from searchat.api.dependencies import (
     get_config,
     get_indexer,
+)
+from searchat.contracts.errors import (
+    internal_server_error_message,
+    indexing_snapshot_disabled_message,
+    reindex_blocked_message,
 )
 
 
@@ -45,8 +51,7 @@ async def reindex():
     # SAFETY GUARD: Block all reindexing to protect irreplaceable conversation data
     raise HTTPException(
         status_code=403,
-        detail="BLOCKED: Reindexing disabled to protect irreplaceable conversation data. "
-               "Source JSONLs are missing - rebuilding would cause data loss."
+        detail=reindex_blocked_message(),
     )
 
 
@@ -54,7 +59,7 @@ async def reindex():
 async def index_missing(snapshot: str | None = Query(None, description="Backup snapshot name (read-only)")):
     """Index conversations that aren't already indexed (append-only, safe)."""
     if snapshot is not None:
-        raise HTTPException(status_code=403, detail="Indexing is disabled in snapshot mode")
+        raise HTTPException(status_code=403, detail=indexing_snapshot_disabled_message())
     try:
         start_time = time.time()
         config = get_config()
@@ -78,15 +83,14 @@ async def index_missing(snapshot: str | None = Query(None, description="Backup s
 
         if not new_files:
             logger.info(f"No missing conversations found. Total: {len(all_files)}, Already indexed: {already_indexed_count}")
-            return {
-                "success": True,
-                "new_conversations": 0,
-                "failed_conversations": 0,
-                "empty_conversations": 0,
-                "total_files": len(all_files),
-                "already_indexed": len(indexed_paths),
-                "message": "All conversations are already indexed"
-            }
+            return serialize_index_missing_payload(
+                new_conversations=0,
+                failed_conversations=0,
+                empty_conversations=0,
+                total_files=len(all_files),
+                already_indexed=len(indexed_paths),
+                message="All conversations are already indexed",
+            )
 
         # Mark indexing in progress
         api_state.indexing_state["in_progress"] = True
@@ -124,22 +128,19 @@ async def index_missing(snapshot: str | None = Query(None, description="Backup s
         if empty_count > 0:
             logger.info(f"{empty_count} empty sessions skipped (no messages)")
 
-        result = {
-            "success": True,
-            "new_conversations": stats.new_conversations,
-            "failed_conversations": failed_count,
-            "empty_conversations": empty_count,
-            "total_files": len(all_files),
-            "already_indexed": len(indexed_paths),
-            "time_seconds": round(elapsed_time, 2),
-            "message": message
-        }
-
-        return result
+        return serialize_index_missing_payload(
+            new_conversations=stats.new_conversations,
+            failed_conversations=failed_count,
+            empty_conversations=empty_count,
+            total_files=len(all_files),
+            already_indexed=len(indexed_paths),
+            time_seconds=round(elapsed_time, 2),
+            message=message,
+        )
 
     except Exception as e:
         logger.error(f"Error indexing missing conversations: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=internal_server_error_message()) from e
     finally:
         # Mark indexing complete
         api_state.indexing_state["in_progress"] = False

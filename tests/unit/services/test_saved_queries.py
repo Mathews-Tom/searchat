@@ -39,23 +39,23 @@ class TestCreateQuery:
         assert q["last_used"] is None
 
     def test_create_requires_name(self, svc):
-        with pytest.raises(ValueError, match="name is required"):
+        with pytest.raises(ValueError, match="Saved query name is required\\."):
             svc.create_query(_make_payload(name=""))
 
     def test_create_requires_query_text(self, svc):
         payload = _make_payload()
         payload["query"] = None
-        with pytest.raises(ValueError, match="text is required"):
+        with pytest.raises(ValueError, match="Saved query text is required\\."):
             svc.create_query(payload)
 
     def test_create_requires_filters(self, svc):
         payload = _make_payload()
         payload["filters"] = "invalid"
-        with pytest.raises(ValueError, match="filters must be provided"):
+        with pytest.raises(ValueError, match="Saved query filters must be provided\\."):
             svc.create_query(payload)
 
     def test_create_requires_mode(self, svc):
-        with pytest.raises(ValueError, match="mode is required"):
+        with pytest.raises(ValueError, match="Saved query mode is required\\."):
             svc.create_query(_make_payload(mode=""))
 
 
@@ -103,7 +103,7 @@ class TestUpdateQuery:
 
     def test_update_rejects_empty_name(self, svc):
         created = svc.create_query(_make_payload())
-        with pytest.raises(ValueError, match="name is required"):
+        with pytest.raises(ValueError, match="Saved query name is required\\."):
             svc.update_query(created["id"], {"name": ""})
 
     def test_update_query_text(self, svc):
@@ -113,17 +113,17 @@ class TestUpdateQuery:
 
     def test_update_rejects_non_string_query(self, svc):
         created = svc.create_query(_make_payload())
-        with pytest.raises(ValueError, match="text is required"):
+        with pytest.raises(ValueError, match="Saved query text is required\\."):
             svc.update_query(created["id"], {"query": 123})
 
     def test_update_rejects_non_dict_filters(self, svc):
         created = svc.create_query(_make_payload())
-        with pytest.raises(ValueError, match="filters must be provided"):
+        with pytest.raises(ValueError, match="Saved query filters must be provided\\."):
             svc.update_query(created["id"], {"filters": "bad"})
 
     def test_update_rejects_empty_mode(self, svc):
         created = svc.create_query(_make_payload())
-        with pytest.raises(ValueError, match="mode is required"):
+        with pytest.raises(ValueError, match="Saved query mode is required\\."):
             svc.update_query(created["id"], {"mode": ""})
 
     def test_update_multiple_fields(self, svc):

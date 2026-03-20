@@ -89,6 +89,13 @@ def test_get_analytics_summary(client, mock_analytics_service):
 
         assert response.status_code == 200
         data = response.json()
+        assert list(data) == [
+            "total_searches",
+            "unique_queries",
+            "avg_results",
+            "avg_time_ms",
+            "mode_distribution",
+        ]
 
         assert data['total_searches'] == 100
         assert data['unique_queries'] == 50
@@ -135,8 +142,7 @@ def test_get_top_queries(client, mock_analytics_service):
         assert response.status_code == 200
         data = response.json()
 
-        assert 'queries' in data
-        assert 'days' in data
+        assert list(data) == ["queries", "days"]
         assert len(data['queries']) == 2
 
         query1 = data['queries'][0]
@@ -183,8 +189,7 @@ def test_get_dead_end_queries(client, mock_analytics_service):
         assert response.status_code == 200
         data = response.json()
 
-        assert 'queries' in data
-        assert 'days' in data
+        assert list(data) == ["queries", "days"]
         assert len(data['queries']) == 2
 
         query1 = data['queries'][0]
@@ -270,6 +275,7 @@ def test_analytics_topics_value_error_returns_400(client, mock_analytics_service
     with patch("searchat.api.routers.stats.deps.get_analytics_service", return_value=mock_analytics_service):
         resp = client.get("/api/stats/analytics/topics?days=30&k=8")
         assert resp.status_code == 400
+        assert resp.json()["detail"] == "Topic cluster count must be between 2 and 20"
 
 
 def test_analytics_config_error_handling(client, mock_analytics_service):
@@ -306,6 +312,7 @@ def test_get_analytics_trends(client, mock_analytics_service):
         response = client.get("/api/stats/analytics/trends?days=30")
         assert response.status_code == 200
         data = response.json()
+        assert list(data) == ["days", "points"]
         assert data["days"] == 30
         assert data["points"][0]["day"] == "2026-01-01"
         mock_analytics_service.get_trends.assert_called_once_with(days=30)
@@ -326,6 +333,7 @@ def test_get_analytics_agent_comparison(client, mock_analytics_service):
         response = client.get("/api/stats/analytics/agent-comparison?days=30")
         assert response.status_code == 200
         data = response.json()
+        assert list(data) == ["days", "tools"]
         assert data["days"] == 30
         assert data["tools"][0]["tool_filter"] == "all"
         mock_analytics_service.get_agent_comparison.assert_called_once_with(days=30)
@@ -336,6 +344,7 @@ def test_get_analytics_topics(client, mock_analytics_service):
         response = client.get("/api/stats/analytics/topics?days=30&k=8")
         assert response.status_code == 200
         data = response.json()
+        assert list(data) == ["days", "clusters"]
         assert data["days"] == 30
         assert len(data["clusters"]) == 1
         mock_analytics_service.get_topic_clusters.assert_called_once_with(days=30, k=8)
@@ -382,4 +391,4 @@ def test_analytics_endpoints_reject_snapshot_mode(client):
     for endpoint in endpoints:
         resp = client.get(f"{endpoint}?snapshot=backup_20250101_000000")
         assert resp.status_code == 403
-        assert "active dataset" in resp.json()["detail"].lower()
+        assert resp.json()["detail"] == "Analytics is available only for the active dataset"

@@ -66,8 +66,10 @@ class TestReindexEndpoint:
         response = client.post("/api/reindex")
 
         assert response.status_code == 403
-        assert "BLOCKED" in response.json()["detail"]
-        assert "data loss" in response.json()["detail"].lower()
+        assert response.json()["detail"] == (
+            "BLOCKED: Reindexing disabled to protect irreplaceable conversation data. "
+            "Source JSONLs are missing - rebuilding would cause data loss."
+        )
 
 
 @pytest.mark.unit
@@ -125,6 +127,16 @@ class TestIndexMissingEndpoint:
                     assert response.status_code == 200
                     data = response.json()
 
+                    assert list(data) == [
+                        "success",
+                        "new_conversations",
+                        "failed_conversations",
+                        "empty_conversations",
+                        "total_files",
+                        "already_indexed",
+                        "message",
+                        "time_seconds",
+                    ]
                     assert data["success"] is True
                     assert data["new_conversations"] == 5
                     assert data["total_files"] == 4  # 3 JSONL + 1 JSON
@@ -152,6 +164,15 @@ class TestIndexMissingEndpoint:
                 assert response.status_code == 200
                 data = response.json()
 
+                assert list(data) == [
+                    "success",
+                    "new_conversations",
+                    "failed_conversations",
+                    "empty_conversations",
+                    "total_files",
+                    "already_indexed",
+                    "message",
+                ]
                 assert data["success"] is True
                 assert data["new_conversations"] == 0
                 assert "already indexed" in data["message"].lower()
@@ -194,7 +215,7 @@ class TestIndexMissingEndpoint:
                         response = client.post("/api/index_missing")
 
         assert response.status_code == 500
-        assert "Indexing error" in response.json()["detail"]
+        assert response.json()["detail"] == "Internal server error"
 
     def test_index_missing_progress_adapter_updates_state(self):
         from searchat.api.routers.indexing import StateTrackingProgressAdapter
@@ -217,6 +238,15 @@ class TestIndexMissingEndpoint:
                         resp = client.post('/api/index_missing')
 
         assert resp.status_code == 200
+        assert list(resp.json()) == [
+            "success",
+            "new_conversations",
+            "failed_conversations",
+            "empty_conversations",
+            "total_files",
+            "already_indexed",
+            "message",
+        ]
         assert resp.json()["new_conversations"] == 0
 
     def test_index_missing_scans_opencode_storage_sessions(self, client, mock_config, mock_indexer, tmp_path):
@@ -236,6 +266,16 @@ class TestIndexMissingEndpoint:
                             resp = client.post('/api/index_missing')
 
         assert resp.status_code == 200
+        assert list(resp.json()) == [
+            "success",
+            "new_conversations",
+            "failed_conversations",
+            "empty_conversations",
+            "total_files",
+            "already_indexed",
+            "message",
+            "time_seconds",
+        ]
         mock_indexer.index_append_only.assert_called_once()
 
     def test_index_missing_returns_message_when_failures_present(self, client, mock_config, mock_indexer, tmp_path):
@@ -278,6 +318,12 @@ class TestWatcherStatusEndpoint:
                 assert response.status_code == 200
                 data = response.json()
 
+                assert list(data) == [
+                    "running",
+                    "watched_directories",
+                    "indexed_since_start",
+                    "last_update",
+                ]
                 assert data["running"] is True
                 assert len(data["watched_directories"]) == 2
                 assert data["indexed_since_start"] == 5
@@ -294,6 +340,12 @@ class TestWatcherStatusEndpoint:
                 assert response.status_code == 200
                 data = response.json()
 
+                assert list(data) == [
+                    "running",
+                    "watched_directories",
+                    "indexed_since_start",
+                    "last_update",
+                ]
                 assert data["running"] is False
                 assert data["watched_directories"] == []
 
@@ -314,6 +366,7 @@ class TestShutdownEndpoint:
                 assert response.status_code == 200
                 data = response.json()
 
+                assert list(data) == ["success", "forced", "message"]
                 assert data["success"] is True
                 assert data["forced"] is False
                 assert "gracefully" in data["message"].lower()
@@ -333,6 +386,14 @@ class TestShutdownEndpoint:
             assert response.status_code == 200
             data = response.json()
 
+            assert list(data) == [
+                "success",
+                "indexing_in_progress",
+                "operation",
+                "files_total",
+                "elapsed_seconds",
+                "message",
+            ]
             assert data["success"] is False
             assert data["indexing_in_progress"] is True
             assert data["operation"] == "manual_index"
@@ -355,6 +416,7 @@ class TestShutdownEndpoint:
                 assert response.status_code == 200
                 data = response.json()
 
+                assert list(data) == ["success", "forced", "message"]
                 assert data["success"] is True
                 assert data["forced"] is True
                 assert "interrupted" in data["message"].lower()
