@@ -111,6 +111,25 @@ def saved_query_use_count_invalid_message() -> str:
     return "Saved query use_count is invalid."
 
 
+def invalid_saved_query_request_message() -> str:
+    return "Invalid saved query request."
+
+
+def saved_query_validation_message(reason: str) -> str:
+    stable_messages = {
+        saved_queries_file_invalid_message(),
+        saved_query_missing_created_at_message(),
+        saved_query_name_required_message(),
+        saved_query_text_required_message(),
+        saved_query_filters_required_message(),
+        saved_query_mode_required_message(),
+        saved_query_use_count_invalid_message(),
+    }
+    if reason in stable_messages:
+        return reason
+    return invalid_saved_query_request_message()
+
+
 def dashboards_disabled_message() -> str:
     return "Dashboards are disabled"
 

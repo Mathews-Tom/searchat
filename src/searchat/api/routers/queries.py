@@ -12,7 +12,11 @@ from searchat.api.contracts import (
     serialize_success_flag_payload,
 )
 import searchat.api.dependencies as deps
-from searchat.contracts.errors import internal_server_error_message, saved_query_not_found_message
+from searchat.contracts.errors import (
+    internal_server_error_message,
+    saved_query_not_found_message,
+    saved_query_validation_message,
+)
 
 
 router = APIRouter()
@@ -51,7 +55,7 @@ async def create_saved_query(request: SavedQueryCreateRequest):
         query = service.create_query(request.model_dump())
         return serialize_saved_query_mutation_payload(query)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=saved_query_validation_message(str(exc))) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=internal_server_error_message()) from exc
 
@@ -66,7 +70,7 @@ async def update_saved_query(query_id: str, request: SavedQueryUpdateRequest):
             raise HTTPException(status_code=404, detail=saved_query_not_found_message())
         return serialize_saved_query_mutation_payload(query)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=saved_query_validation_message(str(exc))) from exc
     except HTTPException:
         raise
     except Exception as exc:
@@ -96,7 +100,7 @@ async def run_saved_query(query_id: str):
             raise HTTPException(status_code=404, detail=saved_query_not_found_message())
         return serialize_saved_query_mutation_payload(query)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=saved_query_validation_message(str(exc))) from exc
     except HTTPException:
         raise
     except Exception as exc:
