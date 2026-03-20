@@ -61,36 +61,31 @@
                 </button>
                 <button class="nav-item" :class="{ active: $store.layout.activeNav === 'bookmarks' }"
                         @click="$store.layout.setActiveNav('bookmarks')"
-                        hx-get="/fragments/bookmarks-list"
-                        hx-target="#results">
+                        data-action="showBookmarks">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m19 21-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
                     Bookmarks
                 </button>
                 <button class="nav-item" :class="{ active: $store.layout.activeNav === 'analytics' }"
                         @click="$store.layout.setActiveNav('analytics')"
-                        hx-get="/fragments/analytics-dashboard"
-                        hx-target="#results">
+                        data-action="showAnalytics">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
                     Analytics
                 </button>
                 <button class="nav-item" :class="{ active: $store.layout.activeNav === 'dashboards' }"
                         @click="$store.layout.setActiveNav('dashboards')"
-                        hx-get="/fragments/dashboards-view"
-                        hx-target="#results">
+                        data-action="showDashboards">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
                     Dashboards
                 </button>
                 <button class="nav-item" :class="{ active: $store.layout.activeNav === 'expertise' }"
                         @click="$store.layout.setActiveNav('expertise')"
-                        hx-get="/fragments/expertise-view"
-                        hx-target="#results">
+                        data-action="showExpertise">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
                     Expertise
                 </button>
                 <button class="nav-item" :class="{ active: $store.layout.activeNav === 'contradictions' }"
                         @click="$store.layout.setActiveNav('contradictions')"
-                        hx-get="/fragments/contradictions-view"
-                        hx-target="#results">
+                        data-action="showContradictions">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                     Knowledge Graph
                 </button>
@@ -112,9 +107,7 @@
                     Manage
                 </a>
                 <button class="nav-item"
-                        hx-post="/fragments/index-missing"
-                        hx-target="#results"
-                        hx-swap="beforeend">
+                        data-action="indexMissing">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>
                     Add Missing
                 </button>
@@ -161,16 +154,12 @@
                 <h3 style="color: hsl(var(--warning)); margin-bottom: 16px;">Backup &amp; Restore</h3>
 
                 <button id="createBackupButton" class="glass-btn btn-block" style="border-color: hsl(var(--success)); color: hsl(var(--success));"
-                        hx-post="/fragments/backup-create"
-                        hx-target="#backupStatus"
-                        hx-swap="innerHTML">
+                        data-action="createBackup">
                     Create Backup
                 </button>
-                <div id="backupStatus"></div>
 
                 <button id="manageBackupsButton" class="glass-btn btn-block" style="border-color: hsl(var(--accent)); color: hsl(var(--accent));"
-                        hx-get="/fragments/backup-list"
-                        hx-target="#results">
+                        data-action="showBackups">
                     Manage Backups
                 </button>
 
@@ -217,9 +206,7 @@
                         <span class="server-port">localhost:8000</span>
                     </div>
                     <button class="server-stop-btn"
-                            hx-post="/fragments/shutdown"
-                            hx-target="#results"
-                            hx-confirm="Stop the search server? This will shut down the application.">
+                            data-action="shutdownServer">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><path d="M12 2v10"/></svg> Stop
                     </button>
                 </div>
@@ -254,32 +241,27 @@
                 <span class="toolbar-divider"></span>
                 <button class="glass-btn" title="View your bookmarked conversations"
                         @click="$store.layout.setActiveNav('bookmarks')"
-                        hx-get="/fragments/bookmarks-list"
-                        hx-target="#results">
+                        data-action="showBookmarks">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m19 21-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg> Bookmarks
                 </button>
                 <button class="glass-btn" id="analyticsButton" title="View search analytics and patterns"
                         @click="$store.layout.setActiveNav('analytics')"
-                        hx-get="/fragments/analytics-dashboard"
-                        hx-target="#results">
+                        data-action="showAnalytics">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10M12 20V4M6 20v-6"/></svg> Analytics
                 </button>
                 <button class="glass-btn" id="dashboardsButton" title="View saved dashboards"
                         @click="$store.layout.setActiveNav('dashboards')"
-                        hx-get="/fragments/dashboards-view"
-                        hx-target="#results">
+                        data-action="showDashboards">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg> Dashboards
                 </button>
                 <button class="glass-btn" id="expertiseButton" title="Browse expertise records"
                         @click="$store.layout.setActiveNav('expertise')"
-                        hx-get="/fragments/expertise-view"
-                        hx-target="#results">
+                        data-action="showExpertise">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg> Expertise
                 </button>
                 <button class="glass-btn" id="contradictionsButton" title="Resolve knowledge graph contradictions"
                         @click="$store.layout.setActiveNav('contradictions')"
-                        hx-get="/fragments/contradictions-view"
-                        hx-target="#results">
+                        data-action="showContradictions">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> Knowledge Graph
                 </button>
                 <span class="toolbar-divider"></span>
@@ -288,17 +270,12 @@
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg> Bulk Export
                 </button>
                 <button class="glass-btn" id="indexMissingButton" title="Safely add conversations that aren't in the index yet"
-                        hx-post="/fragments/index-missing"
-                        hx-target="#results"
-                        hx-swap="beforeend"
-                        hx-indicator="#indexMissingSpinner">
+                        data-action="indexMissing">
                     <span class="htmx-indicator spinner" id="indexMissingSpinner" style="width:14px;height:14px;"></span>
                     <svg class="htmx-indicator-hide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add Missing
                 </button>
                 <button class="glass-btn glass-btn-danger" title="Stop the search server"
-                        hx-post="/fragments/shutdown"
-                        hx-target="#results"
-                        hx-confirm="Stop the search server? This will shut down the application.">
+                        data-action="shutdownServer">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0M12 2v10"/></svg> Stop Server
                 </button>
             </div>
