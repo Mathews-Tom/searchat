@@ -39,6 +39,51 @@ def rag_chat_disabled_message() -> str:
     return "RAG chat endpoint is disabled."
 
 
+def invalid_chat_request_message() -> str:
+    return "Invalid chat request."
+
+
+def chat_generation_unavailable_message() -> str:
+    return "Generation service unavailable."
+
+
+def missing_model_name_message() -> str:
+    return "model_name must be provided or configured for this provider."
+
+
+def empty_llm_response_message() -> str:
+    return "LLM response contained no content."
+
+
+def ollama_provider_unavailable_message() -> str:
+    return "Ollama provider unreachable or returned an error."
+
+
+def llm_request_failed_message() -> str:
+    return "LLM request failed."
+
+
+def chat_validation_message(reason: str) -> str:
+    stable_messages = {
+        invalid_model_provider_message(),
+        missing_model_name_message(),
+    }
+    if reason in stable_messages:
+        return reason
+    return invalid_chat_request_message()
+
+
+def chat_unavailable_message(reason: str) -> str:
+    stable_messages = {
+        empty_llm_response_message(),
+        ollama_provider_unavailable_message(),
+        llm_request_failed_message(),
+    }
+    if reason in stable_messages:
+        return reason
+    return chat_generation_unavailable_message()
+
+
 def pygments_required_message() -> str:
     return "Pygments is required for code highlighting"
 

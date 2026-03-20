@@ -13,6 +13,8 @@ from searchat.api.utils import (
 )
 from searchat.api.dependencies import get_config, get_search_engine
 from searchat.contracts.errors import (
+    chat_unavailable_message,
+    chat_validation_message,
     chat_snapshot_disabled_message,
     internal_server_error_message,
     rag_chat_disabled_message,
@@ -50,9 +52,9 @@ async def chat(
             session_id=request.session_id,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=chat_validation_message(str(exc))) from exc
     except LLMServiceError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=503, detail=chat_unavailable_message(str(exc))) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=internal_server_error_message()) from exc
 
@@ -95,9 +97,9 @@ async def chat_rag(
             session_id=request.session_id,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=chat_validation_message(str(exc))) from exc
     except LLMServiceError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=503, detail=chat_unavailable_message(str(exc))) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=internal_server_error_message()) from exc
 
