@@ -21,7 +21,7 @@ def test_manage_page_uses_select_backed_filters_instead_of_project_fragment() ->
     assert 'onclick="manageSetFilter' not in html
 
 
-def test_manage_page_keeps_fragment_list_loading_for_now() -> None:
+def test_manage_page_uses_api_bootstrap_for_list_and_preview_panels() -> None:
     client = TestClient(app)
     resp = client.get("/manage")
     assert resp.status_code == 200
@@ -29,4 +29,6 @@ def test_manage_page_keeps_fragment_list_loading_for_now() -> None:
     html = resp.text
     assert 'id="manage-list"' in html
     assert 'fetch(\'/api/conversations/all?\'' in html
+    assert "fetch('/api/conversation/' + encodeURIComponent(conversationId))" in html
     assert 'hx-get="/fragments/manage-conversations"' not in html
+    assert 'fetch(\'/fragments/conversation-preview/' not in html
