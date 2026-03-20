@@ -2,7 +2,7 @@
 .pygments .hll { background-color: #ffffcc }
 .pygments  { background: transparent; }
 .pygments .c { color: #60a0b0; font-style: italic } /* Comment */
-.pygments .err { border: 1px solid #FF0000 } /* Error */
+.pygments .err { border: 0; color: inherit; background: transparent; } /* Error */
 .pygments .k { color: #007020; font-weight: bold } /* Keyword */
 .pygments .o { color: #666666 } /* Operator */
 .pygments .ch { color: #60a0b0; font-style: italic } /* Comment.Hashbang */

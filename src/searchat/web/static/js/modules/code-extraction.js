@@ -1,5 +1,22 @@
 // Code extraction functionality
 
+function copyIconSvg() {
+    return `
+        <svg class="copy-action-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <rect x="9" y="9" width="10" height="10" rx="2" stroke="currentColor" stroke-width="2"></rect>
+            <path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" stroke="currentColor" stroke-width="2"></path>
+        </svg>
+    `;
+}
+
+function checkIconSvg() {
+    return `
+        <svg class="copy-action-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M20 6 9 17l-5-5" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"></path>
+        </svg>
+    `;
+}
+
 /**
  * Load and display code blocks for a conversation
  */
@@ -134,7 +151,7 @@ export async function loadCodeBlocks(conversationId, container) {
                                 ${roleLabel}
                             </span>
                             <span style="
-                                font-family: 'JetBrains Mono', monospace;
+                                font-family: var(--font-mono);
                                 font-size: 12px;
                                 color: hsl(var(--text-primary));
                                 background: hsl(var(--bg-elevated));
@@ -147,17 +164,19 @@ export async function loadCodeBlocks(conversationId, container) {
                                 ${block.lines} line${block.lines !== 1 ? 's' : ''}
                             </span>
                         </div>
-                        <button onclick="window.copyCode(${index})" style="
-                            padding: 4px 10px;
+                        <button class="code-copy-trigger" type="button" data-copy-index="${index}" title="Copy code" aria-label="Copy code" style="
+                            padding: 4px 8px;
                             background: transparent;
                             border: 1px solid hsl(var(--border-glass));
                             border-radius: 4px;
                             color: hsl(var(--text-primary));
-                            font-size: 12px;
                             cursor: pointer;
                             transition: all 0.2s;
-                        " onmouseover="this.style.background='hsl(var(--bg-surface))'" onmouseout="this.style.background='transparent'">
-                            📋 Copy
+                            display: inline-flex;
+                            align-items: center;
+                            justify-content: center;
+                        ">
+                            ${copyIconSvg()}
                         </button>
                     </div>
                     <pre id="code-${index}" style="
@@ -166,7 +185,7 @@ export async function loadCodeBlocks(conversationId, container) {
                         background: hsl(var(--code-bg));
                         overflow-x: auto;
                     "><code class="pygments" style="
-                        font-family: 'JetBrains Mono', monospace;
+                        font-family: var(--font-mono);
                         font-size: 13px;
                         line-height: 1.5;
                         color: hsl(var(--text-primary));
@@ -213,6 +232,13 @@ export async function loadCodeBlocks(conversationId, container) {
             });
         });
 
+        container.querySelectorAll('.code-copy-trigger').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const index = Number(btn.dataset.copyIndex);
+                copyCode(index, btn);
+            });
+        });
+
         // Store code blocks for copying
         window._codeBlocks = data.code_blocks;
 
@@ -231,9 +257,11 @@ async function highlightBlocks(container, blocks, { mode }) {
         if (!block || !item) continue;
 
         const source = item.dataset.languageSource || block.language_source || 'detected';
+        const normalizedLanguage = String(block.language || '').toLowerCase();
         const isFence = source === 'fence';
         if (mode === 'fence' && !isFence) continue;
         if (mode === 'guess' && isFence) continue;
+        if (mode === 'guess' && ['plaintext', 'text', 'plain'].includes(normalizedLanguage)) continue;
 
         targets.push({
             index: i,
@@ -290,29 +318,41 @@ function scheduleIdle(callback) {
 /**
  * Copy code block to clipboard
  */
-export function copyCode(index) {
+export function copyCode(index, buttonEl = null) {
     if (!window._codeBlocks || !window._codeBlocks[index]) return;
 
     const code = window._codeBlocks[index].code;
+    const button = buttonEl || document.querySelector(`.code-copy-trigger[data-copy-index="${index}"]`);
+    if (!(button instanceof HTMLElement)) return;
 
     navigator.clipboard.writeText(code).then(() => {
-        // Show feedback
-        const btn = event.target;
-        const originalText = btn.textContent;
-        btn.textContent = '✓ Copied!';
-        btn.style.background = 'hsl(var(--success))';
-        btn.style.color = 'white';
-        btn.style.borderColor = 'hsl(var(--success))';
+        button.innerHTML = checkIconSvg();
+        button.style.background = 'hsl(var(--success))';
+        button.style.color = 'white';
+        button.style.borderColor = 'hsl(var(--success))';
+        button.setAttribute('title', 'Copied');
+        button.setAttribute('aria-label', 'Copied');
 
         setTimeout(() => {
-            btn.textContent = originalText;
-            btn.style.background = 'transparent';
-            btn.style.color = 'hsl(var(--text-primary))';
-            btn.style.borderColor = 'hsl(var(--border-glass))';
+            button.innerHTML = copyIconSvg();
+            button.style.background = 'transparent';
+            button.style.color = 'hsl(var(--text-primary))';
+            button.style.borderColor = 'hsl(var(--border-glass))';
+            button.setAttribute('title', 'Copy code');
+            button.setAttribute('aria-label', 'Copy code');
         }, 2000);
     }).catch(err => {
         console.error('Failed to copy code:', err);
-        alert('Failed to copy code to clipboard');
+        button.style.borderColor = 'hsl(var(--danger))';
+        button.style.color = 'hsl(var(--danger))';
+        button.setAttribute('title', 'Copy failed');
+        button.setAttribute('aria-label', 'Copy failed');
+        setTimeout(() => {
+            button.style.borderColor = 'hsl(var(--border-glass))';
+            button.style.color = 'hsl(var(--text-primary))';
+            button.setAttribute('title', 'Copy code');
+            button.setAttribute('aria-label', 'Copy code');
+        }, 2000);
     });
 }
 

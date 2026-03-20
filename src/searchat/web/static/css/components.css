@@ -1110,6 +1110,30 @@
     color: hsl(var(--accent));
 }
 
+.snippet-copy {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 32px;
+    min-height: 28px;
+}
+
+.snippet-copy.is-copied {
+    background: hsl(var(--success));
+    border-color: hsl(var(--success));
+    color: white;
+}
+
+.snippet-copy.is-copy-error {
+    border-color: hsl(var(--danger));
+    color: hsl(var(--danger));
+}
+
+.copy-action-icon {
+    display: block;
+    flex: 0 0 auto;
+}
+
 .snippet-code {
     margin: 0;
     padding: 12px 14px;
@@ -1125,6 +1149,7 @@
 
 .snippet-code code {
     font-family: var(--font-mono);
+    font-variant-ligatures: none;
     font-size: 12px;
     line-height: 1.5;
     color: hsl(var(--text-primary));

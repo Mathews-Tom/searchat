@@ -16,6 +16,23 @@ const _snippetCodeMap = new Map();
 let _snippetCodeCounter = 0;
 let _resultsHandlersBound = false;
 
+function copyIconSvg() {
+    return `
+        <svg class="copy-action-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <rect x="9" y="9" width="10" height="10" rx="2" stroke="currentColor" stroke-width="2"></rect>
+            <path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" stroke="currentColor" stroke-width="2"></path>
+        </svg>
+    `;
+}
+
+function checkIconSvg() {
+    return `
+        <svg class="copy-action-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M20 6 9 17l-5-5" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"></path>
+        </svg>
+    `;
+}
+
 function findProjectSuggestion(query) {
     const summaries = getProjectSummaries();
     if (!Array.isArray(summaries) || summaries.length === 0) return null;
@@ -225,7 +242,7 @@ function renderCodeBlock(code, language) {
                     <span class="snippet-code-lang">${escapeHtml(language || 'plaintext')}</span>
                     <span class="snippet-code-lines">${lineCount} lines</span>
                     <div class="snippet-code-actions">
-                        <button class="snippet-copy" data-code-id="${codeId}">Copy</button>
+                        <button class="snippet-copy" type="button" data-code-id="${codeId}" title="Copy snippet" aria-label="Copy snippet">${copyIconSvg()}</button>
                         ${isCollapsed ? '<button class="snippet-toggle">Expand</button>' : ''}
                     </div>
                 </div>
@@ -299,21 +316,35 @@ function ensureResultsHandlers(resultsDiv) {
     if (_resultsHandlersBound) return;
     async function handleResultsClick(event) {
         const target = event.target;
+        const snippetCopyBtn = target.closest('.snippet-copy');
 
-        if (target.classList.contains('snippet-copy')) {
+        if (snippetCopyBtn) {
             event.stopPropagation();
-            const codeId = target.dataset.codeId;
+            const codeId = snippetCopyBtn.dataset.codeId;
             const code = _snippetCodeMap.get(codeId) || '';
             if (!code) return;
             try {
                 await navigator.clipboard.writeText(code);
-                const original = target.textContent;
-                target.textContent = 'Copied';
+                snippetCopyBtn.innerHTML = checkIconSvg();
+                snippetCopyBtn.classList.add('is-copied');
+                snippetCopyBtn.setAttribute('title', 'Copied');
+                snippetCopyBtn.setAttribute('aria-label', 'Copied');
                 setTimeout(function () {
-                    target.textContent = original;
+                    snippetCopyBtn.innerHTML = copyIconSvg();
+                    snippetCopyBtn.classList.remove('is-copied');
+                    snippetCopyBtn.setAttribute('title', 'Copy snippet');
+                    snippetCopyBtn.setAttribute('aria-label', 'Copy snippet');
                 }, 1500);
             } catch (error) {
                 console.error('Failed to copy snippet code:', error);
+                snippetCopyBtn.classList.add('is-copy-error');
+                snippetCopyBtn.setAttribute('title', 'Copy failed');
+                snippetCopyBtn.setAttribute('aria-label', 'Copy failed');
+                setTimeout(function () {
+                    snippetCopyBtn.classList.remove('is-copy-error');
+                    snippetCopyBtn.setAttribute('title', 'Copy snippet');
+                    snippetCopyBtn.setAttribute('aria-label', 'Copy snippet');
+                }, 1500);
             }
             return;
         }
