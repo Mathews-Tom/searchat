@@ -53,6 +53,8 @@ actionRegistry.showSearchView = showSearchView;
 
 // Keep a few compatibility globals for direct template/alpine hooks.
 window.setTheme = setTheme;
+window.showExpertise = showExpertise;
+window.showContradictions = showContradictions;
 
 function safeInit(name, fn) {
     try {
