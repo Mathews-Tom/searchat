@@ -688,6 +688,7 @@ pytest -v                      # Verbose output
 pytest -k test_search          # Run specific tests
 pytest --cov=searchat          # Coverage report
 pytest --cov-report=html       # HTML coverage report
+searchat validate release      # Run the local pre-release validation matrix
 ```
 
 **Test Coverage:**
@@ -696,6 +697,8 @@ pytest --cov-report=html       # HTML coverage report
 - ~5,900 lines of test code
 - Comprehensive coverage of all features
 - API endpoint tests, unit tests, integration tests
+
+See [docs/release.md](docs/release.md) for the Wave 6 release validation flow and packaging gate.
 
 ## Troubleshooting
 

@@ -2,7 +2,15 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 from collections import Counter
+from dataclasses import dataclass
+import os
+import subprocess
+import sys
+import tempfile
+import zipfile
+from pathlib import Path
 
 from rich.console import Console
 from rich.table import Table
@@ -13,6 +21,8 @@ def run_validate(argv: list[str]) -> int:
     """Entry point for `searchat validate`."""
     if argv and argv[0] == "storage":
         return _run_validate_storage(argv[1:])
+    if argv and argv[0] == "release":
+        return _run_validate_release(argv[1:])
 
     parser = argparse.ArgumentParser(
         prog="searchat validate",
@@ -232,6 +242,325 @@ def _run_validate_storage(argv: list[str]) -> int:
 
     console.print(table)
     return 1 if any(issue.severity == "error" for issue in report.issues) else 0
+
+
+@dataclass(frozen=True)
+class ReleaseValidationGroup:
+    name: str
+    description: str
+    targets: tuple[str, ...]
+
+
+RELEASE_VALIDATION_GROUPS: tuple[ReleaseValidationGroup, ...] = (
+    ReleaseValidationGroup(
+        name="Contracts",
+        description="Public API, MCP, and UI boundary contracts.",
+        targets=(
+            "tests/ui",
+            "tests/api/test_fragment_routes.py",
+            "tests/acceptance/test_api_contract.py",
+            "tests/acceptance/test_mcp_contract.py",
+        ),
+    ),
+    ReleaseValidationGroup(
+        name="Compatibility",
+        description="Storage, config, and operational compatibility gates.",
+        targets=(
+            "tests/acceptance/test_storage_compatibility.py",
+            "tests/acceptance/test_config_compatibility.py",
+            "tests/acceptance/test_ops_readiness.py",
+            "tests/acceptance/test_search_quality.py",
+        ),
+    ),
+    ReleaseValidationGroup(
+        name="Performance Smoke",
+        description="Fast performance gates that should hold before release.",
+        targets=(
+            "tests/unit/perf/test_performance_gates.py",
+        ),
+    ),
+    ReleaseValidationGroup(
+        name="Packaging",
+        description="Build sdist/wheel artifacts and validate package metadata.",
+        targets=(),
+    ),
+)
+
+RELEASE_REQUIRED_ENTRY_POINTS = (
+    "searchat =",
+    "searchat-web =",
+    "searchat-mcp =",
+    "searchat-setup-index =",
+    "searchat-ghost =",
+)
+
+RELEASE_REQUIRED_WHEEL_MEMBERS = (
+    "searchat/py.typed",
+    "searchat/config/settings.default.toml",
+)
+
+
+def _run_validate_release(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(
+        prog="searchat validate release",
+        description="Run the curated pre-release validation matrix.",
+    )
+    parser.add_argument(
+        "--group",
+        action="append",
+        choices=[group.name.lower() for group in RELEASE_VALIDATION_GROUPS],
+        dest="groups",
+        help="Run only a specific release validation group. May be passed multiple times.",
+    )
+    args = parser.parse_args(argv)
+
+    console = Console()
+    requested = set(args.groups or [])
+    groups = tuple(
+        group for group in RELEASE_VALIDATION_GROUPS
+        if not requested or group.name.lower() in requested
+    )
+
+    if not groups:
+        console.print("[red]No release validation groups selected.[/red]")
+        return 1
+
+    requested = set(args.groups or [group.name.lower() for group in RELEASE_VALIDATION_GROUPS])
+    if requested - {"packaging"} and importlib.util.find_spec("pytest") is None:
+        console.print("[red]pytest is not installed. Install dev dependencies before running release validation.[/red]")
+        return 1
+
+    console.print(
+        Panel(
+            "[bold]Release Validation Report[/bold]\n"
+            "Runs the curated release gate matrix used for local pre-release checks.",
+            expand=False,
+        )
+    )
+
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("Group")
+    table.add_column("Status")
+    table.add_column("Targets")
+
+    any_failures = False
+    for group in groups:
+        console.print(f"\n[bold]{group.name}[/bold]")
+        console.print(group.description)
+        if group.name == "Packaging":
+            completed = _run_release_packaging_group(console)
+        else:
+            command = [
+                sys.executable,
+                "-m",
+                "pytest",
+                "-o",
+                "addopts=",
+                *group.targets,
+                "-q",
+            ]
+            console.print(f"[dim]{' '.join(command)}[/dim]")
+            completed = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        success = completed.returncode == 0
+        any_failures = any_failures or not success
+        status_text = "[green]PASS[/green]" if success else "[red]FAIL[/red]"
+
+        output = (completed.stdout or "").strip()
+        if output:
+            console.print(output)
+        error_output = (completed.stderr or "").strip()
+        if error_output:
+            console.print(f"[red]{error_output}[/red]")
+
+        table.add_row(
+            group.name,
+            status_text,
+            "\n".join(group.targets),
+        )
+
+    console.print("\n")
+    console.print(table)
+    return 1 if any_failures else 0
+
+
+def _run_release_packaging_group(console: Console) -> subprocess.CompletedProcess[str]:
+    if importlib.util.find_spec("build") is None:
+        return subprocess.CompletedProcess(
+            args=[sys.executable, "-m", "build"],
+            returncode=1,
+            stdout="",
+            stderr="Python package `build` is not installed. Install dev dependencies before running packaging validation.",
+        )
+
+    with tempfile.TemporaryDirectory(prefix="searchat-release-build-") as tmp_dir:
+        build_command = [
+            sys.executable,
+            "-m",
+            "build",
+            "--sdist",
+            "--wheel",
+            "--outdir",
+            tmp_dir,
+        ]
+        console.print(f"[dim]{' '.join(build_command)}[/dim]")
+
+        build_result = subprocess.run(
+            build_command,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if build_result.returncode != 0:
+            return build_result
+
+        packaging_result = _validate_release_artifacts(tmp_dir)
+        if packaging_result.returncode != 0:
+            packaging_stdout = "\n".join(
+                part.strip()
+                for part in (build_result.stdout, packaging_result.stdout)
+                if part and part.strip()
+            )
+            packaging_stderr = "\n".join(
+                part.strip()
+                for part in (build_result.stderr, packaging_result.stderr)
+                if part and part.strip()
+            )
+            return subprocess.CompletedProcess(
+                args=build_command,
+                returncode=packaging_result.returncode,
+                stdout=packaging_stdout,
+                stderr=packaging_stderr,
+            )
+
+        if importlib.util.find_spec("twine") is None:
+            return subprocess.CompletedProcess(
+                args=build_command,
+                returncode=0,
+                stdout="\n".join(
+                    part.strip()
+                    for part in (
+                        build_result.stdout,
+                        packaging_result.stdout,
+                        "Twine not installed; skipped metadata verification.",
+                    )
+                    if part and part.strip()
+                ),
+                stderr=build_result.stderr or "",
+            )
+
+        artifacts = sorted(
+            os.path.join(tmp_dir, name)
+            for name in os.listdir(tmp_dir)
+            if name.endswith((".whl", ".tar.gz"))
+        )
+        twine_command = [sys.executable, "-m", "twine", "check", *artifacts]
+        console.print(f"[dim]{' '.join(twine_command)}[/dim]")
+
+        twine_result = subprocess.run(
+            twine_command,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if twine_result.returncode != 0:
+            return twine_result
+
+        stdout_parts = [
+            part.strip()
+            for part in (build_result.stdout, packaging_result.stdout, twine_result.stdout)
+            if part and part.strip()
+        ]
+        stderr_parts = [part.strip() for part in (build_result.stderr, twine_result.stderr) if part and part.strip()]
+        return subprocess.CompletedProcess(
+            args=build_command,
+            returncode=0,
+            stdout="\n".join(stdout_parts),
+            stderr="\n".join(stderr_parts),
+        )
+
+
+def _validate_release_artifacts(dist_dir: str) -> subprocess.CompletedProcess[str]:
+    artifacts_dir = Path(dist_dir)
+    wheels = sorted(artifacts_dir.glob("*.whl"))
+    sdists = sorted(artifacts_dir.glob("*.tar.gz"))
+
+    if len(wheels) != 1:
+        return subprocess.CompletedProcess(
+            args=["validate-wheel-count"],
+            returncode=1,
+            stdout="",
+            stderr=f"Expected exactly one wheel artifact, found {len(wheels)}.",
+        )
+    if len(sdists) != 1:
+        return subprocess.CompletedProcess(
+            args=["validate-sdist-count"],
+            returncode=1,
+            stdout="",
+            stderr=f"Expected exactly one source distribution, found {len(sdists)}.",
+        )
+
+    wheel_path = wheels[0]
+    try:
+        with zipfile.ZipFile(wheel_path) as archive:
+            names = set(archive.namelist())
+            for required_member in RELEASE_REQUIRED_WHEEL_MEMBERS:
+                if required_member not in names:
+                    return subprocess.CompletedProcess(
+                        args=["validate-wheel-contents", str(wheel_path)],
+                        returncode=1,
+                        stdout="",
+                        stderr=f"Built wheel is missing required file: {required_member}",
+                    )
+
+            if not any(name.startswith("searchat/web/static/") for name in names):
+                return subprocess.CompletedProcess(
+                    args=["validate-wheel-assets", str(wheel_path)],
+                    returncode=1,
+                    stdout="",
+                    stderr="Built wheel is missing required web static assets.",
+                )
+
+            entry_points_name = next(
+                (name for name in names if name.endswith("dist-info/entry_points.txt")),
+                None,
+            )
+            if entry_points_name is None:
+                return subprocess.CompletedProcess(
+                    args=["validate-entry-points", str(wheel_path)],
+                    returncode=1,
+                    stdout="",
+                    stderr="Built wheel is missing dist-info/entry_points.txt.",
+                )
+
+            entry_points = archive.read(entry_points_name).decode("utf-8")
+            for required_entry_point in RELEASE_REQUIRED_ENTRY_POINTS:
+                if required_entry_point not in entry_points:
+                    return subprocess.CompletedProcess(
+                        args=["validate-entry-points", str(wheel_path)],
+                        returncode=1,
+                        stdout="",
+                        stderr=f"Built wheel is missing required entry point: {required_entry_point}",
+                    )
+    except zipfile.BadZipFile:
+        return subprocess.CompletedProcess(
+            args=["validate-wheel-zip", str(wheel_path)],
+            returncode=1,
+            stdout="",
+            stderr=f"Built wheel is not a valid zip archive: {wheel_path.name}",
+        )
+
+    return subprocess.CompletedProcess(
+        args=["validate-release-artifacts", dist_dir],
+        returncode=0,
+        stdout=f"Validated build artifacts: {wheel_path.name}, {sdists[0].name}",
+        stderr="",
+    )
 
 
 def _edit_distance(a: str, b: str) -> int:
