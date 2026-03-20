@@ -120,30 +120,21 @@
             </nav>
 
             <!-- Saved Queries -->
-            <div class="saved-queries-panel"
-                 hx-get="/fragments/saved-queries-list"
-                 hx-trigger="load"
-                 hx-target="#savedQueriesList">
+            <div class="saved-queries-panel">
                 <div class="saved-queries-header">
                     <h3>Saved Queries</h3>
-                    <button id="saveQueryButton" type="button" class="glass-btn"
-                            hx-post="/fragments/saved-query"
-                            hx-include="#search,[name='mode'],[name='project'],[name='tool'],[name='date'],[name='sortBy']"
-                            hx-target="#savedQueriesList">
+                    <button id="saveQueryButton" type="button" class="glass-btn">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
                         Save Current
                     </button>
                 </div>
                 <div class="saved-queries-status" id="savedQueriesStatus"></div>
-                <div class="saved-queries-form" id="savedQueriesForm" x-cloak
-                     x-data="{ showForm: false }" x-show="showForm">
+                <div class="saved-queries-form" id="savedQueriesForm" style="display: none;">
                     <input type="text" id="savedQueryName" placeholder="Query name" name="query_name" />
                     <input type="text" id="savedQueryDescription" placeholder="Description (optional)" name="query_description" />
                     <div class="saved-queries-actions">
-                        <button id="savedQuerySave" type="button" class="glass-btn glass-btn-primary"
-                                @click="showForm = false">Save</button>
-                        <button id="savedQueryCancel" type="button" class="glass-btn"
-                                @click="showForm = false">Cancel</button>
+                        <button id="savedQuerySave" type="button" class="glass-btn glass-btn-primary">Save</button>
+                        <button id="savedQueryCancel" type="button" class="glass-btn">Cancel</button>
                     </div>
                 </div>
                 <div id="savedQueriesList"></div>
@@ -231,7 +222,7 @@
                         data-action="search">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg> Search
                 </button>
-                <button class="glass-btn" id="saveQueryButtonInline" type="button">
+                <button class="glass-btn" id="saveQueryButtonInline" type="button" data-action="saveQueryInline">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Save Query
                 </button>
                 <button class="glass-btn"
