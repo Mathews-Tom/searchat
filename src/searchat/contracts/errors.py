@@ -202,6 +202,39 @@ def dashboard_queries_missing_widget_ids_message() -> str:
     return "Dashboard queries must include all widget query ids."
 
 
+def invalid_dashboard_request_message() -> str:
+    return "Invalid dashboard request."
+
+
+def invalid_dashboard_layout_message() -> str:
+    return "Dashboard layout is invalid"
+
+
+def dashboard_validation_message(reason: str) -> str:
+    stable_messages = {
+        dashboards_file_invalid_message(),
+        dashboard_missing_created_at_message(),
+        dashboard_name_required_message(),
+        dashboard_refresh_interval_invalid_message(),
+        dashboard_layout_required_message(),
+        dashboard_layout_widgets_required_message(),
+        dashboard_widget_object_required_message(),
+        dashboard_widget_query_id_required_message(),
+        dashboard_widget_title_invalid_message(),
+        dashboard_widget_limit_invalid_message(),
+        dashboard_widget_sort_by_invalid_message(),
+        dashboard_widget_layout_invalid_message(),
+        dashboard_widget_id_invalid_message(),
+        dashboard_layout_columns_invalid_message(),
+        dashboard_queries_invalid_message(),
+        dashboard_queries_missing_widget_ids_message(),
+        invalid_saved_query_tool_filter_message(),
+    }
+    if reason in stable_messages:
+        return reason
+    return invalid_dashboard_request_message()
+
+
 def saved_query_missing_message(query_id: object) -> str:
     return f"Saved query {query_id} not found"
 

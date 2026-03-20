@@ -25,8 +25,10 @@ from searchat.api.utils import (
 )
 from searchat.contracts.errors import (
     dashboard_not_found_message,
+    dashboard_validation_message,
     dashboards_disabled_message,
     internal_server_error_message,
+    invalid_dashboard_layout_message,
     invalid_saved_query_mode_message,
     invalid_saved_query_tool_filter_message,
     saved_query_invalid_message,
@@ -93,7 +95,7 @@ async def create_dashboard(request: DashboardCreateRequest):
         dashboard = service.create_dashboard(request.model_dump())
         return serialize_dashboard_mutation_payload(dashboard)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=dashboard_validation_message(str(exc))) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=internal_server_error_message()) from exc
 
@@ -130,7 +132,7 @@ async def update_dashboard(dashboard_id: str, request: DashboardUpdateRequest):
             raise HTTPException(status_code=404, detail=dashboard_not_found_message())
         return serialize_dashboard_mutation_payload(dashboard)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=dashboard_validation_message(str(exc))) from exc
     except HTTPException:
         raise
     except Exception as exc:
@@ -264,7 +266,7 @@ async def render_dashboard(dashboard_id: str):
     except HTTPException:
         raise
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=dashboard_validation_message(str(exc))) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=internal_server_error_message()) from exc
 
@@ -272,10 +274,10 @@ async def render_dashboard(dashboard_id: str):
 def _ensure_widgets(dashboard: dict[str, Any]) -> list[dict[str, Any]]:
     layout = dashboard.get("layout")
     if not isinstance(layout, dict):
-        raise HTTPException(status_code=400, detail="Dashboard layout is invalid")
+        raise HTTPException(status_code=400, detail=invalid_dashboard_layout_message())
     widgets = layout.get("widgets")
     if not isinstance(widgets, list) or not widgets:
-        raise HTTPException(status_code=400, detail="Dashboard layout is invalid")
+        raise HTTPException(status_code=400, detail=invalid_dashboard_layout_message())
     return widgets
 
 
