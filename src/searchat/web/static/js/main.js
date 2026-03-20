@@ -80,6 +80,7 @@ safeInit('dataset-selector', initDatasetSelector);
 safeInit('manage-page', initManagePage);
 safeInit('sidebar-sections', initSidebarSections);
 safeInit('layout', initLayout);
+safeInit('clearable-inputs', initClearableInputs);
 
 safeInit('bulk-export', async () => {
     const module = await import('./modules/bulk-export.js');
