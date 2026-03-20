@@ -425,6 +425,11 @@ def main():
 
             raise SystemExit(run_contradictions(argv[1:]))
 
+        if argv and argv[0] == "health":
+            from searchat.cli.health_cmd import run_health
+
+            raise SystemExit(run_health(argv[1:]))
+
         if argv and argv[0] == "ci-check":
             from searchat.cli.ci_check_cmd import run_ci_check
 
@@ -457,6 +462,7 @@ def main():
             print("  searchat expertise status [--domain DOMAIN] [--project PROJECT]")
             print("  searchat expertise search QUERY [--domain DOMAIN] [--type TYPE] [--limit N]")
             print("  searchat contradictions [--domain DOMAIN] [--unresolved-only] [--limit N]")
+            print("  searchat health [--url URL] [--json]")
             print("  searchat ci-check [--fail-on-contradictions] [--fail-on-staleness-threshold FLOAT]")
             print()
             return
