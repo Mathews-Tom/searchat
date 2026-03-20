@@ -40,62 +40,55 @@
         </div>
 
         <!-- Filter Bar -->
-        <div class="manage-filters glass" x-data="{ open: '' }" @click.outside="open = ''">
+        <div class="manage-filters glass">
             <span class="filter-bar-label">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
                 Filters
             </span>
 
             <!-- Project -->
-            <div class="filter-chip" :class="{ active: open === 'project' }" style="position: relative;"
-                 @click="open = open === 'project' ? '' : 'project'"
-                 hx-get="/fragments/manage-project-dropdown"
-                 hx-trigger="click once"
-                 hx-target="#manageProjectDropdown"
-                 hx-swap="innerHTML">
+            <div class="filter-chip" data-for="manageProject">
                 <span class="filter-label">Project</span>
                 <span class="filter-value" id="manageProjectLabel">All Projects</span>
                 <svg class="filter-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
-                <div id="manageProjectDropdown" class="filter-dropdown" x-show="open === 'project'" x-cloak @click.stop style="position: absolute; top: 100%; left: 0; margin-top: 4px;">
-                    <button class="filter-dropdown-item selected">All Projects</button>
-                </div>
             </div>
 
             <!-- Tool -->
-            <div class="filter-chip" :class="{ active: open === 'tool' }" @click="open = open === 'tool' ? '' : 'tool'" style="position: relative;">
+            <div class="filter-chip" data-for="manageTool">
                 <span class="filter-label">Tool</span>
                 <span class="filter-value" id="manageToolLabel">All Tools</span>
                 <svg class="filter-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
-                <div class="filter-dropdown" x-show="open === 'tool'" x-cloak @click.stop style="position: absolute; top: 100%; left: 0; margin-top: 4px;">
-                    <button class="filter-dropdown-item" onclick="manageSetFilter('tool','')">All Tools</button>
-                    <button class="filter-dropdown-item" onclick="manageSetFilter('tool','claude')">Claude Code</button>
-                    <button class="filter-dropdown-item" onclick="manageSetFilter('tool','vibe')">Vibe</button>
-                    <button class="filter-dropdown-item" onclick="manageSetFilter('tool','opencode')">OpenCode</button>
-                    <button class="filter-dropdown-item" onclick="manageSetFilter('tool','codex')">Codex</button>
-                    <button class="filter-dropdown-item" onclick="manageSetFilter('tool','gemini')">Gemini CLI</button>
-                    <button class="filter-dropdown-item" onclick="manageSetFilter('tool','continue')">Continue</button>
-                    <button class="filter-dropdown-item" onclick="manageSetFilter('tool','cursor')">Cursor</button>
-                    <button class="filter-dropdown-item" onclick="manageSetFilter('tool','aider')">Aider</button>
-                </div>
             </div>
 
             <!-- Sort -->
-            <div class="filter-chip" :class="{ active: open === 'sortBy' }" @click="open = open === 'sortBy' ? '' : 'sortBy'" style="position: relative;">
+            <div class="filter-chip" data-for="manageSortBy">
                 <span class="filter-label">Sort</span>
                 <span class="filter-value" id="manageSortLabel">Date (newest)</span>
                 <svg class="filter-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
-                <div class="filter-dropdown" x-show="open === 'sortBy'" x-cloak @click.stop style="position: absolute; top: 100%; left: 0; margin-top: 4px;">
-                    <button class="filter-dropdown-item" onclick="manageSetFilter('sortBy','date_newest')">Date (newest)</button>
-                    <button class="filter-dropdown-item" onclick="manageSetFilter('sortBy','date_oldest')">Date (oldest)</button>
-                    <button class="filter-dropdown-item" onclick="manageSetFilter('sortBy','length')">Message count</button>
-                    <button class="filter-dropdown-item" onclick="manageSetFilter('sortBy','title')">Title</button>
-                </div>
             </div>
 
-            <!-- Hidden inputs for HTMX -->
-            <input type="hidden" id="manageProject" name="project" value="">
-            <input type="hidden" id="manageTool" name="tool" value="">
-            <input type="hidden" id="manageSortBy" name="sortBy" value="date_newest">
+            <div class="sr-only">
+                <select id="manageProject" name="project">
+                    <option value="">All Projects</option>
+                </select>
+                <select id="manageTool" name="tool">
+                    <option value="">All Tools</option>
+                    <option value="claude">Claude Code</option>
+                    <option value="vibe">Vibe</option>
+                    <option value="opencode">OpenCode</option>
+                    <option value="codex">Codex</option>
+                    <option value="gemini">Gemini CLI</option>
+                    <option value="continue">Continue</option>
+                    <option value="cursor">Cursor</option>
+                    <option value="aider">Aider</option>
+                </select>
+                <select id="manageSortBy" name="sortBy">
+                    <option value="date_newest">Date (newest)</option>
+                    <option value="date_oldest">Date (oldest)</option>
+                    <option value="length">Message count</option>
+                    <option value="title">Title</option>
+                </select>
+            </div>
         </div>
 
         <!-- Conversation List -->
@@ -312,23 +305,44 @@
         }
     });
 
-    // Filter management
-    window.manageSetFilter = function(key, value) {
-        document.getElementById('manage' + key.charAt(0).toUpperCase() + key.slice(1)).value = value;
-        // Update label
-        var labels = {
-            'tool': { '': 'All Tools', 'claude': 'Claude Code', 'vibe': 'Vibe', 'opencode': 'OpenCode', 'codex': 'Codex', 'gemini': 'Gemini CLI', 'continue': 'Continue', 'cursor': 'Cursor', 'aider': 'Aider' },
-            'sortBy': { 'date_newest': 'Date (newest)', 'date_oldest': 'Date (oldest)', 'length': 'Message count', 'title': 'Title' }
-        };
-        var labelMap = labels[key];
-        if (labelMap) {
-            var labelId = key === 'sortBy' ? 'manageSortLabel' : 'manage' + key.charAt(0).toUpperCase() + key.slice(1) + 'Label';
-            var labelEl = document.getElementById(labelId);
-            if (labelEl) labelEl.textContent = labelMap[value] || value || 'All';
-        }
-        // Trigger reload via custom event (HTMX listens on manage-list)
-        document.body.dispatchEvent(new CustomEvent('manage-reload'));
-    };
+    function loadManageProjects() {
+        var projectSelect = document.getElementById('manageProject');
+        if (!projectSelect) return Promise.resolve();
+
+        return fetch('/api/projects/summary')
+            .then(function(resp) {
+                if (!resp.ok) return [];
+                return resp.json();
+            })
+            .then(function(projects) {
+                if (!Array.isArray(projects)) return;
+
+                var currentValue = projectSelect.value;
+                projectSelect.innerHTML = '<option value="">All Projects</option>';
+                projects.forEach(function(project) {
+                    var option = document.createElement('option');
+                    option.value = project.project_id;
+                    option.textContent = project.project_id + ' (' + project.conversation_count + ')';
+                    projectSelect.appendChild(option);
+                });
+                if (currentValue) {
+                    projectSelect.value = currentValue;
+                }
+            })
+            .catch(function() {
+                return null;
+            });
+    }
+
+    ['manageProject', 'manageTool', 'manageSortBy'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('change', function() {
+            document.body.dispatchEvent(new CustomEvent('manage-reload'));
+        });
+    });
+
+    loadManageProjects();
 })();
 </script>
 {% endblock %}
