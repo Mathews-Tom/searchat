@@ -16,6 +16,7 @@ import { showDashboards } from './modules/dashboards.js';
 import { showExpertise } from './modules/expertise.js';
 import { showContradictions } from './modules/contradictions.js';
 import { initDatasetSelector } from './modules/dataset.js';
+import { initManagePage } from './modules/manage.js';
 import { checkAndShowSplash } from './splash.js';
 import { createBackup, showBackups } from './modules/backup.js';
 import { initSidebarSections } from './modules/sidebar.js';
@@ -69,6 +70,7 @@ safeInit('bookmarks', initBookmarks);
 safeInit('saved-queries', initSavedQueries);
 safeInit('project-suggestion', initProjectSuggestion);
 safeInit('dataset-selector', initDatasetSelector);
+safeInit('manage-page', initManagePage);
 safeInit('sidebar-sections', initSidebarSections);
 safeInit('layout', initLayout);
 

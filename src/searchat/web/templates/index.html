@@ -17,11 +17,6 @@
                 <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
                 <input type="text" id="search" class="search-input" placeholder="Search conversations..."
                        x-model="$store.search.query"
-                       hx-get="/fragments/search-results"
-                       hx-trigger="keyup[key=='Enter']"
-                       hx-target="#results"
-                       hx-include="[name='mode'],[name='project'],[name='tool'],[name='date'],[name='sortBy'],[name='dateFrom'],[name='dateTo']"
-                       hx-indicator="#searchSpinner"
                        name="q" />
                 <span class="htmx-indicator spinner" id="searchSpinner"></span>
                 <kbd class="search-kbd">&#8984;K</kbd>
@@ -60,44 +55,37 @@
                 <div class="nav-section-label">NAVIGATION</div>
                 <button class="nav-item" :class="{ active: $store.layout.activeNav === 'search' }"
                         @click="$store.layout.setActiveNav('search')"
-                        hx-get="/fragments/search-results"
-                        hx-target="#results"
-                        hx-include="#search,[name='mode'],[name='project'],[name='tool'],[name='date'],[name='sortBy']">
+                        data-action="showSearchView">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
                     Search
                 </button>
                 <button class="nav-item" :class="{ active: $store.layout.activeNav === 'bookmarks' }"
                         @click="$store.layout.setActiveNav('bookmarks')"
-                        hx-get="/fragments/bookmarks-list"
-                        hx-target="#results">
+                        data-action="showBookmarks">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m19 21-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
                     Bookmarks
                 </button>
                 <button class="nav-item" :class="{ active: $store.layout.activeNav === 'analytics' }"
                         @click="$store.layout.setActiveNav('analytics')"
-                        hx-get="/fragments/analytics-dashboard"
-                        hx-target="#results">
+                        data-action="showAnalytics">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
                     Analytics
                 </button>
                 <button class="nav-item" :class="{ active: $store.layout.activeNav === 'dashboards' }"
                         @click="$store.layout.setActiveNav('dashboards')"
-                        hx-get="/fragments/dashboards-view"
-                        hx-target="#results">
+                        data-action="showDashboards">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
                     Dashboards
                 </button>
                 <button class="nav-item" :class="{ active: $store.layout.activeNav === 'expertise' }"
                         @click="$store.layout.setActiveNav('expertise')"
-                        hx-get="/fragments/expertise-view"
-                        hx-target="#results">
+                        data-action="showExpertise">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
                     Expertise
                 </button>
                 <button class="nav-item" :class="{ active: $store.layout.activeNav === 'contradictions' }"
                         @click="$store.layout.setActiveNav('contradictions')"
-                        hx-get="/fragments/contradictions-view"
-                        hx-target="#results">
+                        data-action="showContradictions">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                     Knowledge Graph
                 </button>
@@ -119,9 +107,7 @@
                     Manage
                 </a>
                 <button class="nav-item"
-                        hx-post="/fragments/index-missing"
-                        hx-target="#results"
-                        hx-swap="beforeend">
+                        data-action="indexMissing">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>
                     Add Missing
                 </button>
@@ -134,30 +120,21 @@
             </nav>
 
             <!-- Saved Queries -->
-            <div class="saved-queries-panel"
-                 hx-get="/fragments/saved-queries-list"
-                 hx-trigger="load"
-                 hx-target="#savedQueriesList">
+            <div class="saved-queries-panel">
                 <div class="saved-queries-header">
                     <h3>Saved Queries</h3>
-                    <button id="saveQueryButton" type="button" class="glass-btn"
-                            hx-post="/fragments/saved-query"
-                            hx-include="#search,[name='mode'],[name='project'],[name='tool'],[name='date'],[name='sortBy']"
-                            hx-target="#savedQueriesList">
+                    <button id="saveQueryButton" type="button" class="glass-btn">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
                         Save Current
                     </button>
                 </div>
                 <div class="saved-queries-status" id="savedQueriesStatus"></div>
-                <div class="saved-queries-form" id="savedQueriesForm" x-cloak
-                     x-data="{ showForm: false }" x-show="showForm">
+                <div class="saved-queries-form" id="savedQueriesForm" style="display: none;">
                     <input type="text" id="savedQueryName" placeholder="Query name" name="query_name" />
                     <input type="text" id="savedQueryDescription" placeholder="Description (optional)" name="query_description" />
                     <div class="saved-queries-actions">
-                        <button id="savedQuerySave" type="button" class="glass-btn glass-btn-primary"
-                                @click="showForm = false">Save</button>
-                        <button id="savedQueryCancel" type="button" class="glass-btn"
-                                @click="showForm = false">Cancel</button>
+                        <button id="savedQuerySave" type="button" class="glass-btn glass-btn-primary">Save</button>
+                        <button id="savedQueryCancel" type="button" class="glass-btn">Cancel</button>
                     </div>
                 </div>
                 <div id="savedQueriesList"></div>
@@ -168,16 +145,12 @@
                 <h3 style="color: hsl(var(--warning)); margin-bottom: 16px;">Backup &amp; Restore</h3>
 
                 <button id="createBackupButton" class="glass-btn btn-block" style="border-color: hsl(var(--success)); color: hsl(var(--success));"
-                        hx-post="/fragments/backup-create"
-                        hx-target="#backupStatus"
-                        hx-swap="innerHTML">
+                        data-action="createBackup">
                     Create Backup
                 </button>
-                <div id="backupStatus"></div>
 
                 <button id="manageBackupsButton" class="glass-btn btn-block" style="border-color: hsl(var(--accent)); color: hsl(var(--accent));"
-                        hx-get="/fragments/backup-list"
-                        hx-target="#results">
+                        data-action="showBackups">
                     Manage Backups
                 </button>
 
@@ -192,13 +165,7 @@
             <div id="datasetPanel" class="sidebar-section">
                 <h3 style="margin-bottom: 10px;">Dataset</h3>
                 <label style="display: block; font-size: 12px; color: hsl(var(--text-tertiary)); margin-bottom: 6px;">Active vs snapshot (read-only)</label>
-                <select id="datasetSelect" class="glass-select" style="width: 100%;"
-                        x-model="$store.dataset.snapshotName"
-                        @change="$store.dataset.setSnapshot($event.target.value)"
-                        hx-get="/fragments/dataset-options"
-                        hx-trigger="load"
-                        hx-target="this"
-                        hx-swap="innerHTML">
+                <select id="datasetSelect" class="glass-select" style="width: 100%;">
                     <option value="">Active index</option>
                 </select>
                 <div class="tip" style="margin-top: 12px;">
@@ -224,9 +191,7 @@
                         <span class="server-port">localhost:8000</span>
                     </div>
                     <button class="server-stop-btn"
-                            hx-post="/fragments/shutdown"
-                            hx-target="#results"
-                            hx-confirm="Stop the search server? This will shut down the application.">
+                            data-action="shutdownServer">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><path d="M12 2v10"/></svg> Stop
                     </button>
                 </div>
@@ -235,10 +200,7 @@
 
         <!-- Main Content -->
         <div class="main-content">
-            <div id="datasetBanner" class="dataset-banner" x-cloak
-                 x-show="$store.dataset.bannerVisible"
-                 x-text="'Viewing snapshot: ' + $store.dataset.snapshotName">
-            </div>
+            <div id="datasetBanner" class="dataset-banner" style="display: none;"></div>
 
             <div id="conversationHeader" style="display: none; margin-bottom: 16px;">
                 <a href="/" class="back-button">&larr; Back to Search</a>
@@ -248,49 +210,40 @@
 
             <div class="toolbar" role="toolbar" aria-label="Search actions">
                 <button class="glass-btn glass-btn-primary"
-                        hx-get="/fragments/search-results"
-                        hx-target="#results"
-                        hx-include="#search,[name='mode'],[name='project'],[name='tool'],[name='date'],[name='sortBy'],[name='dateFrom'],[name='dateTo']"
-                        hx-indicator="#searchSpinner">
+                        data-action="search">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg> Search
                 </button>
-                <button class="glass-btn" id="saveQueryButtonInline" type="button">
+                <button class="glass-btn" id="saveQueryButtonInline" type="button" data-action="saveQueryInline">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Save Query
                 </button>
                 <button class="glass-btn"
-                        hx-get="/fragments/search-results?show_all=true"
-                        hx-target="#results">
+                        data-action="showAllConversations">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg> Show All
                 </button>
                 <span class="toolbar-divider"></span>
                 <button class="glass-btn" title="View your bookmarked conversations"
                         @click="$store.layout.setActiveNav('bookmarks')"
-                        hx-get="/fragments/bookmarks-list"
-                        hx-target="#results">
+                        data-action="showBookmarks">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m19 21-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg> Bookmarks
                 </button>
                 <button class="glass-btn" id="analyticsButton" title="View search analytics and patterns"
                         @click="$store.layout.setActiveNav('analytics')"
-                        hx-get="/fragments/analytics-dashboard"
-                        hx-target="#results">
+                        data-action="showAnalytics">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10M12 20V4M6 20v-6"/></svg> Analytics
                 </button>
                 <button class="glass-btn" id="dashboardsButton" title="View saved dashboards"
                         @click="$store.layout.setActiveNav('dashboards')"
-                        hx-get="/fragments/dashboards-view"
-                        hx-target="#results">
+                        data-action="showDashboards">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg> Dashboards
                 </button>
                 <button class="glass-btn" id="expertiseButton" title="Browse expertise records"
                         @click="$store.layout.setActiveNav('expertise')"
-                        hx-get="/fragments/expertise-view"
-                        hx-target="#results">
+                        data-action="showExpertise">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg> Expertise
                 </button>
                 <button class="glass-btn" id="contradictionsButton" title="Resolve knowledge graph contradictions"
                         @click="$store.layout.setActiveNav('contradictions')"
-                        hx-get="/fragments/contradictions-view"
-                        hx-target="#results">
+                        data-action="showContradictions">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> Knowledge Graph
                 </button>
                 <span class="toolbar-divider"></span>
@@ -299,130 +252,101 @@
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg> Bulk Export
                 </button>
                 <button class="glass-btn" id="indexMissingButton" title="Safely add conversations that aren't in the index yet"
-                        hx-post="/fragments/index-missing"
-                        hx-target="#results"
-                        hx-swap="beforeend"
-                        hx-indicator="#indexMissingSpinner">
+                        data-action="indexMissing">
                     <span class="htmx-indicator spinner" id="indexMissingSpinner" style="width:14px;height:14px;"></span>
                     <svg class="htmx-indicator-hide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add Missing
                 </button>
                 <button class="glass-btn glass-btn-danger" title="Stop the search server"
-                        hx-post="/fragments/shutdown"
-                        hx-target="#results"
-                        hx-confirm="Stop the search server? This will shut down the application.">
+                        data-action="shutdownServer">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0M12 2v10"/></svg> Stop Server
                 </button>
             </div>
 
             <div id="projectSuggestion" class="project-suggestion" style="display: none;"></div>
 
-            <div class="filter-bar" id="filters" role="group" aria-label="Search filters"
-                 x-data="{ open: '' }" @click.outside="open = ''">
+            <div class="filter-bar" id="filters" role="group" aria-label="Search filters">
                 <span class="filter-bar-label">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
                     Filters
                 </span>
 
-                <!-- Mode -->
-                <div class="filter-chip" :class="{ active: open === 'mode' }" @click="open = open === 'mode' ? '' : 'mode'" style="position: relative;">
+                <div class="filter-chip" data-for="mode">
                     <span class="filter-label">Mode</span>
-                    <span class="filter-value" x-text="$store.search.mode.charAt(0).toUpperCase() + $store.search.mode.slice(1)">Hybrid</span>
+                    <span class="filter-value" id="modeChipValue">Hybrid</span>
                     <svg class="filter-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
-                    <div class="filter-dropdown" x-show="open === 'mode'" x-cloak @click.stop style="position: absolute; top: 100%; left: 0; margin-top: 4px;">
-                        <button class="filter-dropdown-item" :class="{ selected: $store.search.mode === 'hybrid' }" @click="$store.search.mode = 'hybrid'; open = ''">Hybrid</button>
-                        <button class="filter-dropdown-item" :class="{ selected: $store.search.mode === 'semantic' }" @click="$store.search.mode = 'semantic'; open = ''">Semantic</button>
-                        <button class="filter-dropdown-item" :class="{ selected: $store.search.mode === 'keyword' }" @click="$store.search.mode = 'keyword'; open = ''">Keyword</button>
-                    </div>
                 </div>
 
-                <!-- Project -->
-                <div class="filter-chip" :class="{ active: open === 'project' }" style="position: relative;"
-                     @click="open = open === 'project' ? '' : 'project'"
-                     hx-get="/fragments/project-dropdown"
-                     hx-trigger="click once"
-                     hx-target="#projectDropdownItems"
-                     hx-swap="innerHTML">
+                <div class="filter-chip" data-for="project">
                     <span class="filter-label">Project</span>
-                    <span class="filter-value" x-text="$store.search.project || 'All Projects'">All Projects</span>
+                    <span class="filter-value" id="projectChipValue">All Projects</span>
                     <svg class="filter-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
-                    <div id="projectDropdownItems" class="filter-dropdown" x-show="open === 'project'" x-cloak @click.stop style="position: absolute; top: 100%; left: 0; margin-top: 4px;">
-                        <button class="filter-dropdown-item selected">All Projects</button>
-                    </div>
                 </div>
 
-                <!-- Tool -->
-                <div class="filter-chip" :class="{ active: open === 'tool' }" @click="open = open === 'tool' ? '' : 'tool'" style="position: relative;">
+                <div class="filter-chip" data-for="tool">
                     <span class="filter-label">Tool</span>
-                    <span class="filter-value" x-text="$store.search.tool ? $store.search.tool.charAt(0).toUpperCase() + $store.search.tool.slice(1) : 'All Tools'">All Tools</span>
+                    <span class="filter-value" id="toolChipValue">All Tools</span>
                     <svg class="filter-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
-                    <div class="filter-dropdown" x-show="open === 'tool'" x-cloak @click.stop style="position: absolute; top: 100%; left: 0; margin-top: 4px;">
-                        <button class="filter-dropdown-item" :class="{ selected: !$store.search.tool }" @click="$store.search.tool = ''; open = ''">All Tools</button>
-                        <button class="filter-dropdown-item" :class="{ selected: $store.search.tool === 'claude' }" @click="$store.search.tool = 'claude'; open = ''">Claude Code</button>
-                        <button class="filter-dropdown-item" :class="{ selected: $store.search.tool === 'vibe' }" @click="$store.search.tool = 'vibe'; open = ''">Vibe</button>
-                        <button class="filter-dropdown-item" :class="{ selected: $store.search.tool === 'opencode' }" @click="$store.search.tool = 'opencode'; open = ''">OpenCode</button>
-                        <button class="filter-dropdown-item" :class="{ selected: $store.search.tool === 'codex' }" @click="$store.search.tool = 'codex'; open = ''">Codex</button>
-                        <button class="filter-dropdown-item" :class="{ selected: $store.search.tool === 'gemini' }" @click="$store.search.tool = 'gemini'; open = ''">Gemini CLI</button>
-                        <button class="filter-dropdown-item" :class="{ selected: $store.search.tool === 'continue' }" @click="$store.search.tool = 'continue'; open = ''">Continue</button>
-                        <button class="filter-dropdown-item" :class="{ selected: $store.search.tool === 'cursor' }" @click="$store.search.tool = 'cursor'; open = ''">Cursor</button>
-                        <button class="filter-dropdown-item" :class="{ selected: $store.search.tool === 'aider' }" @click="$store.search.tool = 'aider'; open = ''">Aider</button>
-                    </div>
                 </div>
 
-                <!-- Date -->
-                <div class="filter-chip" :class="{ active: open === 'date' }" @click="open = open === 'date' ? '' : 'date'" style="position: relative;">
+                <div class="filter-chip" data-for="date">
                     <span class="filter-label">Date</span>
-                    <span class="filter-value" x-text="{'': 'Any time', today: 'Today', week: 'Last 7 days', month: 'Last 30 days', custom: 'Custom'}[$store.search.date] || 'Any time'">Any time</span>
+                    <span class="filter-value" id="dateChipValue">Any time</span>
                     <svg class="filter-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
-                    <div class="filter-dropdown" x-show="open === 'date'" x-cloak @click.stop style="position: absolute; top: 100%; left: 0; margin-top: 4px;">
-                        <button class="filter-dropdown-item" :class="{ selected: !$store.search.date }" @click="$store.search.date = ''; open = ''">Any time</button>
-                        <button class="filter-dropdown-item" :class="{ selected: $store.search.date === 'today' }" @click="$store.search.date = 'today'; open = ''">Today</button>
-                        <button class="filter-dropdown-item" :class="{ selected: $store.search.date === 'week' }" @click="$store.search.date = 'week'; open = ''">Last 7 days</button>
-                        <button class="filter-dropdown-item" :class="{ selected: $store.search.date === 'month' }" @click="$store.search.date = 'month'; open = ''">Last 30 days</button>
-                        <button class="filter-dropdown-item" :class="{ selected: $store.search.date === 'custom' }" @click="$store.search.date = 'custom'; open = ''">Custom range</button>
-                    </div>
                 </div>
 
-                <!-- Sort -->
-                <div class="filter-chip" :class="{ active: open === 'sortBy' }" @click="open = open === 'sortBy' ? '' : 'sortBy'" style="position: relative;">
+                <div class="filter-chip" data-for="sortBy">
                     <span class="filter-label">Sort</span>
-                    <span class="filter-value" x-text="{'relevance': 'Relevance', date_newest: 'Date (newest)', date_oldest: 'Date (oldest)', messages: 'Message count'}[$store.search.sortBy] || 'Relevance'">Relevance</span>
+                    <span class="filter-value" id="sortByChipValue">Relevance</span>
                     <svg class="filter-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
-                    <div class="filter-dropdown" x-show="open === 'sortBy'" x-cloak @click.stop style="position: absolute; top: 100%; left: 0; margin-top: 4px;">
-                        <button class="filter-dropdown-item" :class="{ selected: $store.search.sortBy === 'relevance' }" @click="$store.search.sortBy = 'relevance'; open = ''">Relevance</button>
-                        <button class="filter-dropdown-item" :class="{ selected: $store.search.sortBy === 'date_newest' }" @click="$store.search.sortBy = 'date_newest'; open = ''">Date (newest)</button>
-                        <button class="filter-dropdown-item" :class="{ selected: $store.search.sortBy === 'date_oldest' }" @click="$store.search.sortBy = 'date_oldest'; open = ''">Date (oldest)</button>
-                        <button class="filter-dropdown-item" :class="{ selected: $store.search.sortBy === 'messages' }" @click="$store.search.sortBy = 'messages'; open = ''">Message count</button>
-                    </div>
                 </div>
 
                 <label class="filter-chip filter-chip-toggle">
                     <input type="checkbox" id="semanticHighlights"
-                           x-model="$store.search.semanticHighlights" />
+                    />
                     <span class="filter-label">Semantic Highlights</span>
                 </label>
 
-                <!-- Hidden inputs for HTMX hx-include -->
                 <div class="sr-only">
-                    <input type="hidden" id="mode" name="mode" :value="$store.search.mode" />
-                    <input type="hidden" id="project" name="project" :value="$store.search.project" />
-                    <input type="hidden" id="tool" name="tool" :value="$store.search.tool" />
-                    <input type="hidden" id="date" name="date" :value="$store.search.date" />
-                    <input type="hidden" id="sortBy" name="sortBy" :value="$store.search.sortBy" />
+                    <select id="mode" class="glass-select">
+                        <option value="hybrid">Hybrid</option>
+                        <option value="semantic">Semantic</option>
+                        <option value="keyword">Keyword</option>
+                    </select>
+                    <select id="project" class="glass-select">
+                        <option value="">All Projects</option>
+                    </select>
+                    <select id="tool" class="glass-select">
+                        <option value="">All Tools</option>
+                        <option value="claude">Claude Code</option>
+                        <option value="vibe">Vibe</option>
+                        <option value="opencode">OpenCode</option>
+                        <option value="codex">Codex</option>
+                        <option value="gemini">Gemini CLI</option>
+                        <option value="continue">Continue</option>
+                        <option value="cursor">Cursor</option>
+                        <option value="aider">Aider</option>
+                    </select>
+                    <select id="date" class="glass-select">
+                        <option value="">Any time</option>
+                        <option value="today">Today</option>
+                        <option value="week">Last 7 days</option>
+                        <option value="month">Last 30 days</option>
+                        <option value="custom">Custom range</option>
+                    </select>
+                    <select id="sortBy" class="glass-select">
+                        <option value="relevance">Relevance</option>
+                        <option value="date_newest">Date (newest)</option>
+                        <option value="date_oldest">Date (oldest)</option>
+                        <option value="messages">Message count</option>
+                    </select>
                 </div>
-                <span id="customDateRange" x-show="$store.search.date === 'custom'" x-cloak>
-                    <label>From: <input type="date" id="dateFrom" name="dateFrom"
-                                        x-model="$store.search.dateFrom" /></label>
-                    <label>To: <input type="date" id="dateTo" name="dateTo"
-                                      x-model="$store.search.dateTo" /></label>
+                <span id="customDateRange" style="display:none;">
+                    <label>From: <input type="date" id="dateFrom" /></label>
+                    <label>To: <input type="date" id="dateTo" /></label>
                 </span>
             </div>
 
-            <div id="projectSummary" class="project-summary" style="display: none;"
-                 hx-get="/fragments/project-summary"
-                 hx-trigger="projectChanged from:body"
-                 hx-target="this"
-                 hx-swap="innerHTML">
-            </div>
+            <div id="projectSummary" class="project-summary" style="display: none;"></div>
 
             <div id="results"></div>
         </div>
