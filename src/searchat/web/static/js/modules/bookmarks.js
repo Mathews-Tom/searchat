@@ -2,6 +2,15 @@
 
 let bookmarkedConversations = new Set();
 
+function bookmarkIconSvg(isBookmarked) {
+    const fill = isBookmarked ? 'currentColor' : 'none';
+    return `
+        <svg class="bookmark-star-icon" width="16" height="16" viewBox="0 0 24 24" fill="${fill}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="m19 21-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
+        </svg>
+    `;
+}
+
 /**
  * Initialize bookmarks
  */
@@ -88,6 +97,7 @@ export function createStarIcon(conversationId) {
     const star = document.createElement('button');
     star.className = 'bookmark-star';
     star.dataset.conversationId = conversationId;
+    star.type = 'button';
 
     const isFavorited = isBookmarked(conversationId);
     updateStarIcon(star, isFavorited);
@@ -105,13 +115,15 @@ export function createStarIcon(conversationId) {
  */
 function updateStarIcon(element, isBookmarked) {
     if (isBookmarked) {
-        element.textContent = '⭐';
+        element.innerHTML = bookmarkIconSvg(true);
+        element.classList.add('active');
         element.title = 'Remove from bookmarks';
-        element.style.filter = 'drop-shadow(0 0 2px gold)';
+        element.setAttribute('aria-label', 'Remove from bookmarks');
     } else {
-        element.textContent = '☆';
+        element.innerHTML = bookmarkIconSvg(false);
+        element.classList.remove('active');
         element.title = 'Add to bookmarks';
-        element.style.filter = 'none';
+        element.setAttribute('aria-label', 'Add to bookmarks');
     }
 }
 

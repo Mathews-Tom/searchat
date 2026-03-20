@@ -194,6 +194,18 @@ function _renderResolutionPanel(edgeId, recordA, recordB) {
     `;
 }
 
+function _removeInlineContradictionDetail(container) {
+    container.querySelector('.contradiction-inline-detail')?.remove();
+}
+
+function _openInlineContradictionDetail(container, item) {
+    _removeInlineContradictionDetail(container);
+    const detailRow = document.createElement('div');
+    detailRow.className = 'contradiction-inline-detail';
+    item.insertAdjacentElement('afterend', detailRow);
+    return detailRow;
+}
+
 // ── Event wiring for resolution panel ───────────────────────────────────────
 
 function _wireResolutionPanel(container, edgeId, recordA, recordB, onResolved) {
@@ -323,7 +335,6 @@ async function _renderContradictionsView(container, unresolvedOnly = true) {
                 </label>
             </div>
             ${listHtml}
-            <div id="contradictionDetailArea"></div>
         `;
 
         // Toggle unresolved filter
@@ -356,12 +367,17 @@ async function _openContradictionDetail(container, item) {
     const recordIdA = item.dataset.recordA;
     const recordIdB = item.dataset.recordB;
     if (!edgeId) return;
+    if (_state.selectedEdgeId === edgeId) {
+        _state.selectedEdgeId = null;
+        item.classList.remove('selected');
+        _removeInlineContradictionDetail(container);
+        return;
+    }
 
     container.querySelectorAll('.contradiction-item').forEach(i => i.classList.remove('selected'));
     item.classList.add('selected');
 
-    const detailArea = container.querySelector('#contradictionDetailArea');
-    if (!detailArea) return;
+    const detailArea = _openInlineContradictionDetail(container, item);
     detailArea.innerHTML = '<div class="expertise-loading">Loading records...</div>';
 
     try {
@@ -391,7 +407,7 @@ async function _openContradictionDetail(container, item) {
             setTimeout(() => _renderContradictionsView(container, unresolvedOnly), 800);
         });
 
-        detailArea.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     } catch (err) {
         detailArea.innerHTML = `<div class="expertise-error">${_escapeHtml(err.message)}</div>`;
     }

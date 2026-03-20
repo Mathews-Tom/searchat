@@ -319,6 +319,11 @@
     gap: 14px;
 }
 
+.expertise-inline-detail,
+.contradiction-inline-detail {
+    margin: 4px 0 10px;
+}
+
 .expertise-detail-header {
     display: flex;
     align-items: flex-start;

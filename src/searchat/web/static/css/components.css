@@ -780,6 +780,38 @@
     opacity: 1;
 }
 
+.bookmark-star {
+    width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 1px solid hsl(var(--border-glass));
+    border-radius: 999px;
+    background: hsl(var(--bg-surface));
+    color: hsl(var(--text-tertiary));
+    cursor: pointer;
+    transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+
+.bookmark-star:hover {
+    color: hsl(var(--icon-bookmark));
+    border-color: hsl(var(--icon-bookmark) / 0.55);
+    transform: translateY(-1px);
+}
+
+.bookmark-star.active {
+    background: hsl(var(--icon-bookmark) / 0.14);
+    color: hsl(var(--icon-bookmark));
+    border-color: hsl(var(--icon-bookmark) / 0.5);
+}
+
+.bookmark-star-icon {
+    display: block;
+    flex: 0 0 auto;
+}
+
 .resume-btn {
     font-family: var(--font-sans);
     font-size: 13px;
@@ -1110,6 +1142,30 @@
     color: hsl(var(--accent));
 }
 
+.snippet-copy {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 32px;
+    min-height: 28px;
+}
+
+.snippet-copy.is-copied {
+    background: hsl(var(--success));
+    border-color: hsl(var(--success));
+    color: white;
+}
+
+.snippet-copy.is-copy-error {
+    border-color: hsl(var(--danger));
+    color: hsl(var(--danger));
+}
+
+.copy-action-icon {
+    display: block;
+    flex: 0 0 auto;
+}
+
 .snippet-code {
     margin: 0;
     padding: 12px 14px;
@@ -1125,6 +1181,7 @@
 
 .snippet-code code {
     font-family: var(--font-mono);
+    font-variant-ligatures: none;
     font-size: 12px;
     line-height: 1.5;
     color: hsl(var(--text-primary));
@@ -2436,6 +2493,10 @@ textarea:focus-visible {
     border-color: transparent;
 }
 
+.search-wrap .search-input.clearable-input {
+    padding-right: 36px;
+}
+
 .search-kbd {
     margin-right: 8px;
     padding: 2px 6px;
@@ -2446,6 +2507,61 @@ textarea:focus-visible {
     color: hsl(var(--text-tertiary));
     font-family: var(--font-mono);
     flex-shrink: 0;
+}
+
+.clearable-host {
+    position: relative;
+}
+
+.clearable-input:not(textarea) {
+    padding-right: 34px;
+}
+
+textarea.clearable-input {
+    padding-right: 38px;
+}
+
+.clearable-button {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 22px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 1px solid hsl(var(--border-glass));
+    border-radius: 999px;
+    background: hsl(var(--bg-surface));
+    color: hsl(var(--text-tertiary));
+    cursor: pointer;
+    transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+    z-index: 2;
+}
+
+.clearable-button:hover {
+    color: hsl(var(--text-primary));
+    border-color: hsl(var(--accent));
+}
+
+.clearable-button[hidden] {
+    display: none;
+}
+
+.clearable-button.is-textarea {
+    top: 10px;
+    transform: none;
+}
+
+.search-wrap .clearable-button {
+    right: 42px;
+}
+
+.clearable-icon {
+    display: block;
+    flex: 0 0 auto;
 }
 
 /* ══════════════════════════════════════════════════

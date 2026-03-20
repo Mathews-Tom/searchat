@@ -129,3 +129,98 @@ def test_index_page_dataset_selector_uses_dataset_module_contract() -> None:
     assert 'id="datasetBanner"' in html
     assert 'hx-get="/fragments/dataset-options"' not in html
     assert 'x-model="$store.dataset.snapshotName"' not in html
+
+
+def test_splash_bootstrap_skips_blocking_overlay_when_critical_components_are_ready() -> None:
+    script_path = (
+        Path(__file__).resolve().parents[2]
+        / "src"
+        / "searchat"
+        / "web"
+        / "static"
+        / "js"
+        / "splash.js"
+    )
+    content = script_path.read_text(encoding="utf-8")
+
+    assert "function areCriticalComponentsReady(status)" in content
+    assert "const criticalReady = areCriticalComponentsReady(status);" in content
+    assert "if (criticalReady) {" in content
+    assert "markSplashDismissedForServer(_currentServerStartedAt);" in content
+    assert "setWarmupUI(false);" in content
+    assert "renderSplash(status);" in content
+
+
+def test_legacy_web_bootstrap_uses_dedicated_action_registry() -> None:
+    script_path = (
+        Path(__file__).resolve().parents[2]
+        / "src"
+        / "searchat"
+        / "web"
+        / "static"
+        / "js"
+        / "main.js"
+    )
+    content = script_path.read_text(encoding="utf-8")
+
+    assert "const actionRegistry = window.searchatActions || (window.searchatActions = {});" in content
+    assert "actionRegistry.search = search;" in content
+    assert "const handler = action ? actionRegistry[action] : null;" in content
+    assert "typeof handler === 'function'" in content
+
+
+def test_bundled_entrypoint_imports_legacy_web_bootstrap() -> None:
+    script_path = (
+        Path(__file__).resolve().parents[2]
+        / "src"
+        / "searchat"
+        / "web"
+        / "static"
+        / "js"
+        / "src"
+        / "main.ts"
+    )
+    content = script_path.read_text(encoding="utf-8")
+
+    assert 'void import("../main.js")' in content
+    assert 'Legacy web bootstrap failed:' in content
+
+
+def test_expertise_records_use_inline_detail_expansion_contract() -> None:
+    script_path = (
+        Path(__file__).resolve().parents[2]
+        / "src"
+        / "searchat"
+        / "web"
+        / "static"
+        / "js"
+        / "modules"
+        / "expertise.js"
+    )
+    content = script_path.read_text(encoding="utf-8")
+
+    assert "function _openInlineRecordDetail(container, item)" in content
+    assert "item.insertAdjacentElement('afterend', detailRow);" in content
+    assert "container.querySelector('.expertise-inline-detail')?.remove();" in content
+    assert "const detailAreaId = 'expertiseDetailArea';" not in content
+    assert "detailArea.scrollIntoView" not in content
+
+
+def test_contradictions_use_inline_detail_expansion_contract() -> None:
+    script_path = (
+        Path(__file__).resolve().parents[2]
+        / "src"
+        / "searchat"
+        / "web"
+        / "static"
+        / "js"
+        / "modules"
+        / "contradictions.js"
+    )
+    content = script_path.read_text(encoding="utf-8")
+
+    assert "function _openInlineContradictionDetail(container, item)" in content
+    assert "item.insertAdjacentElement('afterend', detailRow);" in content
+    assert "container.querySelector('.contradiction-inline-detail')?.remove();" in content
+    assert '<div id="contradictionDetailArea"></div>' not in content
+    assert "detailArea.scrollIntoView" not in content

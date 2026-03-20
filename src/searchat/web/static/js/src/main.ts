@@ -13,7 +13,6 @@ import { searchStore } from "@stores/search";
 import { layoutStore } from "@stores/layout";
 import { chatStore } from "@stores/chat";
 import { datasetStore } from "@stores/dataset";
-import { initShortcuts } from "@modules/shortcuts";
 import { initCodeCopy } from "@modules/code-copy";
 import { rebuildProgress } from "@modules/rebuild-progress";
 
@@ -33,29 +32,17 @@ Alpine.data("rebuildProgress", rebuildProgress);
 // Start Alpine
 Alpine.start();
 
-// Initialize non-Alpine modules
-initShortcuts();
+// Restore the legacy page bootstrap that still owns the live
+// search/manage/conversation interactions. The templates load only the
+// bundled dist entrypoint, so it needs to pull in that behavior layer.
+void import("../main.js").catch((err) => {
+  console.error("Legacy web bootstrap failed:", err);
+});
+
+// Initialize non-Alpine modules still owned by the bundle.
 initCodeCopy();
 
 // Re-initialize code copy buttons after HTMX swaps in new content
 document.addEventListener("htmx:afterSwap", () => {
   initCodeCopy();
-});
-
-// Splash screen — show on first visit per server start.
-// splash.js is served as a static file (not bundled) so use an absolute URL
-// to avoid esbuild emitting it as a chunk that maps to the wrong path.
-async function initSplash(): Promise<void> {
-  try {
-    const splash = await import(/* @vite-ignore */ "/static/js/splash.js");
-    if (typeof splash.checkAndShowSplash === "function") {
-      await splash.checkAndShowSplash();
-    }
-  } catch (err) {
-    console.warn("Splash init skipped:", err);
-  }
-}
-
-window.addEventListener("load", () => {
-  initSplash();
 });

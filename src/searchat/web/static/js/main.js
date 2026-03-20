@@ -21,31 +21,40 @@ import { checkAndShowSplash } from './splash.js';
 import { createBackup, showBackups } from './modules/backup.js';
 import { initSidebarSections } from './modules/sidebar.js';
 import { initLayout } from './modules/layout.js';
+import { initClearableInputs } from './modules/clearable-inputs.js';
 
-// Make functions globally available for inline event handlers
-window.setTheme = setTheme;
-window.search = search;
-window.toggleCustomDate = toggleCustomDate;
-window.toggleHelpModal = toggleHelpModal;
-window.restoreSearchFromHistory = restoreSearchFromHistory;
-window.clearSearchHistory = clearHistory;
-window.copyCode = copyCode;
-window.showBookmarks = showBookmarks;
-window.toggleBulkMode = function () {
+const actionRegistry = window.searchatActions || (window.searchatActions = {});
+
+// Expose action handlers through a dedicated registry instead of the
+// global Window namespace. This avoids collisions with DOM-named globals
+// like window.search for the #search input.
+actionRegistry.search = search;
+actionRegistry.toggleCustomDate = toggleCustomDate;
+actionRegistry.toggleHelpModal = toggleHelpModal;
+actionRegistry.restoreSearchFromHistory = restoreSearchFromHistory;
+actionRegistry.clearSearchHistory = clearHistory;
+actionRegistry.copyCode = copyCode;
+actionRegistry.showBookmarks = showBookmarks;
+actionRegistry.toggleBulkMode = function () {
     throw new Error('Bulk export module not loaded');
 };
-window.showAnalytics = showAnalytics;
-window.showDashboards = showDashboards;
+actionRegistry.showAnalytics = showAnalytics;
+actionRegistry.showDashboards = showDashboards;
+actionRegistry.showExpertise = showExpertise;
+actionRegistry.showContradictions = showContradictions;
+actionRegistry.goToPage = (page) => goToPage(page, search);
+actionRegistry.showAllConversations = showAllConversations;
+actionRegistry.resumeSession = resumeSession;
+actionRegistry.indexMissing = indexMissing;
+actionRegistry.shutdownServer = shutdownServer;
+actionRegistry.createBackup = createBackup;
+actionRegistry.showBackups = showBackups;
+actionRegistry.showSearchView = showSearchView;
+
+// Keep a few compatibility globals for direct template/alpine hooks.
+window.setTheme = setTheme;
 window.showExpertise = showExpertise;
 window.showContradictions = showContradictions;
-window.goToPage = (page) => goToPage(page, search);
-window.showAllConversations = showAllConversations;
-window.resumeSession = resumeSession;
-window.indexMissing = indexMissing;
-window.shutdownServer = shutdownServer;
-window.createBackup = createBackup;
-window.showBackups = showBackups;
-window.showSearchView = showSearchView;
 
 function safeInit(name, fn) {
     try {
@@ -73,10 +82,11 @@ safeInit('dataset-selector', initDatasetSelector);
 safeInit('manage-page', initManagePage);
 safeInit('sidebar-sections', initSidebarSections);
 safeInit('layout', initLayout);
+safeInit('clearable-inputs', initClearableInputs);
 
 safeInit('bulk-export', async () => {
     const module = await import('./modules/bulk-export.js');
-    window.toggleBulkMode = module.toggleBulkMode;
+    actionRegistry.toggleBulkMode = module.toggleBulkMode;
     module.initBulkExport();
 });
 
@@ -105,7 +115,8 @@ document.addEventListener('click', (e) => {
         if (saveBtn) saveBtn.click();
         return;
     }
-    if (action && typeof window[action] === 'function') window[action]();
+    const handler = action ? actionRegistry[action] : null;
+    if (typeof handler === 'function') handler();
 });
 
 // On page load, check splash and restore state if available
