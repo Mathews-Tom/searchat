@@ -93,10 +93,10 @@ pip install searchat
 python -m searchat.setup
 
 # Build the initial search index
-searchat-setup-index
+searchat setup-index
 
 # Start the web server
-searchat-web
+searchat web
 ```
 
 Open http://localhost:8000
@@ -112,7 +112,7 @@ pip install -e .
 python scripts/setup-index
 
 # Start web server
-searchat-web
+searchat web
 ```
 
 Open http://localhost:8000
@@ -123,7 +123,7 @@ The setup script indexes all conversations from supported agents. On subsequent 
 
 ```bash
 pip install "searchat[mcp]"
-searchat-mcp
+searchat mcp
 ```
 
 See `docs/mcp-setup.md` for client configuration.
@@ -195,7 +195,7 @@ curl -X POST "http://localhost:8000/api/chat" \
 - Checking how something was implemented in past sessions
 - Asking questions about past work (use RAG chat)
 
-**Start server:** `searchat-web` from the searchat directory
+**Start server:** `searchat web` from the searchat directory
 
 ````
 
@@ -206,7 +206,7 @@ See `CLAUDE.example.md` for the full template.
 ### Web UI
 
 ```bash
-searchat-web
+searchat web
 ````
 
 Features:
@@ -230,6 +230,9 @@ Features:
 
 ```bash
 searchat  # interactive mode
+searchat web
+searchat mcp
+searchat setup-index [--force]
 
 # Download a default embedded GGUF model and update ~/.searchat/config/settings.toml
 searchat download-model --activate

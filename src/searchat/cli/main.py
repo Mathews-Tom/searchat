@@ -360,6 +360,36 @@ def main():
 
             raise SystemExit(run_download_model(argv[1:]))
 
+        if argv and argv[0] == "web":
+            from searchat.api.app import main as run_web
+
+            run_web(argv=argv[1:], prog_name="searchat web")
+            return
+
+        if argv and argv[0] == "mcp":
+            if any(flag in argv_set for flag in {"-h", "--help"}):
+                print("Usage: searchat mcp")
+                print()
+                print("Runs the Searchat MCP server over stdio.")
+                print()
+                return
+            from searchat.mcp.server import run as run_mcp
+
+            run_mcp()
+            return
+
+        if argv and argv[0] == "setup-index":
+            from searchat.cli.setup_index import main as run_setup_index
+
+            run_setup_index(argv=argv[1:], prog_name="searchat setup-index")
+            return
+
+        if argv and argv[0] == "ghost":
+            from searchat.daemon.ghost import main as run_ghost
+
+            run_ghost()
+            return
+
         if argv and argv[0] == "extract":
             from searchat.cli.extract import run_extract
 
@@ -406,6 +436,10 @@ def main():
             print("Interactive terminal UI for searching indexed conversations.")
             print()
             print("Commands:")
+            print("  searchat web")
+            print("  searchat mcp")
+            print("  searchat setup-index [--force]")
+            print("  searchat ghost")
             print("  searchat download-model [--preset NAME] [--activate]")
             print("  searchat extract [--mode MODE] [--project NAME] [--limit N]")
             print("  searchat onboard [--project NAME] [--max-tokens N]")
