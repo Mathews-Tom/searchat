@@ -305,113 +305,89 @@
 
             <div id="projectSuggestion" class="project-suggestion" style="display: none;"></div>
 
-            <div class="filter-bar" id="filters" role="group" aria-label="Search filters"
-                 x-data="{ open: '' }" @click.outside="open = ''">
+            <div class="filter-bar" id="filters" role="group" aria-label="Search filters">
                 <span class="filter-bar-label">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
                     Filters
                 </span>
 
-                <!-- Mode -->
-                <div class="filter-chip" :class="{ active: open === 'mode' }" @click="open = open === 'mode' ? '' : 'mode'" style="position: relative;">
+                <div class="filter-chip" data-for="mode">
                     <span class="filter-label">Mode</span>
-                    <span class="filter-value" x-text="$store.search.mode.charAt(0).toUpperCase() + $store.search.mode.slice(1)">Hybrid</span>
+                    <span class="filter-value" id="modeChipValue">Hybrid</span>
                     <svg class="filter-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
-                    <div class="filter-dropdown" x-show="open === 'mode'" x-cloak @click.stop style="position: absolute; top: 100%; left: 0; margin-top: 4px;">
-                        <button class="filter-dropdown-item" :class="{ selected: $store.search.mode === 'hybrid' }" @click="$store.search.mode = 'hybrid'; open = ''">Hybrid</button>
-                        <button class="filter-dropdown-item" :class="{ selected: $store.search.mode === 'semantic' }" @click="$store.search.mode = 'semantic'; open = ''">Semantic</button>
-                        <button class="filter-dropdown-item" :class="{ selected: $store.search.mode === 'keyword' }" @click="$store.search.mode = 'keyword'; open = ''">Keyword</button>
-                    </div>
                 </div>
 
-                <!-- Project -->
-                <div class="filter-chip" :class="{ active: open === 'project' }" style="position: relative;"
-                     @click="open = open === 'project' ? '' : 'project'"
-                     hx-get="/fragments/project-dropdown"
-                     hx-trigger="click once"
-                     hx-target="#projectDropdownItems"
-                     hx-swap="innerHTML">
+                <div class="filter-chip" data-for="project">
                     <span class="filter-label">Project</span>
-                    <span class="filter-value" x-text="$store.search.project || 'All Projects'">All Projects</span>
+                    <span class="filter-value" id="projectChipValue">All Projects</span>
                     <svg class="filter-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
-                    <div id="projectDropdownItems" class="filter-dropdown" x-show="open === 'project'" x-cloak @click.stop style="position: absolute; top: 100%; left: 0; margin-top: 4px;">
-                        <button class="filter-dropdown-item selected">All Projects</button>
-                    </div>
                 </div>
 
-                <!-- Tool -->
-                <div class="filter-chip" :class="{ active: open === 'tool' }" @click="open = open === 'tool' ? '' : 'tool'" style="position: relative;">
+                <div class="filter-chip" data-for="tool">
                     <span class="filter-label">Tool</span>
-                    <span class="filter-value" x-text="$store.search.tool ? $store.search.tool.charAt(0).toUpperCase() + $store.search.tool.slice(1) : 'All Tools'">All Tools</span>
+                    <span class="filter-value" id="toolChipValue">All Tools</span>
                     <svg class="filter-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
-                    <div class="filter-dropdown" x-show="open === 'tool'" x-cloak @click.stop style="position: absolute; top: 100%; left: 0; margin-top: 4px;">
-                        <button class="filter-dropdown-item" :class="{ selected: !$store.search.tool }" @click="$store.search.tool = ''; open = ''">All Tools</button>
-                        <button class="filter-dropdown-item" :class="{ selected: $store.search.tool === 'claude' }" @click="$store.search.tool = 'claude'; open = ''">Claude Code</button>
-                        <button class="filter-dropdown-item" :class="{ selected: $store.search.tool === 'vibe' }" @click="$store.search.tool = 'vibe'; open = ''">Vibe</button>
-                        <button class="filter-dropdown-item" :class="{ selected: $store.search.tool === 'opencode' }" @click="$store.search.tool = 'opencode'; open = ''">OpenCode</button>
-                        <button class="filter-dropdown-item" :class="{ selected: $store.search.tool === 'codex' }" @click="$store.search.tool = 'codex'; open = ''">Codex</button>
-                        <button class="filter-dropdown-item" :class="{ selected: $store.search.tool === 'gemini' }" @click="$store.search.tool = 'gemini'; open = ''">Gemini CLI</button>
-                        <button class="filter-dropdown-item" :class="{ selected: $store.search.tool === 'continue' }" @click="$store.search.tool = 'continue'; open = ''">Continue</button>
-                        <button class="filter-dropdown-item" :class="{ selected: $store.search.tool === 'cursor' }" @click="$store.search.tool = 'cursor'; open = ''">Cursor</button>
-                        <button class="filter-dropdown-item" :class="{ selected: $store.search.tool === 'aider' }" @click="$store.search.tool = 'aider'; open = ''">Aider</button>
-                    </div>
                 </div>
 
-                <!-- Date -->
-                <div class="filter-chip" :class="{ active: open === 'date' }" @click="open = open === 'date' ? '' : 'date'" style="position: relative;">
+                <div class="filter-chip" data-for="date">
                     <span class="filter-label">Date</span>
-                    <span class="filter-value" x-text="{'': 'Any time', today: 'Today', week: 'Last 7 days', month: 'Last 30 days', custom: 'Custom'}[$store.search.date] || 'Any time'">Any time</span>
+                    <span class="filter-value" id="dateChipValue">Any time</span>
                     <svg class="filter-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
-                    <div class="filter-dropdown" x-show="open === 'date'" x-cloak @click.stop style="position: absolute; top: 100%; left: 0; margin-top: 4px;">
-                        <button class="filter-dropdown-item" :class="{ selected: !$store.search.date }" @click="$store.search.date = ''; open = ''">Any time</button>
-                        <button class="filter-dropdown-item" :class="{ selected: $store.search.date === 'today' }" @click="$store.search.date = 'today'; open = ''">Today</button>
-                        <button class="filter-dropdown-item" :class="{ selected: $store.search.date === 'week' }" @click="$store.search.date = 'week'; open = ''">Last 7 days</button>
-                        <button class="filter-dropdown-item" :class="{ selected: $store.search.date === 'month' }" @click="$store.search.date = 'month'; open = ''">Last 30 days</button>
-                        <button class="filter-dropdown-item" :class="{ selected: $store.search.date === 'custom' }" @click="$store.search.date = 'custom'; open = ''">Custom range</button>
-                    </div>
                 </div>
 
-                <!-- Sort -->
-                <div class="filter-chip" :class="{ active: open === 'sortBy' }" @click="open = open === 'sortBy' ? '' : 'sortBy'" style="position: relative;">
+                <div class="filter-chip" data-for="sortBy">
                     <span class="filter-label">Sort</span>
-                    <span class="filter-value" x-text="{'relevance': 'Relevance', date_newest: 'Date (newest)', date_oldest: 'Date (oldest)', messages: 'Message count'}[$store.search.sortBy] || 'Relevance'">Relevance</span>
+                    <span class="filter-value" id="sortByChipValue">Relevance</span>
                     <svg class="filter-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
-                    <div class="filter-dropdown" x-show="open === 'sortBy'" x-cloak @click.stop style="position: absolute; top: 100%; left: 0; margin-top: 4px;">
-                        <button class="filter-dropdown-item" :class="{ selected: $store.search.sortBy === 'relevance' }" @click="$store.search.sortBy = 'relevance'; open = ''">Relevance</button>
-                        <button class="filter-dropdown-item" :class="{ selected: $store.search.sortBy === 'date_newest' }" @click="$store.search.sortBy = 'date_newest'; open = ''">Date (newest)</button>
-                        <button class="filter-dropdown-item" :class="{ selected: $store.search.sortBy === 'date_oldest' }" @click="$store.search.sortBy = 'date_oldest'; open = ''">Date (oldest)</button>
-                        <button class="filter-dropdown-item" :class="{ selected: $store.search.sortBy === 'messages' }" @click="$store.search.sortBy = 'messages'; open = ''">Message count</button>
-                    </div>
                 </div>
 
                 <label class="filter-chip filter-chip-toggle">
                     <input type="checkbox" id="semanticHighlights"
-                           x-model="$store.search.semanticHighlights" />
+                    />
                     <span class="filter-label">Semantic Highlights</span>
                 </label>
 
-                <!-- Hidden inputs for HTMX hx-include -->
                 <div class="sr-only">
-                    <input type="hidden" id="mode" name="mode" :value="$store.search.mode" />
-                    <input type="hidden" id="project" name="project" :value="$store.search.project" />
-                    <input type="hidden" id="tool" name="tool" :value="$store.search.tool" />
-                    <input type="hidden" id="date" name="date" :value="$store.search.date" />
-                    <input type="hidden" id="sortBy" name="sortBy" :value="$store.search.sortBy" />
+                    <select id="mode" class="glass-select">
+                        <option value="hybrid">Hybrid</option>
+                        <option value="semantic">Semantic</option>
+                        <option value="keyword">Keyword</option>
+                    </select>
+                    <select id="project" class="glass-select">
+                        <option value="">All Projects</option>
+                    </select>
+                    <select id="tool" class="glass-select">
+                        <option value="">All Tools</option>
+                        <option value="claude">Claude Code</option>
+                        <option value="vibe">Vibe</option>
+                        <option value="opencode">OpenCode</option>
+                        <option value="codex">Codex</option>
+                        <option value="gemini">Gemini CLI</option>
+                        <option value="continue">Continue</option>
+                        <option value="cursor">Cursor</option>
+                        <option value="aider">Aider</option>
+                    </select>
+                    <select id="date" class="glass-select">
+                        <option value="">Any time</option>
+                        <option value="today">Today</option>
+                        <option value="week">Last 7 days</option>
+                        <option value="month">Last 30 days</option>
+                        <option value="custom">Custom range</option>
+                    </select>
+                    <select id="sortBy" class="glass-select">
+                        <option value="relevance">Relevance</option>
+                        <option value="date_newest">Date (newest)</option>
+                        <option value="date_oldest">Date (oldest)</option>
+                        <option value="messages">Message count</option>
+                    </select>
                 </div>
-                <span id="customDateRange" x-show="$store.search.date === 'custom'" x-cloak>
-                    <label>From: <input type="date" id="dateFrom" name="dateFrom"
-                                        x-model="$store.search.dateFrom" /></label>
-                    <label>To: <input type="date" id="dateTo" name="dateTo"
-                                      x-model="$store.search.dateTo" /></label>
+                <span id="customDateRange" style="display:none;">
+                    <label>From: <input type="date" id="dateFrom" /></label>
+                    <label>To: <input type="date" id="dateTo" /></label>
                 </span>
             </div>
 
-            <div id="projectSummary" class="project-summary" style="display: none;"
-                 hx-get="/fragments/project-summary"
-                 hx-trigger="projectChanged from:body"
-                 hx-target="this"
-                 hx-swap="innerHTML">
-            </div>
+            <div id="projectSummary" class="project-summary" style="display: none;"></div>
 
             <div id="results"></div>
         </div>
