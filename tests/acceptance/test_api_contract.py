@@ -587,6 +587,34 @@ def test_dashboard_routes_preserve_stable_internal_error_message() -> None:
     assert response.json()["detail"] == "Internal server error"
 
 
+def test_dashboard_routes_preserve_stable_validation_messages() -> None:
+    client = TestClient(app)
+    config = SimpleNamespace(dashboards=SimpleNamespace(enabled=True))
+
+    class ValidationService:
+        def create_dashboard(self, _payload: dict) -> dict:
+            raise ValueError("Dashboard name is required.")
+
+        def update_dashboard(self, _dashboard_id: str, _updates: dict) -> dict:
+            raise ValueError("unexpected dashboard validator failure")
+
+    with patch("searchat.api.routers.dashboards.deps.get_config", return_value=config):
+        with patch(
+            "searchat.api.routers.dashboards.deps.get_dashboards_service",
+            return_value=ValidationService(),
+        ):
+            create_response = client.post(
+                "/api/dashboards",
+                json={"name": "x", "layout": {"widgets": [{"query_id": "q-1"}]}},
+            )
+            update_response = client.put("/api/dashboards/d-1", json={"name": "Updated"})
+
+    assert create_response.status_code == 400
+    assert create_response.json()["detail"] == "Dashboard name is required."
+    assert update_response.status_code == 400
+    assert update_response.json()["detail"] == "Invalid dashboard request."
+
+
 def test_analytics_routes_preserve_stable_contracts() -> None:
     client = TestClient(app)
     analytics = Mock()

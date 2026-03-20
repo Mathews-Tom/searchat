@@ -263,6 +263,22 @@ def test_dashboards_create_returns_400_on_stable_validation_message(client, monk
     assert resp.json()["detail"] == "Dashboard name is required."
 
 
+def test_dashboards_create_returns_400_on_unknown_validation_with_stable_message(client, monkeypatch):
+    class BadService:
+        def create_dashboard(self, _payload: dict) -> dict:
+            raise ValueError("unexpected dashboard validator failure")
+
+    monkeypatch.setattr("searchat.api.routers.dashboards.deps.get_dashboards_service", lambda: BadService())
+    monkeypatch.setattr("searchat.api.routers.dashboards.deps.get_config", _enabled_config)
+
+    resp = client.post(
+        "/api/dashboards",
+        json={"name": "x", "layout": {"widgets": [{"query_id": "q-1"}]}},
+    )
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "Invalid dashboard request."
+
+
 def test_dashboards_create_returns_500_on_service_error(client, monkeypatch):
     class BoomService:
         def create_dashboard(self, _payload: dict) -> dict:
@@ -290,6 +306,19 @@ def test_dashboards_update_returns_400_on_stable_validation_message(client, monk
     resp = client.put("/api/dashboards/d-1", json={"name": "Updated"})
     assert resp.status_code == 400
     assert resp.json()["detail"] == "Dashboard layout is required."
+
+
+def test_dashboards_update_returns_400_on_unknown_validation_with_stable_message(client, monkeypatch):
+    class BadService:
+        def update_dashboard(self, _dashboard_id: str, _updates: dict) -> dict:
+            raise ValueError("unexpected dashboard validator failure")
+
+    monkeypatch.setattr("searchat.api.routers.dashboards.deps.get_dashboards_service", lambda: BadService())
+    monkeypatch.setattr("searchat.api.routers.dashboards.deps.get_config", _enabled_config)
+
+    resp = client.put("/api/dashboards/d-1", json={"name": "Updated"})
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "Invalid dashboard request."
 
 
 def test_dashboards_update_returns_500_on_service_error(client, monkeypatch):
@@ -362,6 +391,41 @@ def test_dashboards_render_rejects_invalid_layout(client, monkeypatch):
     resp = client.get(f"/api/dashboards/{dashboard['id']}/render")
     assert resp.status_code == 400
     assert resp.json()["detail"] == "Dashboard layout is invalid"
+
+
+def test_dashboards_render_returns_400_on_unknown_validation_with_stable_message(client, monkeypatch):
+    dashboards_service = InMemoryDashboardsService()
+    dashboard = dashboards_service.create_dashboard(
+        {
+            "name": "Bad Filter",
+            "description": None,
+            "queries": [],
+            "layout": {"widgets": [{"query_id": "q-1"}]},
+            "refresh_interval": None,
+        }
+    )
+    saved_queries_service = InMemorySavedQueriesService(
+        {"id": "q-1", "query": "x", "filters": {"date": "bogus"}, "mode": "keyword"}
+    )
+
+    monkeypatch.setattr("searchat.api.routers.dashboards.deps.get_dashboards_service", lambda: dashboards_service)
+    monkeypatch.setattr("searchat.api.routers.dashboards.deps.get_saved_queries_service", lambda: saved_queries_service)
+    monkeypatch.setattr("searchat.api.routers.dashboards.deps.get_config", _enabled_config)
+    monkeypatch.setattr(
+        "searchat.api.routers.dashboards.get_dataset_retrieval",
+        lambda snapshot, search_mode: _dataset_retrieval(
+            FakeSearchEngine(SearchResults(results=[], total_count=0, search_time_ms=0.5, mode_used="keyword"))
+        ),
+    )
+
+    def _raise_unknown_dashboard_validation(_filters_value):
+        raise ValueError("unexpected dashboard validator failure")
+
+    monkeypatch.setattr("searchat.api.routers.dashboards._build_filters", _raise_unknown_dashboard_validation)
+
+    resp = client.get(f"/api/dashboards/{dashboard['id']}/render")
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "Invalid dashboard request."
 
 
 def test_dashboards_render_returns_400_when_saved_query_missing(client, monkeypatch):
