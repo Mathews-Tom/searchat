@@ -92,14 +92,9 @@
         </div>
 
         <!-- Conversation List -->
-        <div id="manage-list"
-             hx-get="/fragments/manage-conversations"
-             hx-trigger="load, manage-reload from:body"
-             hx-target="this"
-             hx-include="#manageProject,#manageTool,#manageSortBy"
-             hx-indicator="#manageSpinner">
+        <div id="manage-list">
             <div style="text-align: center; padding: 48px;">
-                <span class="htmx-indicator spinner" id="manageSpinner" style="display: inline-block;"></span>
+                <span class="spinner" id="manageSpinner" style="display: inline-block;"></span>
                 <p style="color: hsl(var(--text-tertiary));">Loading conversations...</p>
             </div>
         </div>
@@ -165,6 +160,120 @@
         }
     }
 
+    var manageState = {
+        page: 1,
+        pageSize: 50,
+        totalPages: 0,
+    };
+
+    function escapeHtml(value) {
+        var div = document.createElement('div');
+        div.textContent = value == null ? '' : String(value);
+        return div.innerHTML;
+    }
+
+    function formatDate(value) {
+        if (!value) return '';
+        try {
+            return new Date(value).toLocaleDateString();
+        } catch (_e) {
+            return String(value).slice(0, 10);
+        }
+    }
+
+    function renderManageList(data) {
+        var list = document.getElementById('manage-list');
+        if (!list) return;
+
+        var results = Array.isArray(data.results) ? data.results : [];
+        var total = Number(data.total || 0);
+        manageState.totalPages = total > 0 ? Math.ceil(total / manageState.pageSize) : 0;
+
+        if (!results.length) {
+            list.innerHTML = '<div class="result" style="padding: 48px; text-align: center;"><p style="color: hsl(var(--text-tertiary)); margin: 0;">No conversations found.</p></div>';
+            updateToolbar();
+            return;
+        }
+
+        var html = '<div class="results-header">' + total + ' conversation' + (total !== 1 ? 's' : '');
+        if (manageState.page > 1) {
+            html += ' &middot; Page ' + manageState.page + ' of ' + manageState.totalPages;
+        }
+        html += '</div>';
+
+        results.forEach(function(c) {
+            var checked = selected.has(c.conversation_id) ? ' checked' : '';
+            var filePath = String(c.file_path || '');
+            var displayPath = filePath;
+            html += `
+<div class="result manage-result" id="manage-${escapeHtml(c.conversation_id)}">
+    <label class="manage-checkbox">
+        <input type="checkbox" name="cid" value="${escapeHtml(c.conversation_id)}"${checked}>
+        <span class="manage-checkmark"></span>
+    </label>
+    <div class="manage-result-content">
+        <div class="result-title">${escapeHtml(c.title || 'Untitled')}</div>
+        <div class="result-meta">
+            <span>${escapeHtml(c.project_id || '')}</span>
+            ${c.message_count ? `<span>&middot; ${escapeHtml(c.message_count)} messages</span>` : ''}
+            ${c.updated_at ? `<span>&middot; ${escapeHtml(formatDate(c.updated_at))}</span>` : ''}
+            ${c.tool ? `<span class="manage-tool-badge manage-tool-${escapeHtml(c.tool)}">${escapeHtml(c.tool)}</span>` : ''}
+        </div>
+        ${displayPath ? `<div class="manage-source-path" title="${escapeHtml(filePath)}">${escapeHtml(displayPath)}</div>` : ''}
+    </div>
+    <button class="glass-btn manage-preview-btn" title="Preview conversation" data-conversation-id="${escapeHtml(c.conversation_id)}">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+        </svg>
+    </button>
+</div>`;
+        });
+
+        if (manageState.totalPages > 1) {
+            html += '<div class="manage-pagination">';
+            if (manageState.page > 1) {
+                html += '<button class="glass-btn" data-manage-page="prev">&larr; Previous</button>';
+            }
+            html += '<span class="manage-page-info">Page ' + manageState.page + ' of ' + manageState.totalPages + '</span>';
+            if (manageState.page < manageState.totalPages) {
+                html += '<button class="glass-btn" data-manage-page="next">Next &rarr;</button>';
+            }
+            html += '</div>';
+        }
+
+        list.innerHTML = html;
+        updateToolbar();
+    }
+
+    function loadManageConversations() {
+        var list = document.getElementById('manage-list');
+        if (!list) return Promise.resolve();
+
+        list.innerHTML = '<div style="text-align: center; padding: 48px;"><span class="spinner" id="manageSpinner" style="display: inline-block;"></span><p style="color: hsl(var(--text-tertiary));">Loading conversations...</p></div>';
+
+        var params = new URLSearchParams({
+            sort_by: document.getElementById('manageSortBy').value,
+            limit: String(manageState.pageSize),
+            offset: String((manageState.page - 1) * manageState.pageSize),
+        });
+        var project = document.getElementById('manageProject').value;
+        var tool = document.getElementById('manageTool').value;
+        if (project) params.set('project', project);
+        if (tool) params.set('tool', tool);
+
+        return fetch('/api/conversations/all?' + params.toString())
+            .then(function(resp) {
+                if (!resp.ok) throw new Error('Failed to load conversations');
+                return resp.json();
+            })
+            .then(function(data) {
+                renderManageList(data);
+            })
+            .catch(function(err) {
+                list.innerHTML = '<div class="result" style="padding: 48px; text-align: center;"><p style="color: hsl(var(--danger)); margin: 0;">' + escapeHtml(err.message) + '</p></div>';
+            });
+    }
+
     // Delegate checkbox changes on the manage-list container
     document.getElementById('manage-list').addEventListener('change', function(e) {
         if (e.target.matches('.manage-checkbox input[type="checkbox"]')) {
@@ -178,14 +287,36 @@
         }
     });
 
-    // Re-check boxes after HTMX swap (preserves selection across pagination)
-    document.body.addEventListener('htmx:afterSwap', function(e) {
-        if (e.target.id === 'manage-list') {
-            var checkboxes = e.target.querySelectorAll('.manage-checkbox input[type="checkbox"]');
-            checkboxes.forEach(function(cb) {
-                if (selected.has(cb.value)) cb.checked = true;
-            });
-            updateToolbar();
+    document.getElementById('manage-list').addEventListener('click', function(e) {
+        var previewBtn = e.target.closest('.manage-preview-btn');
+        if (previewBtn) {
+            var conversationId = previewBtn.dataset.conversationId;
+            if (!conversationId) return;
+            openPreviewPanel();
+            var previewContent = document.getElementById('previewContent');
+            previewContent.innerHTML = '<div style="text-align: center; padding: 48px;"><span class="spinner" id="previewSpinner" style="display: inline-block;"></span></div>';
+            fetch('/fragments/conversation-preview/' + encodeURIComponent(conversationId))
+                .then(function(resp) {
+                    if (!resp.ok) throw new Error('Failed to load preview');
+                    return resp.text();
+                })
+                .then(function(html) {
+                    previewContent.innerHTML = html;
+                })
+                .catch(function(err) {
+                    previewContent.innerHTML = '<div style="padding: 24px; color: hsl(var(--danger));">' + escapeHtml(err.message) + '</div>';
+                });
+            return;
+        }
+
+        var pageBtn = e.target.closest('[data-manage-page]');
+        if (pageBtn) {
+            if (pageBtn.dataset.managePage === 'prev' && manageState.page > 1) {
+                manageState.page -= 1;
+            } else if (pageBtn.dataset.managePage === 'next' && manageState.page < manageState.totalPages) {
+                manageState.page += 1;
+            }
+            loadManageConversations();
         }
     });
 
@@ -265,8 +396,7 @@
         .then(function(result) {
             selected.clear();
             updateToolbar();
-            // Reload the list
-            document.body.dispatchEvent(new CustomEvent('manage-reload'));
+            loadManageConversations();
             // Show brief success notification
             var notification = document.createElement('div');
             notification.className = 'manage-notification glass';
@@ -338,11 +468,12 @@
         var el = document.getElementById(id);
         if (!el) return;
         el.addEventListener('change', function() {
-            document.body.dispatchEvent(new CustomEvent('manage-reload'));
+            manageState.page = 1;
+            loadManageConversations();
         });
     });
 
-    loadManageProjects();
+    loadManageProjects().finally(loadManageConversations);
 })();
 </script>
 {% endblock %}
