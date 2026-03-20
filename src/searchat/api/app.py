@@ -302,7 +302,7 @@ async def serve_manage_page(request: Request):
     return templates.TemplateResponse(request, "manage.html")
 
 
-def main():
+def main(argv: list[str] | None = None, prog_name: str | None = None):
     """Run the server with configurable host and port."""
     import uvicorn
     import socket
@@ -312,16 +312,17 @@ def main():
     import webbrowser
     import sys
 
-    prog = Path(sys.argv[0]).name
-    argv = set(sys.argv[1:])
-    if prog.startswith("searchat-web"):
-        if "--version" in argv:
+    args = list(sys.argv[1:] if argv is None else argv)
+    prog = prog_name or Path(sys.argv[0]).name
+    arg_set = set(args)
+    if prog.startswith("searchat-web") or prog == "searchat web":
+        if "--version" in arg_set:
             from searchat import __version__
 
             print(__version__)
             return
-        if "-h" in argv or "--help" in argv:
-            print("Usage: searchat-web")
+        if "-h" in arg_set or "--help" in arg_set:
+            print(f"Usage: {prog}")
             print()
             print("Environment variables:")
             print(f"  {ENV_HOST}=<host>   (default: {DEFAULT_HOST})")
@@ -383,7 +384,7 @@ def main():
 
     open_browser_raw = os.getenv("SEARCHAT_OPEN_BROWSER", "1").strip().lower()
     open_browser = open_browser_raw not in {"0", "false", "no", "off"}
-    if "--no-browser" in argv:
+    if "--no-browser" in args:
         open_browser = False
     interactive = sys.stdout.isatty()
 

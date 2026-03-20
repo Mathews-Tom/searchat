@@ -9,7 +9,7 @@ from searchat.core.logging_config import setup_logging
 from searchat.core.progress import create_progress
 
 
-def main() -> None:
+def main(argv: list[str] | None = None, prog_name: str = "searchat-setup-index") -> None:
     """Build the initial index for a dataset.
 
     This is intended for first-time setup after installing Searchat.
@@ -28,7 +28,8 @@ def main() -> None:
     print("=" * 70)
     print()
 
-    force = "--force" in sys.argv
+    args = list(sys.argv[1:] if argv is None else argv)
+    force = "--force" in args
 
     try:
         print("Loading configuration...")
@@ -105,7 +106,7 @@ def main() -> None:
                 print("No new conversations to index. Your index is up to date.")
                 print()
                 print("Start the web server with:")
-                print("  searchat-web")
+                print("  searchat web")
                 return
 
             stats = indexer.index_append_only(new_files, progress)
@@ -136,7 +137,7 @@ def main() -> None:
             print()
 
         print("Start the web server with:")
-        print("  searchat-web")
+        print("  searchat web")
 
     except RuntimeError as exc:
         print()
