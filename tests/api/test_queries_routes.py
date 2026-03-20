@@ -179,6 +179,26 @@ def test_queries_update_returns_400_on_stable_validation_message(client, monkeyp
     assert resp.json()["detail"] == "Saved query mode is required."
 
 
+def test_queries_create_returns_400_on_unknown_value_error_with_stable_message(client, monkeypatch):
+    class BadService:
+        def create_query(self, _payload: dict) -> dict:
+            raise ValueError("unexpected validator failure")
+
+    monkeypatch.setattr("searchat.api.routers.queries.deps.get_saved_queries_service", lambda: BadService())
+    resp = client.post(
+        "/api/queries",
+        json={
+            "name": "n",
+            "description": None,
+            "query": "q",
+            "filters": {},
+            "mode": "hybrid",
+        },
+    )
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "Invalid saved query request."
+
+
 def test_queries_update_returns_404_when_not_found(client, monkeypatch):
     service = SimpleNamespace(update_query=lambda _qid, _updates: None)
     monkeypatch.setattr("searchat.api.routers.queries.deps.get_saved_queries_service", lambda: service)
@@ -234,3 +254,14 @@ def test_queries_run_returns_500_on_service_error(client, monkeypatch):
     resp = client.post("/api/queries/missing/run")
     assert resp.status_code == 500
     assert resp.json()["detail"] == "Internal server error"
+
+
+def test_queries_run_returns_400_on_unknown_value_error_with_stable_message(client, monkeypatch):
+    class BadService:
+        def record_use(self, _qid: str):
+            raise ValueError("unexpected validator failure")
+
+    monkeypatch.setattr("searchat.api.routers.queries.deps.get_saved_queries_service", lambda: BadService())
+    resp = client.post("/api/queries/q-1/run")
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "Invalid saved query request."

@@ -403,6 +403,35 @@ def test_saved_query_routes_preserve_stable_internal_error_message() -> None:
     assert response.json()["detail"] == "Internal server error"
 
 
+def test_saved_query_routes_preserve_stable_validation_messages() -> None:
+    client = TestClient(app)
+
+    class ValidationService:
+        def create_query(self, _payload: dict) -> dict:
+            raise ValueError("Saved query name is required.")
+
+        def record_use(self, _query_id: str) -> dict:
+            raise ValueError("unexpected validator failure")
+
+    with patch("searchat.api.routers.queries.deps.get_saved_queries_service", return_value=ValidationService()):
+        create_response = client.post(
+            "/api/queries",
+            json={
+                "name": "n",
+                "description": None,
+                "query": "q",
+                "filters": {},
+                "mode": "hybrid",
+            },
+        )
+        run_response = client.post("/api/queries/q-1/run")
+
+    assert create_response.status_code == 400
+    assert create_response.json()["detail"] == "Saved query name is required."
+    assert run_response.status_code == 400
+    assert run_response.json()["detail"] == "Invalid saved query request."
+
+
 def test_bookmark_creation_preserves_stable_not_found_message() -> None:
     client = TestClient(app)
     bookmark_dataset = SimpleNamespace(
