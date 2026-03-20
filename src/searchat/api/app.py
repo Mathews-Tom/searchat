@@ -54,6 +54,7 @@ from searchat.api.routers import (
     expertise_router,
     knowledge_graph_router,
     fragments_router,
+    health_router,
 )
 from searchat.config.constants import (
     APP_VERSION,
@@ -184,6 +185,7 @@ app.include_router(dashboards_router, prefix="/api", tags=["dashboards"])
 app.include_router(expertise_router)
 app.include_router(knowledge_graph_router)
 app.include_router(fragments_router)
+app.include_router(health_router, prefix="/api", tags=["health"])
 
 
 def on_new_conversations(file_paths: list[str]) -> None:

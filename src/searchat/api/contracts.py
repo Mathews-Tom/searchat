@@ -578,3 +578,36 @@ def serialize_conversation_diff_payload(
         "removed": removed,
         "unchanged": unchanged,
     }
+
+
+# ---------------------------------------------------------------------------
+# Health check serializers
+# ---------------------------------------------------------------------------
+
+
+def serialize_health_live_payload() -> dict[str, str]:
+    return {"status": "alive"}
+
+
+def serialize_health_ready_payload(
+    *,
+    ready: bool,
+    components: dict[str, str],
+    errors: dict[str, str],
+) -> dict[str, Any]:
+    return {
+        "ready": ready,
+        "components": components,
+        "errors": errors,
+    }
+
+
+def serialize_health_deep_payload(
+    *,
+    healthy: bool,
+    checks: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "healthy": healthy,
+        "checks": checks,
+    }
