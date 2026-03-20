@@ -85,6 +85,7 @@ def test_index_page_routes_secondary_views_and_actions_through_js_modules() -> N
         "showDashboards",
         "showExpertise",
         "showContradictions",
+        "saveQueryInline",
         "indexMissing",
         "createBackup",
         "showBackups",
@@ -101,3 +102,18 @@ def test_index_page_routes_secondary_views_and_actions_through_js_modules() -> N
     assert 'hx-post="/fragments/backup-create"' not in html
     assert 'hx-get="/fragments/backup-list"' not in html
     assert 'hx-post="/fragments/shutdown"' not in html
+
+
+def test_index_page_saved_queries_panel_uses_js_module_contract() -> None:
+    client = TestClient(app)
+    resp = client.get("/")
+    assert resp.status_code == 200
+
+    html = resp.text
+    assert 'id="saveQueryButton"' in html
+    assert 'id="saveQueryButtonInline"' in html
+    assert 'data-action="saveQueryInline"' in html
+    assert 'id="savedQueriesList"' in html
+    assert 'id="savedQueriesForm"' in html
+    assert 'hx-get="/fragments/saved-queries-list"' not in html
+    assert 'hx-post="/fragments/saved-query"' not in html
