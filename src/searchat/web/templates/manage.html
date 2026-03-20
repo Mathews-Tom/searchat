@@ -181,6 +181,60 @@
         }
     }
 
+    function renderPreviewContent(conversation) {
+        if (!conversation || typeof conversation !== 'object') {
+            return '<div class="preview-error"><p>Conversation not found.</p></div>';
+        }
+
+        var messages = Array.isArray(conversation.messages) ? conversation.messages : [];
+        var previewMessages = messages.slice(0, 10);
+        var remaining = Math.max(messages.length - previewMessages.length, 0);
+        var tool = conversation.tool
+            || (function() {
+                var filePath = String(conversation.file_path || '').toLowerCase();
+                if (filePath.indexOf('vibe') !== -1) return 'vibe';
+                if (filePath.indexOf('claude') !== -1) return 'claude';
+                if (filePath.indexOf('codex') !== -1) return 'codex';
+                if (filePath.indexOf('gemini') !== -1) return 'gemini';
+                if (filePath.indexOf('cursor') !== -1) return 'cursor';
+                return '';
+            })();
+
+        var html = '<div class="preview-header">';
+        html += '<h3 class="preview-title">' + escapeHtml(conversation.title || 'Untitled Conversation') + '</h3>';
+        html += '<div class="preview-meta">';
+        if (conversation.project_id) {
+            html += '<span>' + escapeHtml(conversation.project_id) + '</span>';
+        }
+        if (conversation.message_count) {
+            html += '<span>' + escapeHtml(conversation.message_count) + ' messages</span>';
+        }
+        if (conversation.created_at) {
+            html += '<span>' + escapeHtml(String(conversation.created_at).slice(0, 10)) + '</span>';
+        }
+        if (tool) {
+            html += '<span class="manage-tool-badge manage-tool-' + escapeHtml(tool) + '">' + escapeHtml(tool) + '</span>';
+        }
+        html += '</div></div>';
+
+        html += '<div class="preview-messages">';
+        previewMessages.forEach(function(msg) {
+            var role = escapeHtml((msg && msg.role) || 'unknown');
+            var content = escapeHtml((msg && msg.content) || '');
+            html += '<div class="preview-message preview-role-' + role + '">';
+            html += '<div class="preview-message-role">' + role + '</div>';
+            html += '<div class="preview-message-content">' + content + '</div>';
+            html += '</div>';
+        });
+
+        if (remaining > 0) {
+            html += '<div class="preview-truncated">&hellip; ' + remaining + ' more message' + (remaining !== 1 ? 's' : '') + ' not shown</div>';
+        }
+        html += '</div>';
+
+        return html;
+    }
+
     function renderManageList(data) {
         var list = document.getElementById('manage-list');
         if (!list) return;
@@ -295,13 +349,13 @@
             openPreviewPanel();
             var previewContent = document.getElementById('previewContent');
             previewContent.innerHTML = '<div style="text-align: center; padding: 48px;"><span class="spinner" id="previewSpinner" style="display: inline-block;"></span></div>';
-            fetch('/fragments/conversation-preview/' + encodeURIComponent(conversationId))
+            fetch('/api/conversation/' + encodeURIComponent(conversationId))
                 .then(function(resp) {
                     if (!resp.ok) throw new Error('Failed to load preview');
-                    return resp.text();
+                    return resp.json();
                 })
-                .then(function(html) {
-                    previewContent.innerHTML = html;
+                .then(function(conversation) {
+                    previewContent.innerHTML = renderPreviewContent(conversation);
                 })
                 .catch(function(err) {
                     previewContent.innerHTML = '<div style="padding: 24px; color: hsl(var(--danger));">' + escapeHtml(err.message) + '</div>';
