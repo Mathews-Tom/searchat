@@ -22,3 +22,34 @@ def test_live_page_templates_do_not_bootstrap_fragment_routes() -> None:
     for template_path in live_templates:
         content = template_path.read_text(encoding="utf-8")
         assert "/fragments/" not in content, template_path.name
+
+
+def test_live_page_templates_do_not_embed_page_local_scripts_or_dom_handlers() -> None:
+    templates_dir = (
+        Path(__file__).resolve().parents[2]
+        / "src"
+        / "searchat"
+        / "web"
+        / "templates"
+    )
+
+    live_templates = [
+        templates_dir / "index.html",
+        templates_dir / "manage.html",
+        templates_dir / "conversation.html",
+        templates_dir / "chat.html",
+    ]
+
+    forbidden_patterns = [
+        "<script",
+        "onclick=",
+        "onchange=",
+        "oninput=",
+        "onkeydown=",
+        "onkeyup=",
+    ]
+
+    for template_path in live_templates:
+        content = template_path.read_text(encoding="utf-8")
+        for pattern in forbidden_patterns:
+            assert pattern not in content, f"{template_path.name} contains {pattern}"
