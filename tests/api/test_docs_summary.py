@@ -135,3 +135,49 @@ def test_docs_summary_returns_warming_payload_when_semantic_components_not_ready
 
     assert resp.status_code == 503
     assert resp.json()["status"] == "warming"
+
+
+def test_docs_summary_keyword_only_skips_semantic_readiness_gate(client):
+    cfg = Mock()
+    cfg.export = Mock(enable_tech_docs=True)
+
+    engine = Mock()
+    engine.search.return_value = _make_results()
+
+    with patch("searchat.api.routers.docs.deps.get_config", return_value=cfg):
+        with patch(
+            "searchat.api.routers.docs.check_semantic_readiness",
+            side_effect=AssertionError("keyword-only docs summary should not require semantic readiness"),
+        ):
+            with patch("searchat.api.routers.docs.deps.get_search_engine", return_value=engine):
+                resp = client.post(
+                    "/api/docs/summary",
+                    json={
+                        "title": "Keyword Doc",
+                        "sections": [
+                            {"name": "Section A", "query": "q", "mode": "keyword"},
+                        ],
+                    },
+                )
+
+    assert resp.status_code == 200
+    assert resp.json()["title"] == "Keyword Doc"
+
+
+def test_docs_summary_returns_500_on_internal_error(client):
+    cfg = Mock()
+    cfg.export = Mock(enable_tech_docs=True)
+
+    engine = Mock()
+    engine.search.side_effect = RuntimeError("boom")
+
+    with patch("searchat.api.routers.docs.deps.get_config", return_value=cfg):
+        with patch("searchat.api.routers.docs.check_semantic_readiness", return_value=None):
+            with patch("searchat.api.routers.docs.deps.get_search_engine", return_value=engine):
+                resp = client.post(
+                    "/api/docs/summary",
+                    json={"sections": [{"name": "Section A", "query": "q"}]},
+                )
+
+    assert resp.status_code == 500
+    assert resp.json()["detail"] == "Internal server error"
