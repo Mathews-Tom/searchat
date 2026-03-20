@@ -5,8 +5,10 @@ import argparse
 import importlib.util
 from collections import Counter
 from dataclasses import dataclass
+import os
 import subprocess
 import sys
+import tempfile
 
 from rich.console import Console
 from rich.table import Table
@@ -275,6 +277,11 @@ RELEASE_VALIDATION_GROUPS: tuple[ReleaseValidationGroup, ...] = (
             "tests/unit/perf/test_performance_gates.py",
         ),
     ),
+    ReleaseValidationGroup(
+        name="Packaging",
+        description="Build sdist/wheel artifacts and validate package metadata.",
+        targets=(),
+    ),
 )
 
 
@@ -303,7 +310,8 @@ def _run_validate_release(argv: list[str]) -> int:
         console.print("[red]No release validation groups selected.[/red]")
         return 1
 
-    if importlib.util.find_spec("pytest") is None:
+    requested = set(args.groups or [group.name.lower() for group in RELEASE_VALIDATION_GROUPS])
+    if requested - {"packaging"} and importlib.util.find_spec("pytest") is None:
         console.print("[red]pytest is not installed. Install dev dependencies before running release validation.[/red]")
         return 1
 
@@ -322,26 +330,27 @@ def _run_validate_release(argv: list[str]) -> int:
 
     any_failures = False
     for group in groups:
-        command = [
-            sys.executable,
-            "-m",
-            "pytest",
-            "-o",
-            "addopts=",
-            *group.targets,
-            "-q",
-        ]
-
         console.print(f"\n[bold]{group.name}[/bold]")
         console.print(group.description)
-        console.print(f"[dim]{' '.join(command)}[/dim]")
-
-        completed = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        if group.name == "Packaging":
+            completed = _run_release_packaging_group(console)
+        else:
+            command = [
+                sys.executable,
+                "-m",
+                "pytest",
+                "-o",
+                "addopts=",
+                *group.targets,
+                "-q",
+            ]
+            console.print(f"[dim]{' '.join(command)}[/dim]")
+            completed = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
 
         success = completed.returncode == 0
         any_failures = any_failures or not success
@@ -363,6 +372,71 @@ def _run_validate_release(argv: list[str]) -> int:
     console.print("\n")
     console.print(table)
     return 1 if any_failures else 0
+
+
+def _run_release_packaging_group(console: Console) -> subprocess.CompletedProcess[str]:
+    if importlib.util.find_spec("build") is None:
+        return subprocess.CompletedProcess(
+            args=[sys.executable, "-m", "build"],
+            returncode=1,
+            stdout="",
+            stderr="Python package `build` is not installed. Install dev dependencies before running packaging validation.",
+        )
+
+    with tempfile.TemporaryDirectory(prefix="searchat-release-build-") as tmp_dir:
+        build_command = [
+            sys.executable,
+            "-m",
+            "build",
+            "--sdist",
+            "--wheel",
+            "--outdir",
+            tmp_dir,
+        ]
+        console.print(f"[dim]{' '.join(build_command)}[/dim]")
+
+        build_result = subprocess.run(
+            build_command,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if build_result.returncode != 0:
+            return build_result
+
+        if importlib.util.find_spec("twine") is None:
+            return subprocess.CompletedProcess(
+                args=build_command,
+                returncode=0,
+                stdout=(build_result.stdout or "").strip() + "\nTwine not installed; skipped metadata verification.",
+                stderr=build_result.stderr or "",
+            )
+
+        artifacts = sorted(
+            os.path.join(tmp_dir, name)
+            for name in os.listdir(tmp_dir)
+            if name.endswith((".whl", ".tar.gz"))
+        )
+        twine_command = [sys.executable, "-m", "twine", "check", *artifacts]
+        console.print(f"[dim]{' '.join(twine_command)}[/dim]")
+
+        twine_result = subprocess.run(
+            twine_command,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if twine_result.returncode != 0:
+            return twine_result
+
+        stdout_parts = [part.strip() for part in (build_result.stdout, twine_result.stdout) if part and part.strip()]
+        stderr_parts = [part.strip() for part in (build_result.stderr, twine_result.stderr) if part and part.strip()]
+        return subprocess.CompletedProcess(
+            args=build_command,
+            returncode=0,
+            stdout="\n".join(stdout_parts),
+            stderr="\n".join(stderr_parts),
+        )
 
 
 def _edit_distance(a: str, b: str) -> int:
