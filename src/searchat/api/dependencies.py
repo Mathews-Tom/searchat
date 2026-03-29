@@ -346,7 +346,11 @@ def _ensure_search_engine():
 
 
 def _ensure_indexer():
-    """Create indexer lazily (blocking)."""
+    """Create indexer lazily (blocking).
+
+    Returns UnifiedIndexer (DuckDB-native) which bypasses the dual-writer
+    and writes directly to DuckDB with exchange-level segmentation.
+    """
     global _indexer
     readiness = get_readiness()
 
@@ -359,9 +363,9 @@ def _ensure_indexer():
 
         readiness.set_component("indexer", "loading")
         try:
-            from searchat.core.indexer import ConversationIndexer
+            from searchat.core.unified_indexer import UnifiedIndexer
 
-            _indexer = ConversationIndexer(_search_dir, _config)
+            _indexer = UnifiedIndexer(_search_dir, _config)
             readiness.set_component("indexer", "ready")
         except Exception as e:
             readiness.set_component("indexer", "error", error=str(e))

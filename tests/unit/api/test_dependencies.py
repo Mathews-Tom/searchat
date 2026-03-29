@@ -410,7 +410,7 @@ def test_ensure_indexer_creates_instance(monkeypatch: pytest.MonkeyPatch, tmp_pa
             self.search_dir = search_dir
             self.config = config
 
-    monkeypatch.setitem(sys.modules, "searchat.core.indexer", types.SimpleNamespace(ConversationIndexer=_Indexer))
+    monkeypatch.setitem(sys.modules, "searchat.core.unified_indexer", types.SimpleNamespace(UnifiedIndexer=_Indexer))
 
     idx = deps._ensure_indexer()
     assert idx.search_dir == tmp_path
@@ -429,7 +429,7 @@ def test_ensure_indexer_sets_error_on_failure(monkeypatch: pytest.MonkeyPatch, t
         def __init__(self, _search_dir: Path, _config):
             raise RuntimeError("indexer boom")
 
-    monkeypatch.setitem(sys.modules, "searchat.core.indexer", types.SimpleNamespace(ConversationIndexer=_Indexer))
+    monkeypatch.setitem(sys.modules, "searchat.core.unified_indexer", types.SimpleNamespace(UnifiedIndexer=_Indexer))
 
     with pytest.raises(RuntimeError, match="indexer boom"):
         deps._ensure_indexer()

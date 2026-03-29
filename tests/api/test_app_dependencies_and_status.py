@@ -202,7 +202,7 @@ def test_dependencies_indexer_is_created_lazily(monkeypatch: pytest.MonkeyPatch,
         def __new__(cls, *args, **kwargs):
             return fake_indexer
 
-    monkeypatch.setattr("searchat.core.indexer.ConversationIndexer", FakeIndexer)
+    monkeypatch.setattr("searchat.core.unified_indexer.UnifiedIndexer", FakeIndexer)
 
     idx = deps.get_indexer()
     assert idx is fake_indexer
@@ -1108,7 +1108,7 @@ def test_ensure_search_engine_sets_readiness_error_on_failure(monkeypatch: pytes
 def test_ensure_indexer_sets_readiness_error_on_failure(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     import searchat.api.dependencies as deps
     from searchat.api.readiness import get_readiness
-    import searchat.core.indexer as indexer_mod
+    import searchat.core.unified_indexer as indexer_mod
 
     deps._config = object()
     deps._search_dir = tmp_path
@@ -1118,7 +1118,7 @@ def test_ensure_indexer_sets_readiness_error_on_failure(monkeypatch: pytest.Monk
         def __init__(self, *_a, **_k):
             raise RuntimeError("boom")
 
-    monkeypatch.setattr(indexer_mod, "ConversationIndexer", BoomIndexer)
+    monkeypatch.setattr(indexer_mod, "UnifiedIndexer", BoomIndexer)
 
     with pytest.raises(RuntimeError):
         deps.get_indexer()
