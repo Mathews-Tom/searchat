@@ -85,6 +85,19 @@
             e.preventDefault();
             show(e.detail.question, function() { e.detail.issueRequest(true); });
         });
+
+        // Expose as a Promise-based API for non-HTMX callers (e.g. shutdownServer)
+        window.glassConfirm = function(message) {
+            return new Promise(function(resolve) {
+                show(message, function() { resolve(true); });
+                // Override cancel to resolve(false) for this call
+                var onCancel = function() { hide(); resolve(false); };
+                cancelBtn.addEventListener('click', onCancel, { once: true });
+                overlay.addEventListener('click', function(e) {
+                    if (e.target === overlay) { resolve(false); }
+                }, { once: true });
+            });
+        };
     })();
     </script>
 

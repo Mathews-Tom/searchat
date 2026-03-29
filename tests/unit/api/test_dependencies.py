@@ -402,10 +402,11 @@ def test_ensure_indexer_creates_instance(monkeypatch: pytest.MonkeyPatch, tmp_pa
     monkeypatch.setattr(deps, "_search_dir", tmp_path)
 
     class _Indexer:
-        def __init__(self, search_dir: Path, config):
+        def __init__(self, search_dir: Path, config, *, storage=None):
             self.search_dir = search_dir
             self.config = config
 
+    monkeypatch.setattr(deps, "_duckdb_store", None)
     monkeypatch.setitem(sys.modules, "searchat.core.unified_indexer", types.SimpleNamespace(UnifiedIndexer=_Indexer))
 
     idx = deps._ensure_indexer()
@@ -422,7 +423,7 @@ def test_ensure_indexer_sets_error_on_failure(monkeypatch: pytest.MonkeyPatch, t
     monkeypatch.setattr(deps, "_search_dir", tmp_path)
 
     class _Indexer:
-        def __init__(self, _search_dir: Path, _config):
+        def __init__(self, _search_dir: Path, _config, *, storage=None):
             raise RuntimeError("indexer boom")
 
     monkeypatch.setitem(sys.modules, "searchat.core.unified_indexer", types.SimpleNamespace(UnifiedIndexer=_Indexer))

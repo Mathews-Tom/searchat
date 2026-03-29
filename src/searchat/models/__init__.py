@@ -17,12 +17,16 @@ from searchat.models.domain import (
     DistillationStats,
     PalaceSearchResult,
 )
-from searchat.models.schemas import (
-    CONVERSATION_SCHEMA,
-    METADATA_SCHEMA,
-    FILE_STATE_SCHEMA,
-    CODE_BLOCK_SCHEMA,
-)
+try:
+    from searchat.models.schemas import (
+        CONVERSATION_SCHEMA,
+        METADATA_SCHEMA,
+        FILE_STATE_SCHEMA,
+        CODE_BLOCK_SCHEMA,
+    )
+except ImportError:
+    # pyarrow is an optional [legacy] dependency — schemas unavailable without it
+    pass
 
 __all__ = [
     # Enums

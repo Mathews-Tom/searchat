@@ -71,7 +71,11 @@ function safeInit(name, fn) {
 
 // Initialize modules on page load. A failure in one module should not
 // break basic interactions like search and chat.
-safeInit('theme', initTheme);
+// Skip vanilla theme init when Alpine theme store is active (template pages).
+// Both systems bind click handlers on #themeSwitcher and fight over .active class.
+if (!window.Alpine?.store?.('theme')) {
+    safeInit('theme', initTheme);
+}
 safeInit('shortcuts', initShortcuts);
 safeInit('search-history', initSearchHistory);
 safeInit('suggestions', initSuggestions);

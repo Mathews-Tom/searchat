@@ -11,7 +11,6 @@ from searchat.models import (
     SearchMode,
     SearchFilters,
 )
-from searchat.core import ConversationIndexer
 
 __all__ = [
     "ConversationRecord",
@@ -22,3 +21,10 @@ __all__ = [
     "SearchFilters",
     "ConversationIndexer",
 ]
+
+
+def __getattr__(name: str):
+    if name == "ConversationIndexer":
+        from searchat.core.indexer import ConversationIndexer
+        return ConversationIndexer
+    raise AttributeError(f"module 'searchat' has no attribute {name!r}")

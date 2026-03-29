@@ -734,6 +734,16 @@ class UnifiedSearchEngine:
                 f"Metadata parquet not found at {self.metadata_path}. Run indexer first."
             )
 
+    def ensure_metadata_ready(self) -> None:
+        with self._init_lock:
+            self._ensure_metadata_ready_locked()
+
+    def ensure_faiss_loaded(self) -> None:
+        self._ensure_faiss_loaded()
+
+    def ensure_embedder_loaded(self) -> None:
+        self._ensure_embedder_loaded()
+
     def _ensure_faiss_loaded(self) -> None:
         with self._init_lock:
             self._ensure_faiss_loaded_locked()
