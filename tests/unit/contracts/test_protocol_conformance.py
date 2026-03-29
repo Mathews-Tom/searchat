@@ -76,17 +76,17 @@ def _assert_class_conforms(concrete_cls: type, protocol_cls: type) -> None:
 
 
 class TestStorageBackendConformance:
-    def test_duckdb_store_conforms(self) -> None:
-        from searchat.services.duckdb_storage import DuckDBStore
+    def test_unified_storage_conforms(self) -> None:
+        from searchat.storage.unified_storage import UnifiedStorage
 
-        _assert_class_conforms(DuckDBStore, StorageBackend)
+        _assert_class_conforms(UnifiedStorage, StorageBackend)
 
 
 class TestRetrievalBackendConformance:
-    def test_search_engine_conforms(self) -> None:
-        from searchat.core.search_engine import SearchEngine
+    def test_unified_search_engine_conforms(self) -> None:
+        from searchat.core.unified_search import UnifiedSearchEngine
 
-        _assert_class_conforms(SearchEngine, RetrievalBackend)
+        _assert_class_conforms(UnifiedSearchEngine, RetrievalBackend)
 
 
 class TestIndexingBackendConformance:

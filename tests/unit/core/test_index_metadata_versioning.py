@@ -7,7 +7,7 @@ import pytest
 
 from searchat.config import Config
 from searchat.config.constants import INDEX_FORMAT, INDEX_FORMAT_VERSION, INDEX_SCHEMA_VERSION
-from searchat.core.search_engine import SearchEngine
+from searchat.core.unified_search import UnifiedSearchEngine
 from searchat.models import CONVERSATION_SCHEMA
 
 
@@ -41,7 +41,7 @@ def test_schema_version_mismatch(tmp_path):
     }
     metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
 
-    engine = SearchEngine(search_dir, Config.load())
+    engine = UnifiedSearchEngine(search_dir, Config.load())
     with pytest.raises(ValueError):
         engine._validate_index_metadata()
 
@@ -71,6 +71,6 @@ def test_index_format_version_mismatch(tmp_path):
     }
     metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
 
-    engine = SearchEngine(search_dir, Config.load())
+    engine = UnifiedSearchEngine(search_dir, Config.load())
     with pytest.raises(ValueError):
         engine._validate_index_metadata()

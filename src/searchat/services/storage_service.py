@@ -48,26 +48,18 @@ class StorageService(Protocol):
 def build_storage_service(search_dir: Path, *, config: Config) -> StorageService:
     """Create the storage service for a dataset root.
 
-    Returns UnifiedStorage (DuckDB-native) when backend is "duckdb" or "dual"
-    and the database file exists. Falls back to DuckDBStore (Parquet-backed)
-    when backend is "parquet" or the DuckDB file is missing (legacy backups).
+    Returns UnifiedStorage (DuckDB-native) backed by the persistent DuckDB file.
+    Creates the database if it does not exist yet.
     """
-    backend = config.storage.backend
+    from searchat.storage.unified_storage import UnifiedStorage
 
-    if backend != "parquet":
-        db_path = config.storage.resolve_duckdb_path(search_dir)
-        if db_path.exists():
-            from searchat.storage.unified_storage import UnifiedStorage
-
-            return UnifiedStorage(
-                db_path,
-                memory_limit_mb=config.performance.memory_limit_mb,
-                hnsw_ef_construction=config.storage.hnsw_ef_construction,
-                hnsw_ef_search=config.storage.hnsw_ef_search,
-                hnsw_m=config.storage.hnsw_m,
-                read_only=True,
-            )
-
-    from searchat.services.duckdb_storage import DuckDBStore
-
-    return DuckDBStore(search_dir, memory_limit_mb=config.performance.memory_limit_mb)
+    db_path = config.storage.resolve_duckdb_path(search_dir)
+    read_only = db_path.exists()
+    return UnifiedStorage(
+        db_path,
+        memory_limit_mb=config.performance.memory_limit_mb,
+        hnsw_ef_construction=config.storage.hnsw_ef_construction,
+        hnsw_ef_search=config.storage.hnsw_ef_search,
+        hnsw_m=config.storage.hnsw_m,
+        read_only=read_only,
+    )

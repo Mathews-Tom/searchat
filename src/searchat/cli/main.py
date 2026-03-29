@@ -16,7 +16,7 @@ from rich.prompt import Prompt, IntPrompt, Confirm
 from rich.syntax import Syntax
 from rich import print as rprint
 
-from searchat.core import SearchEngine
+from searchat.core.unified_search import UnifiedSearchEngine
 from searchat.models import SearchMode, SearchFilters, SearchResult
 from searchat.config import Config, PathResolver
 
@@ -26,7 +26,7 @@ class SearchCLI:
         self.console = Console()
         self.config = Config.load()
         search_dir = PathResolver.get_shared_search_dir(self.config)
-        self.search_engine = SearchEngine(search_dir, self.config)
+        self.search_engine = UnifiedSearchEngine(search_dir, self.config)
         self.current_results: list[SearchResult] = []
         self.search_mode = SearchMode.HYBRID
         

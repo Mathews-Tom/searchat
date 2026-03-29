@@ -1025,7 +1025,7 @@ def test_warmup_semantic_components_sets_error_only_for_not_ready(monkeypatch: p
 
 def test_get_duckdb_store_for_caches_per_dataset(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     import searchat.api.dependencies as deps
-    import searchat.services.duckdb_storage as store_mod
+    import searchat.services.storage_service as storage_mod
 
     base = tmp_path / "base"
     base.mkdir()
@@ -1036,23 +1036,30 @@ def test_get_duckdb_store_for_caches_per_dataset(monkeypatch: pytest.MonkeyPatch
     deps._duckdb_store = object()
     deps._config = SimpleNamespace(
         performance=SimpleNamespace(memory_limit_mb=123),
-        storage=SimpleNamespace(backend="parquet"),
+        storage=SimpleNamespace(
+            backend="duckdb",
+            resolve_duckdb_path=lambda sd: sd / "data" / "searchat.duckdb",
+            hnsw_ef_construction=128,
+            hnsw_ef_search=64,
+            hnsw_m=16,
+        ),
     )
 
     created: list[object] = []
+    sentinel = object()
 
-    class FakeStore:
-        def __init__(self, search_dir, memory_limit_mb=None):
-            created.append((search_dir, memory_limit_mb))
+    def _fake_build(search_dir, *, config):
+        created.append(search_dir)
+        return sentinel
 
-    monkeypatch.setattr(store_mod, "DuckDBStore", FakeStore)
+    monkeypatch.setattr(storage_mod, "build_storage_service", _fake_build)
 
     assert deps.get_duckdb_store_for(base) is deps._duckdb_store
 
     s1 = deps.get_duckdb_store_for(other)
     s2 = deps.get_duckdb_store_for(other)
     assert s1 is s2
-    assert created == [(other, 123)]
+    assert created == [other]
 
 
 def test_get_or_create_search_engine_for_caches_per_dataset(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:

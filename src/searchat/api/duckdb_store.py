@@ -1,5 +1,5 @@
-"""Compatibility shim for the DuckDB-backed storage service."""
+"""Compatibility shim — IndexStatistics moved to unified_storage."""
 
-from searchat.services.duckdb_storage import DuckDBStore, IndexStatistics
+from searchat.storage.unified_storage import IndexStatistics, UnifiedStorage as DuckDBStore
 
 __all__ = ["DuckDBStore", "IndexStatistics"]

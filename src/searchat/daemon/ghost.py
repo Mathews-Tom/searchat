@@ -7,7 +7,7 @@ from pathlib import Path
 
 from searchat.config import Config, PathResolver
 from searchat.core.connectors import get_connectors
-from searchat.core.search_engine import SearchEngine
+from searchat.core.unified_search import UnifiedSearchEngine
 from searchat.models import SearchFilters, SearchMode
 
 from searchat.daemon.notify import NotificationError, send_notification
@@ -34,7 +34,7 @@ def main() -> None:
         )
 
     search_dir = PathResolver.get_shared_search_dir(config)
-    engine = SearchEngine(search_dir, config)
+    engine = UnifiedSearchEngine(search_dir, config)
 
     daemon = GhostDaemon(
         config=config,
@@ -54,7 +54,7 @@ class GhostDaemon:
         self,
         *,
         config: Config,
-        engine: SearchEngine,
+        engine: UnifiedSearchEngine,
         notifications_enabled: bool,
     ) -> None:
         self._config = config
