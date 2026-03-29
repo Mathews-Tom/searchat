@@ -26,21 +26,17 @@ from .constants import (
     DEFAULT_SETTINGS_FILE,
     ENV_FILE,
     # Storage backend defaults
-    DEFAULT_STORAGE_BACKEND,
     DEFAULT_DUCKDB_FILENAME,
     DEFAULT_HNSW_EF_CONSTRUCTION,
     DEFAULT_HNSW_EF_SEARCH,
     DEFAULT_HNSW_M,
-    ENV_STORAGE_BACKEND,
     ENV_DUCKDB_PATH,
     # Search engine / ranking defaults
-    DEFAULT_SEARCH_ENGINE,
     DEFAULT_RANKING_INTERSECTION_BOOST,
     DEFAULT_RANKING_KEYWORD_WEIGHT,
     DEFAULT_RANKING_SEMANTIC_WEIGHT,
     DEFAULT_RANKING_BM25_K1,
     DEFAULT_RANKING_BM25_B,
-    ENV_SEARCH_ENGINE,
     ENV_RANKING_INTERSECTION_BOOST,
     ENV_RANKING_KEYWORD_WEIGHT,
     ENV_RANKING_SEMANTIC_WEIGHT,
@@ -317,7 +313,6 @@ class SearchConfig:
     temporal_decay_enabled: bool
     temporal_decay_factor: float
     temporal_weight: float
-    engine: str  # "legacy" | "unified"
 
     @classmethod
     def from_dict(cls, data: dict) -> "SearchConfig":
@@ -347,10 +342,6 @@ class SearchConfig:
                 "SEARCHAT_TEMPORAL_WEIGHT",
                 float(data.get("temporal_weight", DEFAULT_TEMPORAL_WEIGHT)),
             ),
-            engine=_get_env_str(
-                ENV_SEARCH_ENGINE,
-                data.get("engine", DEFAULT_SEARCH_ENGINE),
-            ) or DEFAULT_SEARCH_ENGINE,
         )
 
 
@@ -854,7 +845,7 @@ class PalaceConfig:
 
 @dataclass
 class StorageConfig:
-    backend: str  # "parquet" | "duckdb" | "dual"
+    backend: str  # always "duckdb" (kept for config file backward compat)
     duckdb_path: str | None
     hnsw_ef_construction: int
     hnsw_ef_search: int
@@ -863,10 +854,7 @@ class StorageConfig:
     @classmethod
     def from_dict(cls, data: dict) -> "StorageConfig":
         return cls(
-            backend=_get_env_str(
-                ENV_STORAGE_BACKEND,
-                data.get("backend", DEFAULT_STORAGE_BACKEND),
-            ) or DEFAULT_STORAGE_BACKEND,
+            backend="duckdb",
             duckdb_path=_get_env_str(
                 ENV_DUCKDB_PATH,
                 data.get("duckdb_path"),

@@ -118,20 +118,8 @@ class TestConfigDefaults:
         cfg = StorageConfig.from_dict({})
         assert cfg.backend == "duckdb"
 
-    def test_search_config_defaults_to_unified(self) -> None:
-        from searchat.config.settings import SearchConfig
-
-        cfg = SearchConfig.from_dict({})
-        assert cfg.engine == "unified"
-
-    def test_storage_config_respects_explicit_parquet(self) -> None:
+    def test_storage_config_always_duckdb_regardless_of_input(self) -> None:
         from searchat.config.settings import StorageConfig
 
         cfg = StorageConfig.from_dict({"backend": "parquet"})
-        assert cfg.backend == "parquet"
-
-    def test_search_config_respects_explicit_legacy(self) -> None:
-        from searchat.config.settings import SearchConfig
-
-        cfg = SearchConfig.from_dict({"engine": "legacy"})
-        assert cfg.engine == "legacy"
+        assert cfg.backend == "duckdb"
