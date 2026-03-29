@@ -135,7 +135,7 @@ class TestGetDuckdbStoreFor:
     def test_creates_store_for_other_dir(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
         other = tmp_path / "other"
         other.mkdir()
-        monkeypatch.setattr(deps, "_config", SimpleNamespace(performance=SimpleNamespace(memory_limit_mb=128)))
+        monkeypatch.setattr(deps, "_config", SimpleNamespace(performance=SimpleNamespace(memory_limit_mb=128), storage=SimpleNamespace(backend="parquet")))
         monkeypatch.setattr(deps, "_search_dir", tmp_path)
         monkeypatch.setattr(deps, "_duckdb_store", "MAIN")
 
@@ -154,7 +154,7 @@ class TestGetDuckdbStoreFor:
     def test_caches_by_dir(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
         other = tmp_path / "alt"
         other.mkdir()
-        monkeypatch.setattr(deps, "_config", SimpleNamespace(performance=SimpleNamespace(memory_limit_mb=128)))
+        monkeypatch.setattr(deps, "_config", SimpleNamespace(performance=SimpleNamespace(memory_limit_mb=128), storage=SimpleNamespace(backend="parquet")))
         monkeypatch.setattr(deps, "_search_dir", tmp_path)
         monkeypatch.setattr(deps, "_duckdb_store", "MAIN")
 
@@ -289,6 +289,7 @@ class TestInitializeWithExpertise:
             paths=SimpleNamespace(search_directory=str(tmp_path)),
             expertise=SimpleNamespace(enabled=True),
             knowledge_graph=SimpleNamespace(enabled=False),
+            storage=SimpleNamespace(backend="parquet"),
         )
         monkeypatch.setattr(deps.Config, "load", staticmethod(lambda: cfg))
         monkeypatch.setattr(deps.PathResolver, "get_shared_search_dir", staticmethod(lambda _: tmp_path))
@@ -328,6 +329,7 @@ class TestInitializeWithExpertise:
             paths=SimpleNamespace(search_directory=str(tmp_path)),
             expertise=SimpleNamespace(enabled=False),
             knowledge_graph=SimpleNamespace(enabled=True),
+            storage=SimpleNamespace(backend="parquet"),
         )
         monkeypatch.setattr(deps.Config, "load", staticmethod(lambda: cfg))
         monkeypatch.setattr(deps.PathResolver, "get_shared_search_dir", staticmethod(lambda _: tmp_path))
