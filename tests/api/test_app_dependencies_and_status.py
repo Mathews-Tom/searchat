@@ -1034,7 +1034,10 @@ def test_get_duckdb_store_for_caches_per_dataset(monkeypatch: pytest.MonkeyPatch
 
     deps._search_dir = base
     deps._duckdb_store = object()
-    deps._config = SimpleNamespace(performance=SimpleNamespace(memory_limit_mb=123))
+    deps._config = SimpleNamespace(
+        performance=SimpleNamespace(memory_limit_mb=123),
+        storage=SimpleNamespace(backend="parquet"),
+    )
 
     created: list[object] = []
 
