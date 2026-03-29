@@ -19,8 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 if TYPE_CHECKING:
-    from searchat.services.retrieval_service import SemanticRetrievalService
-    from searchat.services.storage_service import StorageService
+    from searchat.contracts import RetrievalBackend, StorageBackend
 
 
 # Global singletons (initialized on startup)
@@ -40,8 +39,8 @@ _expertise_store = None
 _knowledge_graph_store = None
 
 # Snapshot-scoped caches (keyed by dataset root, i.e. backup directory path).
-_duckdb_store_by_dir: dict[str, "StorageService"] = {}
-_search_engine_by_dir: dict[str, "SemanticRetrievalService"] = {}
+_duckdb_store_by_dir: dict[str, "StorageBackend"] = {}
+_search_engine_by_dir: dict[str, "RetrievalBackend"] = {}
 
 _service_lock = Lock()
 
@@ -196,7 +195,7 @@ def resolve_dataset_search_dir(snapshot: str | None) -> tuple[Path, str | None]:
     return snapshot_dir, snapshot
 
 
-def get_duckdb_store_for(search_dir: Path) -> "StorageService":
+def get_duckdb_store_for(search_dir: Path) -> "StorageBackend":
     """Get a storage service for a specific dataset root."""
     if search_dir == get_search_dir():
         return get_duckdb_store()
@@ -214,7 +213,7 @@ def get_duckdb_store_for(search_dir: Path) -> "StorageService":
     return store
 
 
-def get_or_create_search_engine_for(search_dir: Path) -> "SemanticRetrievalService":
+def get_or_create_search_engine_for(search_dir: Path) -> "RetrievalBackend":
     """Get (or create) a SearchEngine for a specific dataset root.
 
     Snapshot engines must not mutate readiness/warmup globals.
