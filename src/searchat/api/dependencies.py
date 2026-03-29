@@ -388,7 +388,12 @@ def _ensure_indexer():
         try:
             from searchat.core.unified_indexer import UnifiedIndexer
 
-            _indexer = UnifiedIndexer(_search_dir, _config)
+            from searchat.storage.unified_storage import UnifiedStorage
+
+            storage = _duckdb_store if isinstance(_duckdb_store, UnifiedStorage) else None
+            _indexer = UnifiedIndexer(
+                _search_dir, _config, storage=storage
+            )
             readiness.set_component("indexer", "ready")
         except Exception as e:
             readiness.set_component("indexer", "error", error=str(e))
