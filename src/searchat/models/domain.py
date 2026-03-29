@@ -113,3 +113,82 @@ class ParsedQuery:
     must_exclude: list[str] = field(default_factory=list)
     exact_phrases: list[str] = field(default_factory=list)
     date_filter: DateFilter | None = None
+
+
+# ============================================================================
+# Palace / Distillation Models
+# ============================================================================
+
+
+@dataclass
+class FileTouched:
+    """A file referenced in a distilled exchange."""
+    path: str
+    action: str  # read | modified | created | deleted | discussed | referenced
+
+
+@dataclass
+class DistilledObject:
+    """A distilled representation of a conversation exchange."""
+    object_id: str
+    project_id: str
+    conversation_id: str
+    ply_start: int
+    ply_end: int
+    files_touched: list[FileTouched]
+    exchange_core: str
+    specific_context: str
+    created_at: datetime
+    exchange_at: datetime
+    embedding_id: int
+    distilled_text: str
+    conv_title: str | None = None
+
+
+@dataclass
+class Room:
+    """A thematic room in the memory palace."""
+    room_id: str
+    room_type: str  # file | module | concept | tool | workflow
+    room_key: str
+    room_label: str
+    project_id: str | None
+    created_at: datetime
+    updated_at: datetime
+    object_count: int
+
+
+@dataclass
+class RoomObject:
+    """Junction record linking a room to a distilled object."""
+    room_id: str
+    object_id: str
+    relevance: float
+    placed_at: datetime
+
+
+@dataclass
+class DistillationStats:
+    """Statistics from a distillation run."""
+    conversations_processed: int
+    objects_created: int
+    rooms_created: int
+    rooms_updated: int
+    distillation_time_seconds: float
+
+
+@dataclass
+class PalaceSearchResult:
+    """Search result from palace layer with full metadata."""
+    object_id: str
+    conversation_id: str
+    project_id: str
+    ply_start: int
+    ply_end: int
+    exchange_core: str
+    specific_context: str
+    files_touched: list[FileTouched]
+    rooms: list[Room]
+    score: float
+    keyword_score: float = 0.0
+    semantic_score: float = 0.0

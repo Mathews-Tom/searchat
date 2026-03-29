@@ -10,6 +10,12 @@ from searchat.models.domain import (
     UpdateStats,
     DateFilter,
     ParsedQuery,
+    FileTouched,
+    DistilledObject,
+    Room,
+    RoomObject,
+    DistillationStats,
+    PalaceSearchResult,
 )
 from searchat.models.schemas import (
     CONVERSATION_SCHEMA,
@@ -32,6 +38,13 @@ __all__ = [
     "UpdateStats",
     "DateFilter",
     "ParsedQuery",
+    # Palace / Distillation
+    "FileTouched",
+    "DistilledObject",
+    "Room",
+    "RoomObject",
+    "DistillationStats",
+    "PalaceSearchResult",
     # Schemas
     "CONVERSATION_SCHEMA",
     "METADATA_SCHEMA",

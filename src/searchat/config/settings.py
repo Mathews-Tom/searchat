@@ -147,6 +147,21 @@ from .constants import (
     ENV_KG_SIMILARITY_THRESHOLD,
     ENV_KG_CONTRADICTION_THRESHOLD,
     ENV_KG_NLI_MODEL,
+    # Distillation / Palace
+    DEFAULT_DISTILLATION_PROVIDER,
+    DEFAULT_DISTILLATION_CLI_MODEL,
+    DEFAULT_DISTILLATION_BATCH_SIZE,
+    DEFAULT_DISTILLATION_MAX_PLY_LENGTH,
+    DEFAULT_DISTILLATION_MIN_EXCHANGE_CHARS,
+    DEFAULT_DISTILLATION_PROMPT,
+    DEFAULT_PERTURN_PROMPT,
+    DEFAULT_PALACE_ENABLED,
+    ENV_DISTILLATION_PROVIDER,
+    ENV_DISTILLATION_CLI_MODEL,
+    ENV_DISTILLATION_BATCH_SIZE,
+    ENV_DISTILLATION_MAX_PLY_LENGTH,
+    ENV_DISTILLATION_MIN_EXCHANGE_CHARS,
+    ENV_PALACE_ENABLED,
 )
 
 
@@ -781,6 +796,63 @@ class KnowledgeGraphConfig:
 
 
 @dataclass
+class DistillationConfig:
+    provider: str
+    cli_model: str
+    batch_size: int
+    max_ply_length: int
+    min_exchange_chars: int
+    prompt: str
+    perturn_prompt: str
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "DistillationConfig":
+        provider = _get_env_str(
+            ENV_DISTILLATION_PROVIDER,
+            data.get("provider", DEFAULT_DISTILLATION_PROVIDER),
+        )
+        normalized = (provider or DEFAULT_DISTILLATION_PROVIDER).strip().lower()
+        if normalized not in {"claude", "openai", "auto"}:
+            normalized = DEFAULT_DISTILLATION_PROVIDER
+
+        return cls(
+            provider=normalized,
+            cli_model=_get_env_str(
+                ENV_DISTILLATION_CLI_MODEL,
+                data.get("cli_model", DEFAULT_DISTILLATION_CLI_MODEL),
+            ) or DEFAULT_DISTILLATION_CLI_MODEL,
+            batch_size=_get_env_int(
+                ENV_DISTILLATION_BATCH_SIZE,
+                data.get("batch_size", DEFAULT_DISTILLATION_BATCH_SIZE),
+            ),
+            max_ply_length=_get_env_int(
+                ENV_DISTILLATION_MAX_PLY_LENGTH,
+                data.get("max_ply_length", DEFAULT_DISTILLATION_MAX_PLY_LENGTH),
+            ),
+            min_exchange_chars=_get_env_int(
+                ENV_DISTILLATION_MIN_EXCHANGE_CHARS,
+                data.get("min_exchange_chars", DEFAULT_DISTILLATION_MIN_EXCHANGE_CHARS),
+            ),
+            prompt=data.get("prompt", DEFAULT_DISTILLATION_PROMPT),
+            perturn_prompt=data.get("perturn_prompt", DEFAULT_PERTURN_PROMPT),
+        )
+
+
+@dataclass
+class PalaceConfig:
+    enabled: bool
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "PalaceConfig":
+        return cls(
+            enabled=_get_env_bool(
+                ENV_PALACE_ENABLED,
+                data.get("enabled", DEFAULT_PALACE_ENABLED),
+            ),
+        )
+
+
+@dataclass
 class StorageConfig:
     backend: str  # "parquet" | "duckdb" | "dual"
     duckdb_path: str | None
@@ -856,6 +928,8 @@ class Config:
     knowledge_graph: KnowledgeGraphConfig
     ranking: RankingConfig
     logging: LogConfig
+    distillation: DistillationConfig
+    palace: PalaceConfig
 
     @classmethod
     def load(cls, config_path: Path | None = None) -> "Config":
@@ -936,4 +1010,6 @@ class Config:
             knowledge_graph=KnowledgeGraphConfig.from_dict(data.get("knowledge_graph", {})),
             ranking=RankingConfig.from_dict(data.get("ranking", {})),
             logging=LogConfig(**data.get("logging", {})),
+            distillation=DistillationConfig.from_dict(data.get("distillation", {})),
+            palace=PalaceConfig.from_dict(data.get("palace", {})),
         )
