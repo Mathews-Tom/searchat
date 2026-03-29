@@ -572,6 +572,63 @@ def search_expertise(
     )
 
 
+def search_palace(
+    *,
+    query: str,
+    limit: int = 10,
+    project_id: str | None = None,
+    search_dir: str | None = None,
+) -> str:
+    """Search the Memory Palace for distilled conversation memories.
+
+    Returns structured results with exchange cores, specific contexts,
+    room assignments, and file references from distilled conversations.
+    """
+    if limit < 1 or limit > 100:
+        raise ValueError(mcp_search_limit_message())
+
+    dataset_dir = resolve_dataset(search_dir)
+    config = Config.load()
+
+    if not config.palace.enabled:
+        return _json_dumps({
+            "error": "Palace is not enabled. Set [palace] enabled = true in settings.toml",
+            "results": [],
+        })
+
+    from searchat.palace.query import PalaceQuery
+
+    data_dir = dataset_dir / "data"
+    pq = PalaceQuery(data_dir=data_dir, config=config)
+    project_ids = [project_id] if project_id else None
+
+    try:
+        results = pq.search_hybrid(
+            query=query, limit=limit, project_ids=project_ids,
+        )
+    finally:
+        pq.close()
+
+    items = []
+    for r in results:
+        items.append({
+            "object_id": r.object_id,
+            "conversation_id": r.conversation_id,
+            "project_id": r.project_id,
+            "exchange_core": r.exchange_core,
+            "specific_context": r.specific_context,
+            "files_touched": [{"path": f.path, "action": f.action} for f in r.files_touched],
+            "rooms": [{
+                "room_type": rm.room_type,
+                "room_key": rm.room_key,
+                "room_label": rm.room_label,
+            } for rm in r.rooms],
+            "score": r.score,
+        })
+
+    return _json_dumps({"results": items, "total_count": len(items)})
+
+
 def generate_agent_config(
     *,
     format: str = "claude.md",
