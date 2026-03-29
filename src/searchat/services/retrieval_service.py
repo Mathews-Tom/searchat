@@ -68,14 +68,14 @@ def build_retrieval_service(
 ) -> SemanticRetrievalService:
     """Create the retrieval service for a dataset root.
 
-    Returns UnifiedSearchEngine when search.engine == "unified",
-    otherwise falls back to the legacy SearchEngine.
+    Returns UnifiedSearchEngine when search.engine == "unified" (default),
+    falls back to legacy SearchEngine when engine == "legacy".
     """
-    if getattr(config.search, "engine", "legacy") == "unified":
-        from searchat.core.unified_search import UnifiedSearchEngine
+    if config.search.engine == "legacy":
+        from searchat.core.search_engine import SearchEngine
 
-        return UnifiedSearchEngine(search_dir, config)
+        return SearchEngine(search_dir, config)
 
-    from searchat.core.search_engine import SearchEngine
+    from searchat.core.unified_search import UnifiedSearchEngine
 
-    return SearchEngine(search_dir, config)
+    return UnifiedSearchEngine(search_dir, config)
