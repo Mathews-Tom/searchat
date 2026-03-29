@@ -174,8 +174,11 @@ export async function indexMissing() {
 }
 
 export async function shutdownServer(force = false) {
-    if (!force && !confirm('Stop the search server? You will need to restart it from the terminal.')) {
-        return;
+    if (!force) {
+        const confirmed = window.glassConfirm
+            ? await window.glassConfirm('Stop the search server? You will need to restart it from the terminal.')
+            : confirm('Stop the search server? You will need to restart it from the terminal.');
+        if (!confirmed) return;
     }
 
     const resultsDiv = document.getElementById('results');
