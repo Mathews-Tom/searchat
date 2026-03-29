@@ -3,7 +3,7 @@ terminal: F
 title: "Phase 5 — Unified indexer"
 campaign: v2-migration
 wave: 5
-status: in_progress
+status: complete
 branch: feat/phase-5-unified-indexer
 writes_to:
   - src/searchat/core/unified_indexer.py
@@ -28,7 +28,7 @@ updated: "2026-03-29T18:00:00Z"
 
 | Issue | Task | Target | Status | Actual |
 |-------|------|--------|--------|--------|
-| #70 | Replace ConversationIndexer with UnifiedIndexer | DuckDB-native indexer, exchange segmentation, safety guards | in_progress | unified_indexer.py: 390 LOC, 26 new tests (18 unit + 8 integration), 2056 total passing |
+| #70 | Replace ConversationIndexer with UnifiedIndexer | DuckDB-native indexer, exchange segmentation, safety guards | complete | unified_indexer.py: 390 LOC, 26 new tests (18 unit + 8 integration), 2056 total passing |
 
 ## Results
 
@@ -37,3 +37,4 @@ updated: "2026-03-29T18:00:00Z"
 - **2026-03-29 18:00** — Started Phase 5. Branch created from main. 2029 tests passing. Reading codebase for full context.
 - **2026-03-29 18:10** — Committed: UnifiedIndexer core (390 LOC), wired into dependencies, old indexer deprecated. 2030 tests pass.
 - **2026-03-29 18:17** — Committed: 26 tests (18 unit + 8 integration). Covers safety guards, exchange segmentation, DuckDB writes, dedup, protocol conformance. 2056 tests pass.
+- **2026-03-29 18:20** — Phase 5 complete. PR created, issue #70 closed.
