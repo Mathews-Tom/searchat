@@ -375,10 +375,8 @@ class UnifiedIndexer:
 
             for j, embedding in enumerate(embeddings):
                 exc = exchanges[i + j]
-                self._storage.upsert_embedding(
-                    exc["exchange_id"],
-                    embedding.tolist(),
-                )
+                vec = embedding.tolist() if hasattr(embedding, "tolist") else list(embedding)
+                self._storage.upsert_embedding(exc["exchange_id"], vec)
                 embedded += 1
 
             progress.update_embedding_progress(
