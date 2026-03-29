@@ -21,9 +21,18 @@ from ..core.logging_config import LogConfig
 from .constants import (
     DEFAULT_DATA_DIR,
     DEFAULT_CONFIG_SUBDIR,
+    DEFAULT_DATA_SUBDIR,
     SETTINGS_FILE,
     DEFAULT_SETTINGS_FILE,
     ENV_FILE,
+    # Storage backend defaults
+    DEFAULT_STORAGE_BACKEND,
+    DEFAULT_DUCKDB_FILENAME,
+    DEFAULT_HNSW_EF_CONSTRUCTION,
+    DEFAULT_HNSW_EF_SEARCH,
+    DEFAULT_HNSW_M,
+    ENV_STORAGE_BACKEND,
+    ENV_DUCKDB_PATH,
     # Defaults
     DEFAULT_EMBEDDING_MODEL,
     DEFAULT_EMBEDDING_BATCH_SIZE,
@@ -727,6 +736,46 @@ class KnowledgeGraphConfig:
 
 
 @dataclass
+class StorageConfig:
+    backend: str  # "parquet" | "duckdb" | "dual"
+    duckdb_path: str | None
+    hnsw_ef_construction: int
+    hnsw_ef_search: int
+    hnsw_m: int
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "StorageConfig":
+        return cls(
+            backend=_get_env_str(
+                ENV_STORAGE_BACKEND,
+                data.get("backend", DEFAULT_STORAGE_BACKEND),
+            ) or DEFAULT_STORAGE_BACKEND,
+            duckdb_path=_get_env_str(
+                ENV_DUCKDB_PATH,
+                data.get("duckdb_path"),
+            ),
+            hnsw_ef_construction=_get_env_int(
+                "SEARCHAT_HNSW_EF_CONSTRUCTION",
+                data.get("hnsw_ef_construction", DEFAULT_HNSW_EF_CONSTRUCTION),
+            ),
+            hnsw_ef_search=_get_env_int(
+                "SEARCHAT_HNSW_EF_SEARCH",
+                data.get("hnsw_ef_search", DEFAULT_HNSW_EF_SEARCH),
+            ),
+            hnsw_m=_get_env_int(
+                "SEARCHAT_HNSW_M",
+                data.get("hnsw_m", DEFAULT_HNSW_M),
+            ),
+        )
+
+    def resolve_duckdb_path(self, search_dir: str | Path) -> Path:
+        """Resolve the DuckDB file path from config or default."""
+        if self.duckdb_path:
+            return Path(self.duckdb_path)
+        return Path(search_dir) / DEFAULT_DATA_SUBDIR / DEFAULT_DUCKDB_FILENAME
+
+
+@dataclass
 class ServerConfig:
     cors_origins: list[str]
 
@@ -756,6 +805,7 @@ class Config:
     snapshots: SnapshotsConfig
     daemon: DaemonConfig
     reranking: RerankingConfig
+    storage: StorageConfig
     server: ServerConfig
     expertise: ExpertiseConfig
     knowledge_graph: KnowledgeGraphConfig
@@ -834,6 +884,7 @@ class Config:
             snapshots=SnapshotsConfig.from_dict(data.get("snapshots", {})),
             daemon=DaemonConfig.from_dict(data.get("daemon", {})),
             reranking=RerankingConfig.from_dict(data.get("reranking", {})),
+            storage=StorageConfig.from_dict(data.get("storage", {})),
             server=ServerConfig.from_dict(data.get("server", {})),
             expertise=ExpertiseConfig.from_dict(data.get("expertise", {})),
             knowledge_graph=KnowledgeGraphConfig.from_dict(data.get("knowledge_graph", {})),

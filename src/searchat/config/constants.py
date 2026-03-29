@@ -89,6 +89,13 @@ INDEX_FORMAT_VERSION = "1.0"
 INDEX_FORMAT = "parquet+faiss"
 INDEX_METADATA_FILENAME = "index_metadata.json"
 
+# DuckDB storage (v2)
+DEFAULT_STORAGE_BACKEND = "parquet"  # "parquet" | "duckdb" | "dual"
+DEFAULT_DUCKDB_FILENAME = "searchat.duckdb"
+DEFAULT_HNSW_EF_CONSTRUCTION = 128
+DEFAULT_HNSW_EF_SEARCH = 64
+DEFAULT_HNSW_M = 16
+
 # ============================================================================
 # Performance Defaults
 # ============================================================================
@@ -240,6 +247,10 @@ ENV_KG_ENABLED = "SEARCHAT_KG_ENABLED"
 ENV_KG_SIMILARITY_THRESHOLD = "SEARCHAT_KG_SIMILARITY_THRESHOLD"
 ENV_KG_CONTRADICTION_THRESHOLD = "SEARCHAT_KG_CONTRADICTION_THRESHOLD"
 ENV_KG_NLI_MODEL = "SEARCHAT_KG_NLI_MODEL"
+
+# Storage backend
+ENV_STORAGE_BACKEND = "SEARCHAT_STORAGE_BACKEND"
+ENV_DUCKDB_PATH = "SEARCHAT_DUCKDB_PATH"
 
 ENV_ISOLATION_MODE = "SEARCHAT_ISOLATION_MODE"
 ENV_VARIANT_SUFFIX = "SEARCHAT_VARIANT_SUFFIX"
