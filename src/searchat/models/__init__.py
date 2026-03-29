@@ -1,5 +1,5 @@
 """Data models and schemas for searchat."""
-from searchat.models.enums import SearchMode
+from searchat.models.enums import AlgorithmType, SearchMode
 from searchat.models.domain import (
     MessageRecord,
     ConversationRecord,
@@ -20,6 +20,7 @@ from searchat.models.schemas import (
 
 __all__ = [
     # Enums
+    "AlgorithmType",
     "SearchMode",
     # Domain models
     "MessageRecord",
