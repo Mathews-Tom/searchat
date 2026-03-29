@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Protocol
 
 from searchat.config import Config
 from searchat.models import SearchFilters, SearchMode, SearchResults
@@ -66,16 +66,7 @@ def build_retrieval_service(
     *,
     config: Config,
 ) -> SemanticRetrievalService:
-    """Create the retrieval service for a dataset root.
-
-    Returns UnifiedSearchEngine when search.engine == "unified" (default),
-    falls back to legacy SearchEngine when engine == "legacy".
-    """
-    if config.search.engine == "legacy":
-        from searchat.core.search_engine import SearchEngine
-
-        return SearchEngine(search_dir, config)
-
+    """Create the retrieval service for a dataset root."""
     from searchat.core.unified_search import UnifiedSearchEngine
 
     return UnifiedSearchEngine(search_dir, config)

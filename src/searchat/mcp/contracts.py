@@ -8,11 +8,11 @@ from searchat.contracts.similarity import (
     serialize_similar_conversation as serialize_shared_similar_conversation,
     serialize_similar_conversations_payload,
 )
-from searchat.models import SearchResult, SearchResults
+from searchat.models import AlgorithmType, SearchResult, SearchResults
 
 
 def serialize_search_result(result: SearchResult) -> dict[str, Any]:
-    return {
+    payload: dict[str, Any] = {
         "conversation_id": result.conversation_id,
         "project_id": result.project_id,
         "title": result.title,
@@ -25,6 +25,11 @@ def serialize_search_result(result: SearchResult) -> dict[str, Any]:
         "message_start_index": result.message_start_index,
         "message_end_index": result.message_end_index,
     }
+    if result.exchange_id is not None:
+        payload["exchange_id"] = result.exchange_id
+    if result.exchange_text is not None:
+        payload["exchange_text"] = result.exchange_text
+    return payload
 
 
 def serialize_search_payload(
@@ -34,7 +39,7 @@ def serialize_search_payload(
     offset: int,
 ) -> dict[str, Any]:
     sliced = results.results[offset : offset + limit]
-    return {
+    payload: dict[str, Any] = {
         "results": [serialize_search_result(result) for result in sliced],
         "total": len(results.results),
         "limit": limit,
@@ -42,6 +47,10 @@ def serialize_search_payload(
         "mode_used": results.mode_used,
         "search_time_ms": results.search_time_ms,
     }
+    algorithm_type = getattr(results, "algorithm_type", None)
+    if isinstance(algorithm_type, AlgorithmType):
+        payload["algorithm_type"] = algorithm_type.value
+    return payload
 
 
 def serialize_projects_payload(projects: list[str]) -> dict[str, Any]:

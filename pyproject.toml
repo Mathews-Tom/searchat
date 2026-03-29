@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "searchat"
-version = "0.6.2"
+version = "0.7.0"
 description = "Semantic search and RAG for local AI coding agent conversations"
 authors = [{name = "Searchat Contributors"}]
 license = {text = "MIT"}
@@ -36,8 +36,6 @@ classifiers = [
 
 dependencies = [
     "duckdb==1.4.3",
-    "pyarrow>=14.0.0",
-    "faiss-cpu>=1.7.4",
     "sentence-transformers>=2.3.0",
     "fastapi>=0.100.0",
     "uvicorn>=0.20.0",
@@ -62,7 +60,17 @@ Changelog = "https://github.com/Mathews-Tom/searchat/blob/master/CHANGELOG.md"
 
 [project.optional-dependencies]
 
-# Backup encryption support (Phase 4)
+# Memory Palace (FAISS-based nearest neighbor search)
+palace = [
+    "faiss-cpu>=1.7.4",
+]
+
+# Legacy Parquet support (code block queries, data export)
+legacy = [
+    "pyarrow>=14.0.0",
+]
+
+# Backup encryption support
 secure = [
     "cryptography>=42.0.0",
     "keyring>=25.0.0",
@@ -93,6 +101,8 @@ jupyter = [
 ]
 
 all = [
+    "faiss-cpu>=1.7.4",
+    "pyarrow>=14.0.0",
     "mcp>=0.1.0",
     "llama-cpp-python>=0.2.0",
     "tree-sitter>=0.21.3",

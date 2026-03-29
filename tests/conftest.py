@@ -305,15 +305,6 @@ def indexer(temp_data_dir):
 
 
 @pytest.fixture
-def search_engine(temp_data_dir):
-    """SearchEngine instance with temporary directory."""
-    config = Config.load()
-    from searchat.core.search_engine import SearchEngine
-
-    return SearchEngine(temp_data_dir, config)
-
-
-@pytest.fixture
 def backup_manager(temp_search_dir):
     """BackupManager instance with temporary directory."""
     return BackupManager(temp_search_dir)

@@ -64,7 +64,7 @@ def test_initialize_services_sets_components_ready(monkeypatch: pytest.MonkeyPat
         paths=SimpleNamespace(search_directory=str(tmp_path)),
         expertise=SimpleNamespace(enabled=False),
         knowledge_graph=SimpleNamespace(enabled=False),
-        storage=SimpleNamespace(backend="parquet"),
+        storage=SimpleNamespace(backend="duckdb"),
     )
     monkeypatch.setattr(deps.Config, "load", staticmethod(lambda: cfg))
     monkeypatch.setattr(deps.PathResolver, "get_shared_search_dir", staticmethod(lambda _cfg: tmp_path))
@@ -72,13 +72,10 @@ def test_initialize_services_sets_components_ready(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(deps, "BackupManager", lambda _p: object())
     monkeypatch.setattr(deps, "PlatformManager", lambda: object())
 
-    class _DuckDBStore:
-        def __init__(self, path: Path, *, memory_limit_mb: int):
-            self.path = path
-            self.memory_limit_mb: int = memory_limit_mb
+    fake_store = SimpleNamespace(memory_limit_mb=123)
 
-        def validate_parquet_scan(self) -> None:
-            return None
+    import searchat.services.storage_service as storage_mod
+    monkeypatch.setattr(storage_mod, "build_storage_service", lambda _sd, *, config: fake_store)
 
     class _BookmarksService:
         def __init__(self, _cfg):
@@ -96,7 +93,6 @@ def test_initialize_services_sets_components_ready(monkeypatch: pytest.MonkeyPat
         def __init__(self, _cfg):
             self.cfg = _cfg
 
-    monkeypatch.setitem(sys.modules, "searchat.services.duckdb_storage", types.SimpleNamespace(DuckDBStore=_DuckDBStore))
     monkeypatch.setitem(sys.modules, "searchat.services.bookmarks", types.SimpleNamespace(BookmarksService=_BookmarksService))
     monkeypatch.setitem(sys.modules, "searchat.services.saved_queries", types.SimpleNamespace(SavedQueriesService=_SavedQueriesService))
     monkeypatch.setitem(sys.modules, "searchat.services.dashboards", types.SimpleNamespace(DashboardsService=_DashboardsService))

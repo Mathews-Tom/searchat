@@ -5,14 +5,21 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import duckdb
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 from fastapi.testclient import TestClient
 
 from searchat.api.app import app
-from searchat.services.duckdb_storage import DuckDBStore
 from searchat.models.schemas import CODE_BLOCK_SCHEMA
+
+
+class _InMemoryStore:
+    """Minimal store with _connect() for ad-hoc Parquet queries."""
+
+    def _connect(self) -> duckdb.DuckDBPyConnection:
+        return duckdb.connect(database=":memory:")
 
 
 @pytest.fixture
@@ -58,7 +65,7 @@ def test_search_code_returns_results(client: TestClient, tmp_path: Path) -> None
     search_dir = tmp_path / "search"
     _write_code_parquet(search_dir)
 
-    store = DuckDBStore(search_dir)
+    store = _InMemoryStore()
 
     with patch(
         "searchat.api.routers.search.get_dataset_store",
@@ -79,7 +86,7 @@ def test_search_code_filters_by_function_name(client: TestClient, tmp_path: Path
     search_dir = tmp_path / "search"
     _write_code_parquet(search_dir)
 
-    store = DuckDBStore(search_dir)
+    store = _InMemoryStore()
 
     with patch(
         "searchat.api.routers.search.get_dataset_store",
@@ -97,7 +104,7 @@ def test_search_code_filters_by_function_name(client: TestClient, tmp_path: Path
 @pytest.mark.unit
 def test_search_code_returns_503_when_no_code_index(client: TestClient, tmp_path: Path) -> None:
     search_dir = tmp_path / "search"
-    store = DuckDBStore(search_dir)
+    store = _InMemoryStore()
 
     with patch(
         "searchat.api.routers.search.get_dataset_store",

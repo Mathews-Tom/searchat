@@ -133,17 +133,16 @@ class TestGetDuckdbStoreFor:
         assert deps.get_duckdb_store_for(tmp_path) == "MAIN"
 
     def test_creates_store_for_other_dir(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+        import searchat.services.storage_service as storage_mod
+
         other = tmp_path / "other"
         other.mkdir()
-        monkeypatch.setattr(deps, "_config", SimpleNamespace(performance=SimpleNamespace(memory_limit_mb=128), storage=SimpleNamespace(backend="parquet")))
+        monkeypatch.setattr(deps, "_config", SimpleNamespace(performance=SimpleNamespace(memory_limit_mb=128), storage=SimpleNamespace(backend="duckdb")))
         monkeypatch.setattr(deps, "_search_dir", tmp_path)
         monkeypatch.setattr(deps, "_duckdb_store", "MAIN")
 
-        class _FakeStore:
-            def __init__(self, path, *, memory_limit_mb):
-                self.path = path
-
-        monkeypatch.setitem(sys.modules, "searchat.services.duckdb_storage", types.SimpleNamespace(DuckDBStore=_FakeStore))
+        sentinel = SimpleNamespace(path=other)
+        monkeypatch.setattr(storage_mod, "build_storage_service", lambda _sd, *, config: sentinel)
 
         store = deps.get_duckdb_store_for(other)
         assert store.path == other
@@ -289,25 +288,20 @@ class TestInitializeWithExpertise:
             paths=SimpleNamespace(search_directory=str(tmp_path)),
             expertise=SimpleNamespace(enabled=True),
             knowledge_graph=SimpleNamespace(enabled=False),
-            storage=SimpleNamespace(backend="parquet"),
+            storage=SimpleNamespace(backend="duckdb"),
         )
         monkeypatch.setattr(deps.Config, "load", staticmethod(lambda: cfg))
         monkeypatch.setattr(deps.PathResolver, "get_shared_search_dir", staticmethod(lambda _: tmp_path))
         monkeypatch.setattr(deps, "BackupManager", lambda _: object())
         monkeypatch.setattr(deps, "PlatformManager", lambda: object())
 
-        class _DuckDBStore:
-            def __init__(self, path, *, memory_limit_mb):
-                pass
-
-            def validate_parquet_scan(self):
-                pass
+        import searchat.services.storage_service as storage_mod
+        monkeypatch.setattr(storage_mod, "build_storage_service", lambda _sd, *, config: object())
 
         class _ExpertiseStore:
             def __init__(self, path):
                 self.path = path
 
-        monkeypatch.setitem(sys.modules, "searchat.services.duckdb_storage", types.SimpleNamespace(DuckDBStore=_DuckDBStore))
         monkeypatch.setitem(sys.modules, "searchat.services.bookmarks", types.SimpleNamespace(BookmarksService=lambda _: object()))
         monkeypatch.setitem(sys.modules, "searchat.services.saved_queries", types.SimpleNamespace(SavedQueriesService=lambda _: object()))
         monkeypatch.setitem(sys.modules, "searchat.services.dashboards", types.SimpleNamespace(DashboardsService=lambda _: object()))
@@ -329,22 +323,20 @@ class TestInitializeWithExpertise:
             paths=SimpleNamespace(search_directory=str(tmp_path)),
             expertise=SimpleNamespace(enabled=False),
             knowledge_graph=SimpleNamespace(enabled=True),
-            storage=SimpleNamespace(backend="parquet"),
+            storage=SimpleNamespace(backend="duckdb"),
         )
         monkeypatch.setattr(deps.Config, "load", staticmethod(lambda: cfg))
         monkeypatch.setattr(deps.PathResolver, "get_shared_search_dir", staticmethod(lambda _: tmp_path))
         monkeypatch.setattr(deps, "BackupManager", lambda _: object())
         monkeypatch.setattr(deps, "PlatformManager", lambda: object())
 
-        class _DuckDBStore:
-            def __init__(self, path, *, memory_limit_mb):
-                pass
+        import searchat.services.storage_service as storage_mod
+        monkeypatch.setattr(storage_mod, "build_storage_service", lambda _sd, *, config: object())
 
         class _KGStore:
             def __init__(self, path):
                 self.path = path
 
-        monkeypatch.setitem(sys.modules, "searchat.services.duckdb_storage", types.SimpleNamespace(DuckDBStore=_DuckDBStore))
         monkeypatch.setitem(sys.modules, "searchat.services.bookmarks", types.SimpleNamespace(BookmarksService=lambda _: object()))
         monkeypatch.setitem(sys.modules, "searchat.services.saved_queries", types.SimpleNamespace(SavedQueriesService=lambda _: object()))
         monkeypatch.setitem(sys.modules, "searchat.services.dashboards", types.SimpleNamespace(DashboardsService=lambda _: object()))

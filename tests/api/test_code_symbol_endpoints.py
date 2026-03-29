@@ -11,7 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from searchat.api.app import app
-from searchat.services.duckdb_storage import DuckDBStore
+import duckdb
 from searchat.models.schemas import CODE_BLOCK_SCHEMA
 
 
@@ -58,7 +58,7 @@ def test_conversation_code_symbols_returns_aggregates(client: TestClient, tmp_pa
     search_dir = tmp_path / "search"
     _write_code_parquet(search_dir)
 
-    store = DuckDBStore(search_dir)
+    store = SimpleNamespace(_connect=lambda: duckdb.connect(database=":memory:"))
 
     with patch(
         "searchat.api.routers.code.get_dataset_store",
@@ -79,7 +79,7 @@ def test_code_functions_endpoint_filters_by_name(client: TestClient, tmp_path: P
     search_dir = tmp_path / "search"
     _write_code_parquet(search_dir)
 
-    store = DuckDBStore(search_dir)
+    store = SimpleNamespace(_connect=lambda: duckdb.connect(database=":memory:"))
 
     with patch(
         "searchat.api.routers.code.get_dataset_store",
@@ -98,7 +98,7 @@ def test_code_imports_endpoint_filters_by_module(client: TestClient, tmp_path: P
     search_dir = tmp_path / "search"
     _write_code_parquet(search_dir)
 
-    store = DuckDBStore(search_dir)
+    store = SimpleNamespace(_connect=lambda: duckdb.connect(database=":memory:"))
 
     with patch(
         "searchat.api.routers.code.get_dataset_store",
@@ -115,7 +115,7 @@ def test_code_imports_endpoint_filters_by_module(client: TestClient, tmp_path: P
 @pytest.mark.unit
 def test_code_symbol_endpoints_return_503_when_no_code_index(client: TestClient, tmp_path: Path) -> None:
     search_dir = tmp_path / "search"
-    store = DuckDBStore(search_dir)
+    store = SimpleNamespace(_connect=lambda: duckdb.connect(database=":memory:"))
 
     with patch(
         "searchat.api.routers.code.get_dataset_store",

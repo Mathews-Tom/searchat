@@ -9,7 +9,7 @@ import pyarrow.parquet as pq
 
 from searchat.config import Config
 from searchat.config.constants import INDEX_FORMAT, INDEX_FORMAT_VERSION, INDEX_SCHEMA_VERSION
-from searchat.core.search_engine import SearchEngine
+from searchat.core.unified_search import UnifiedSearchEngine
 from searchat.models import CONVERSATION_SCHEMA
 from searchat.services.backup import BackupManager
 from searchat.services.storage_contracts import (
@@ -47,7 +47,7 @@ def test_storage_compatibility_current_index_metadata_is_loadable(tmp_path: Path
     )
     write_index_metadata(search_dir, metadata)
 
-    engine = SearchEngine(search_dir, Config.load())
+    engine = UnifiedSearchEngine(search_dir, Config.load())
     engine._validate_index_metadata()
 
 

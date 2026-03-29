@@ -12,6 +12,8 @@ import threading
 from datetime import datetime
 from pathlib import Path
 
+from dataclasses import dataclass
+
 import duckdb
 
 from searchat.storage.schema import (
@@ -25,6 +27,16 @@ from searchat.storage.schema import (
 )
 
 log = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class IndexStatistics:
+    total_conversations: int
+    total_messages: int
+    avg_messages: float
+    total_projects: int
+    earliest_date: str | None
+    latest_date: str | None
 
 
 class UnifiedStorage:
@@ -43,6 +55,7 @@ class UnifiedStorage:
         self._db_path = Path(db_path)
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         self._read_only = read_only
+        self._memory_limit_mb = memory_limit_mb
         self._hnsw_ef_construction = hnsw_ef_construction
         self._hnsw_ef_search = hnsw_ef_search
         self._hnsw_m = hnsw_m
@@ -90,6 +103,17 @@ class UnifiedStorage:
     # ------------------------------------------------------------------
     # Cursor management
     # ------------------------------------------------------------------
+
+    def _connect(self) -> duckdb.DuckDBPyConnection:
+        """Create an in-memory DuckDB connection for ad-hoc Parquet queries.
+
+        Used by API routes that scan Parquet files directly (code blocks,
+        expertise, etc.) via ``parquet_scan()``.
+        """
+        con = duckdb.connect(database=":memory:")
+        if self._memory_limit_mb is not None:
+            con.execute(f"PRAGMA memory_limit='{int(self._memory_limit_mb)}MB'")
+        return con
 
     def _read_cursor(self) -> duckdb.DuckDBPyConnection:
         """Fresh cursor for read operations (concurrent-safe)."""
@@ -288,8 +312,6 @@ class UnifiedStorage:
             cur.close()
 
     def get_statistics(self):
-        from searchat.services.duckdb_storage import IndexStatistics
-
         cur = self._read_cursor()
         try:
             row = cur.execute(
@@ -320,7 +342,7 @@ class UnifiedStorage:
             cur.close()
 
     # ------------------------------------------------------------------
-    # Write operations (used by DualWriter and migration ETL)
+    # Write operations
     # ------------------------------------------------------------------
 
     def upsert_conversation(
