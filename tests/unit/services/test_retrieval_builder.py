@@ -17,7 +17,7 @@ def test_build_retrieval_service_constructs_search_engine(monkeypatch) -> None:
         SimpleNamespace(SearchEngine=FakeSearchEngine),
     )
 
-    cfg = object()
+    cfg = SimpleNamespace(search=SimpleNamespace(engine="legacy"))
     search_dir = Path("/tmp/searchat-test")
     service = build_retrieval_service(search_dir, config=cfg)
     assert isinstance(service, FakeSearchEngine)

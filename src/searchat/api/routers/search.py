@@ -18,7 +18,7 @@ from searchat.contracts.errors import (
     invalid_highlight_provider_message,
     invalid_search_mode_message,
 )
-from searchat.models import SearchMode, SearchFilters
+from searchat.models import AlgorithmType, SearchMode, SearchFilters
 from searchat.services.highlight_service import extract_highlight_terms
 from searchat.services.llm_service import LLMServiceError
 from searchat.api.dataset_access import _DatasetNotReady, get_dataset_retrieval, get_dataset_store
@@ -157,6 +157,7 @@ async def search_code(
 async def search(
     q: str = Query(..., description="Search query"),
     mode: str = Query("hybrid", description="Search mode: hybrid, semantic, or keyword"),
+    algorithm: str | None = Query(None, description="Algorithm type: keyword, semantic, hybrid, adaptive, cross_layer, distill"),
     project: str | None = Query(None, description="Filter by project"),
     date: str | None = Query(None, description="Date filter: today, week, month, or custom"),
     date_from: str | None = Query(None, description="Custom date from (YYYY-MM-DD)"),
@@ -172,6 +173,24 @@ async def search(
 ):
     """Search conversations with filters and sorting."""
     try:
+        # Resolve algorithm type if provided (takes precedence over mode)
+        algo_type: AlgorithmType | None = None
+        if algorithm:
+            try:
+                algo_type = AlgorithmType(algorithm)
+            except ValueError:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid algorithm type: {algorithm}. "
+                    f"Valid: {', '.join(a.value for a in AlgorithmType)}",
+                )
+            # CROSS_LAYER and DISTILL are stubbed until Phase 6
+            if algo_type in (AlgorithmType.CROSS_LAYER, AlgorithmType.DISTILL):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{algo_type.value} search is not available until Memory Palace (Phase 6) is enabled",
+                )
+
         # Convert mode string to SearchMode enum
         mode_map = {
             "hybrid": SearchMode.HYBRID,
@@ -202,7 +221,12 @@ async def search(
             filters.tool = validate_tool(tool)
         filters.date_from, filters.date_to = parse_date_filter(date, date_from, date_to)
 
-        results = search_engine.search(q, mode=search_mode, filters=filters)
+        # Dispatch: use algorithm kwarg if engine supports it, else fall back to mode
+        from searchat.core.unified_search import UnifiedSearchEngine
+        if algo_type is not None and isinstance(search_engine, UnifiedSearchEngine):
+            results = search_engine.search(q, mode=search_mode, filters=filters, algorithm=algo_type)
+        else:
+            results = search_engine.search(q, mode=search_mode, filters=filters)
 
         highlight_terms = None
         if highlight and len(q.strip()) >= 4 and mode != "keyword":
