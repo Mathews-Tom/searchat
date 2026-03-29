@@ -430,6 +430,11 @@ def main():
 
             raise SystemExit(run_migrate_storage(argv[1:]))
 
+        if argv and argv[0] == "distill":
+            from searchat.cli.distill_cmd import run_distill
+
+            raise SystemExit(run_distill(argv[1:]))
+
         if argv and argv[0] == "health":
             from searchat.cli.health_cmd import run_health
 
@@ -467,6 +472,7 @@ def main():
             print("  searchat expertise status [--domain DOMAIN] [--project PROJECT]")
             print("  searchat expertise search QUERY [--domain DOMAIN] [--type TYPE] [--limit N]")
             print("  searchat contradictions [--domain DOMAIN] [--unresolved-only] [--limit N]")
+            print("  searchat distill [--project PROJECT] [--retry-errors] [--dry-run]")
             print("  searchat migrate-storage [--dry-run] [--verify] [--rollback]")
             print("  searchat health [--url URL] [--json]")
             print("  searchat ci-check [--fail-on-contradictions] [--fail-on-staleness-threshold FLOAT]")

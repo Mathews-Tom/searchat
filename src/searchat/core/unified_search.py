@@ -208,11 +208,12 @@ class UnifiedSearchEngine:
         # Resolve algorithm type
         algo = algorithm or AlgorithmType.from_search_mode(mode)
 
-        # Stub algorithms return immediately
+        # Palace-powered search modes
         if algo in (AlgorithmType.CROSS_LAYER, AlgorithmType.DISTILL):
-            raise AlgorithmNotAvailable(
-                f"{algo.value} search is not available until Phase 6 (Memory Palace)"
-            )
+            if not self.config.palace.enabled:
+                raise AlgorithmNotAvailable(
+                    f"{algo.value} search requires palace.enabled = true in config"
+                )
 
         # Wildcard → keyword only
         if query.strip() == "*":
@@ -254,6 +255,12 @@ class UnifiedSearchEngine:
 
         if algo == AlgorithmType.ADAPTIVE:
             return self._adaptive_search(query, filters)
+
+        if algo == AlgorithmType.DISTILL:
+            return self._distill_search(query, filters)
+
+        if algo == AlgorithmType.CROSS_LAYER:
+            return self._cross_layer_search(query, filters)
 
         # HYBRID (default)
         return self._hybrid_search(query, filters)
@@ -315,6 +322,112 @@ class UnifiedSearchEngine:
             ("keyword", tier2),
         ])
         return fb.results, fb.mode_used
+
+    # ------------------------------------------------------------------
+    # Palace-powered search (DISTILL + CROSS_LAYER)
+    # ------------------------------------------------------------------
+
+    def _get_palace_query(self):
+        """Lazy-load palace query engine."""
+        if not hasattr(self, "_palace_query"):
+            from searchat.palace.query import PalaceQuery
+
+            data_dir = self.search_dir / "data"
+            self._palace_query = PalaceQuery(
+                data_dir=data_dir,
+                config=self.config,
+                embedder=self.embedder,
+            )
+        return self._palace_query
+
+    def _distill_search(
+        self,
+        query: str,
+        filters: SearchFilters | None,
+    ) -> tuple[list[SearchResult], str]:
+        """Search over distilled palace objects only."""
+        pq = self._get_palace_query()
+        project_ids = filters.project_ids if filters and filters.project_ids else None
+        palace_results = pq.search_hybrid(
+            query=query, limit=self.config.search.max_results, project_ids=project_ids,
+        )
+
+        results: list[SearchResult] = []
+        for pr in palace_results:
+            results.append(SearchResult(
+                conversation_id=pr.conversation_id,
+                project_id=pr.project_id,
+                title=pr.exchange_core[:80],
+                created_at=None,  # type: ignore[arg-type]
+                updated_at=None,  # type: ignore[arg-type]
+                message_count=pr.ply_end - pr.ply_start + 1,
+                file_path="",
+                score=pr.score,
+                snippet=pr.specific_context[:300],
+                message_start_index=pr.ply_start,
+                message_end_index=pr.ply_end,
+                exchange_id=pr.object_id,
+                exchange_text=pr.exchange_core,
+                bm25_score=pr.keyword_score,
+                semantic_score=pr.semantic_score,
+            ))
+
+        return results, "distill"
+
+    def _cross_layer_search(
+        self,
+        query: str,
+        filters: SearchFilters | None,
+    ) -> tuple[list[SearchResult], str]:
+        """Cross-layer search: merge verbatim hybrid + palace distilled."""
+        # Verbatim layer
+        verbatim_results, _ = self._hybrid_search(query, filters)
+
+        # Palace layer
+        pq = self._get_palace_query()
+        project_ids = filters.project_ids if filters and filters.project_ids else None
+        palace_results = pq.search_hybrid(
+            query=query, limit=50, project_ids=project_ids,
+        )
+
+        # Build palace results as SearchResult, keyed by conversation_id
+        palace_by_conv: dict[str, SearchResult] = {}
+        for pr in palace_results:
+            sr = SearchResult(
+                conversation_id=pr.conversation_id,
+                project_id=pr.project_id,
+                title=pr.exchange_core[:80],
+                created_at=None,  # type: ignore[arg-type]
+                updated_at=None,  # type: ignore[arg-type]
+                message_count=pr.ply_end - pr.ply_start + 1,
+                file_path="",
+                score=pr.score,
+                snippet=pr.specific_context[:300],
+                message_start_index=pr.ply_start,
+                message_end_index=pr.ply_end,
+                exchange_id=pr.object_id,
+                exchange_text=pr.exchange_core,
+            )
+            palace_by_conv[pr.conversation_id] = sr
+
+        # Merge: boost verbatim results that also have palace hits
+        seen_convs: set[str] = set()
+        merged: list[SearchResult] = []
+        for vr in verbatim_results:
+            seen_convs.add(vr.conversation_id)
+            palace_hit = palace_by_conv.get(vr.conversation_id)
+            if palace_hit:
+                vr.score *= 1.3  # cross-layer boost
+                vr.exchange_text = palace_hit.exchange_text
+            merged.append(vr)
+
+        # Add palace-only results not in verbatim
+        for conv_id, pr in palace_by_conv.items():
+            if conv_id not in seen_convs:
+                merged.append(pr)
+
+        merged.sort(key=lambda r: r.score, reverse=True)
+        return merged[:self.config.search.max_results], "cross_layer"
 
     # ------------------------------------------------------------------
     # Keyword search (BM25 over DuckDB FTS)
