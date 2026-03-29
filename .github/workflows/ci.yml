@@ -46,7 +46,7 @@ jobs:
       - name: Sync dependencies
         run: |
           echo "Installing dependencies..."
-          uv sync --group dev --extra secure
+          uv sync --group dev --extra secure --extra legacy --extra palace
           echo "Dependencies installed successfully"
 
       - name: Run tests
@@ -74,7 +74,7 @@ jobs:
 
       - name: Sync dependencies
         run: |
-          uv sync --group dev --extra secure
+          uv sync --group dev --extra secure --extra legacy --extra palace
 
       - name: Validate release packaging
         run: |
