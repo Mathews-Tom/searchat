@@ -4,13 +4,15 @@ import hashlib
 import json
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from searchat.config import Config, PathResolver
+from searchat.core.connectors.base import AgentProviderBase
 from searchat.core.connectors.utils import MARKDOWN_CODE_BLOCK_RE
 from searchat.models import ConversationRecord, MessageRecord
 
 
-class ClaudeConnector:
+class ClaudeConnector(AgentProviderBase):
     name: str = "claude"
     supported_extensions: tuple[str, ...] = (".jsonl",)
 
@@ -148,3 +150,52 @@ class ClaudeConnector:
             files_mentioned=files_mentioned if files_mentioned else None,
             git_branch=None,  # Not extractable from current JSONL format
         )
+
+    # -- V2: AgentProvider methods --
+
+    def load_messages(self, path: Path) -> list[dict[str, Any]]:
+        with open(path, "r", encoding="utf-8") as f:
+            lines = [json.loads(line) for line in f]
+
+        messages: list[dict[str, Any]] = []
+        for entry in lines:
+            msg_type = entry.get("type")
+            if msg_type not in ("user", "assistant"):
+                continue
+            raw = entry.get("message", {})
+            raw_content = raw.get("content", raw.get("text", ""))
+            if isinstance(raw_content, str):
+                content = raw_content
+            elif isinstance(raw_content, list):
+                content = "\n\n".join(
+                    block.get("text", "")
+                    for block in raw_content
+                    if block.get("type") == "text"
+                )
+            else:
+                content = ""
+            if content:
+                messages.append({"role": msg_type, "content": content})
+        return messages
+
+    def extract_cwd(self, path: Path) -> str | None:
+        with open(path, "r", encoding="utf-8") as f:
+            lines = [json.loads(line) for line in f]
+
+        file_paths = self._extract_file_paths(lines)
+        if not file_paths:
+            return None
+        # Derive cwd from common prefix of absolute paths
+        abs_paths = [p for p in file_paths if p.startswith("/")]
+        if not abs_paths:
+            return None
+        from os.path import commonpath
+
+        try:
+            return commonpath(abs_paths)
+        except ValueError:
+            return None
+
+    def build_resume_command(self, path: Path) -> str | None:
+        conversation_id = path.stem
+        return f"claude --conversation {conversation_id}"

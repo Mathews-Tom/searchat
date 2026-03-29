@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from searchat.config import Config, PathResolver
+from searchat.core.connectors.base import AgentProviderBase
 from searchat.core.connectors.utils import (
     MARKDOWN_CODE_BLOCK_RE,
     parse_flexible_timestamp,
@@ -15,7 +16,7 @@ from searchat.core.connectors.utils import (
 from searchat.models import ConversationRecord, MessageRecord
 
 
-class CodexConnector:
+class CodexConnector(AgentProviderBase):
     name: str = "codex"
     supported_extensions: tuple[str, ...] = (".jsonl",)
 
@@ -236,4 +237,55 @@ class CodexConnector:
                 )
                 return "user", history_text.strip(), history_timestamp
 
+        return None
+
+    # -- V2: AgentProvider methods --
+
+    def load_messages(self, path: Path) -> list[dict[str, Any]]:
+        messages: list[dict[str, Any]] = []
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                entry = json.loads(line)
+                if not isinstance(entry, dict):
+                    continue
+                extracted = self._extract_message(entry)
+                if extracted is None:
+                    continue
+                role, content, _ = extracted
+                if content:
+                    messages.append({"role": role, "content": content})
+        return messages
+
+    def extract_cwd(self, path: Path) -> str | None:
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                entry = json.loads(line)
+                if not isinstance(entry, dict):
+                    continue
+                if entry.get("type") == "session_meta":
+                    payload = entry.get("payload")
+                    if isinstance(payload, dict):
+                        cwd = payload.get("cwd") or payload.get("working_directory")
+                        if isinstance(cwd, str) and cwd.strip():
+                            return cwd.strip()
+        return None
+
+    def build_resume_command(self, path: Path) -> str | None:
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                entry = json.loads(line)
+                if not isinstance(entry, dict):
+                    continue
+                session_id = self._extract_session_id(entry)
+                if session_id:
+                    return f"codex --session {session_id}"
         return None

@@ -4,13 +4,15 @@ import hashlib
 import json
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from searchat.config import Config, PathResolver
+from searchat.core.connectors.base import AgentProviderBase
 from searchat.core.connectors.utils import MARKDOWN_CODE_BLOCK_RE
 from searchat.models import ConversationRecord, MessageRecord
 
 
-class VibeConnector:
+class VibeConnector(AgentProviderBase):
     name: str = "vibe"
     supported_extensions: tuple[str, ...] = (".json",)
 
@@ -111,3 +113,38 @@ class VibeConnector:
             file_hash=file_hash,
             indexed_at=datetime.now(),
         )
+
+    # -- V2: AgentProvider methods --
+
+    def load_messages(self, path: Path) -> list[dict[str, Any]]:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        messages: list[dict[str, Any]] = []
+        for msg in data.get("messages", []):
+            role = msg.get("role")
+            if role not in ("user", "assistant"):
+                continue
+            content = msg.get("content", "")
+            if content:
+                messages.append({"role": role, "content": content})
+        return messages
+
+    def extract_cwd(self, path: Path) -> str | None:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        env = data.get("metadata", {}).get("environment", {})
+        working_dir = env.get("working_directory")
+        if isinstance(working_dir, str) and working_dir.strip():
+            return working_dir.strip()
+        return None
+
+    def build_resume_command(self, path: Path) -> str | None:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        session_id = data.get("metadata", {}).get("session_id")
+        if isinstance(session_id, str) and session_id.strip():
+            return f"vibe --session {session_id.strip()}"
+        return None

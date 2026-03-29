@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 from searchat.config import Config, PathResolver
+from searchat.core.connectors.base import AgentProviderBase
 from searchat.core.connectors.utils import (
     MARKDOWN_CODE_BLOCK_RE,
     parse_flexible_timestamp,
@@ -15,7 +16,7 @@ from searchat.core.connectors.utils import (
 from searchat.models import ConversationRecord, MessageRecord
 
 
-class ContinueConnector:
+class ContinueConnector(AgentProviderBase):
     name: str = "continue"
     supported_extensions: tuple[str, ...] = (".json",)
 
