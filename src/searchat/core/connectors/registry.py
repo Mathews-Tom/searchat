@@ -115,6 +115,18 @@ def supported_extensions() -> tuple[str, ...]:
     return tuple(sorted(set(extensions)))
 
 
+def has_v2_support(connector: AgentConnector) -> bool:
+    """Check if a connector implements V2 AgentProvider methods.
+
+    A connector has V2 support if it is an instance of AgentProviderBase
+    (which provides default implementations for load_messages, extract_cwd,
+    and build_resume_command).
+    """
+    from .base import AgentProviderBase
+
+    return isinstance(connector, AgentProviderBase)
+
+
 def discover_watch_dirs(config: Config) -> list[Path]:
     dirs: list[Path] = []
     for connector in _CONNECTORS:

@@ -1,3 +1,4 @@
+from .base import AgentProviderBase
 from .protocols import AgentConnector, ConnectorMatch
 from .registry import (
     register_connector,
@@ -7,6 +8,7 @@ from .registry import (
     supported_extensions,
     discover_watch_dirs,
     discover_entrypoint_connectors,
+    has_v2_support,
 )
 from .codex import CodexConnector
 from .claude import ClaudeConnector
@@ -30,6 +32,7 @@ register_connector(AiderConnector())
 discover_entrypoint_connectors()
 
 __all__ = [
+    "AgentProviderBase",
     "AgentConnector",
     "ConnectorMatch",
     "register_connector",
@@ -39,4 +42,5 @@ __all__ = [
     "discover_all_files",
     "supported_extensions",
     "discover_watch_dirs",
+    "has_v2_support",
 ]
