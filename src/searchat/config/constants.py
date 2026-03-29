@@ -90,7 +90,7 @@ INDEX_FORMAT = "parquet+faiss"
 INDEX_METADATA_FILENAME = "index_metadata.json"
 
 # Search engine backend
-DEFAULT_SEARCH_ENGINE = "legacy"  # "legacy" | "unified"
+DEFAULT_SEARCH_ENGINE = "unified"  # "legacy" | "unified"
 
 # Ranking / fusion defaults (unified search engine)
 DEFAULT_RANKING_INTERSECTION_BOOST = 1.5
@@ -106,7 +106,7 @@ ENV_RANKING_KEYWORD_WEIGHT = "SEARCHAT_RANKING_KEYWORD_WEIGHT"
 ENV_RANKING_SEMANTIC_WEIGHT = "SEARCHAT_RANKING_SEMANTIC_WEIGHT"
 
 # DuckDB storage (v2)
-DEFAULT_STORAGE_BACKEND = "parquet"  # "parquet" | "duckdb" | "dual"
+DEFAULT_STORAGE_BACKEND = "duckdb"  # "parquet" | "duckdb" | "dual"
 DEFAULT_DUCKDB_FILENAME = "searchat.duckdb"
 DEFAULT_HNSW_EF_CONSTRUCTION = 128
 DEFAULT_HNSW_EF_SEARCH = 64
