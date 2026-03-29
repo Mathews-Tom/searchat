@@ -12,8 +12,8 @@ class AgentProvider(Protocol):
     """Structural contract for agent connectors.
 
     V1 methods map to the current AgentConnector protocol.
-    V2 stubs (load_messages, extract_cwd, build_resume_command) will
-    be implemented by the agent framework in Phase 4.
+    V2 methods (load_messages, extract_cwd, build_resume_command) are
+    implemented by AgentProviderBase ABC in core/connectors/base.py.
     """
 
     name: str

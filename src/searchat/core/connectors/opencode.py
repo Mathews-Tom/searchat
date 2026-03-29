@@ -4,13 +4,15 @@ import hashlib
 import json
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from searchat.config import Config, PathResolver
+from searchat.core.connectors.base import AgentProviderBase
 from searchat.core.connectors.utils import MARKDOWN_CODE_BLOCK_RE
 from searchat.models import ConversationRecord, MessageRecord
 
 
-class OpenCodeConnector:
+class OpenCodeConnector(AgentProviderBase):
     name: str = "opencode"
     supported_extensions: tuple[str, ...] = (".json",)
 
@@ -276,3 +278,37 @@ class OpenCodeConnector:
             return datetime.fromtimestamp(value / 1000)
         except (OSError, ValueError, TypeError):
             return None
+
+    # -- V2: AgentProvider methods --
+
+    def load_messages(self, path: Path) -> list[dict[str, Any]]:
+        with open(path, "r", encoding="utf-8") as f:
+            session = json.load(f)
+
+        session_id = session.get("id") or session.get("sessionID") or path.stem
+        data_root = self._resolve_opencode_data_root(path)
+        msg_records = self._load_opencode_messages(data_root, session_id)
+        if not msg_records:
+            msg_records = self._load_opencode_session_messages(session, data_root)
+
+        return [{"role": m.role, "content": m.content} for m in msg_records if m.content]
+
+    def extract_cwd(self, path: Path) -> str | None:
+        # OpenCode stores sessions under storage/session/<projectID>/
+        # The projectID often maps to the working directory
+        data_root = self._resolve_opencode_data_root(path)
+        storage_root = data_root / "storage" / "session"
+        if storage_root.exists() and path.parent.name != "session":
+            # path is like .../storage/session/<project_hash>/<session>.json
+            # The project directory name is the parent
+            return None  # OpenCode hashes project paths; raw cwd not recoverable
+        return None
+
+    def build_resume_command(self, path: Path) -> str | None:
+        with open(path, "r", encoding="utf-8") as f:
+            session = json.load(f)
+
+        session_id = session.get("id") or session.get("sessionID")
+        if isinstance(session_id, str) and session_id.strip():
+            return f"opencode --session {session_id.strip()}"
+        return None
