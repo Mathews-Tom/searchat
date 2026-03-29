@@ -95,6 +95,11 @@ class TestIndexingBackendConformance:
 
         _assert_class_conforms(ConversationIndexer, IndexingBackend)
 
+    def test_unified_indexer_conforms(self) -> None:
+        from searchat.core.unified_indexer import UnifiedIndexer
+
+        _assert_class_conforms(UnifiedIndexer, IndexingBackend)
+
 
 class TestAgentProviderConformance:
     def test_claude_connector_conforms(self) -> None:

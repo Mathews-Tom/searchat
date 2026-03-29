@@ -46,8 +46,12 @@ def _build_id_selector(ids: np.ndarray) -> faiss.IDSelector:
 
 
 class ConversationIndexer:
-    """
-    Indexes conversations from multiple AI coding agents.
+    """Indexes conversations from multiple AI coding agents.
+
+    .. deprecated::
+        Use :class:`searchat.core.unified_indexer.UnifiedIndexer` instead.
+        This class writes to Parquet+FAISS and is superseded by the DuckDB-native
+        UnifiedIndexer. Retained for backward compatibility and emergency rollback.
 
     Supported agents:
     - Claude Code: ~/.claude/projects/**/*.jsonl

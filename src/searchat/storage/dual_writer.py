@@ -1,5 +1,10 @@
 """Dual-write proxy — writes to both Parquet+FAISS and DuckDB backends.
 
+.. deprecated::
+    The dual-writer is bypassed by :class:`searchat.core.unified_indexer.UnifiedIndexer`
+    which writes directly to DuckDB. Retained for backward compatibility and emergency
+    rollback. Will be removed in Phase 7 cleanup.
+
 All reads are served from the Parquet backend (unchanged behavior).
 Writes are forwarded to both backends. DuckDB write failures are logged
 but do not fail the overall operation — the Parquet path remains the
