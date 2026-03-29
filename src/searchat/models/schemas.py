@@ -52,6 +52,16 @@ FILE_STATE_SCHEMA = pa.schema([
 ])
 
 
+DISTILLED_METADATA_SCHEMA = pa.schema([
+    ('vector_id', pa.int64()),
+    ('object_id', pa.string()),
+    ('project_id', pa.string()),
+    ('chunk_index', pa.int32()),
+    ('chunk_text', pa.string()),
+    ('created_at', pa.timestamp('us')),
+])
+
+
 CODE_BLOCK_SCHEMA = pa.schema([
     ("conversation_id", pa.string()),
     ("project_id", pa.string()),

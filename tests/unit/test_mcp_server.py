@@ -39,7 +39,7 @@ class TestRunMcpServer:
             server.run()
 
         fake_fastmcp_cls.assert_called_once_with(name="Searchat")
-        assert fake_mcp.tool.call_count == 9  # 6 original + 3 expertise
+        assert fake_mcp.tool.call_count == 10  # 6 original + 3 expertise + 1 palace
         fake_mcp.run.assert_called_once()
 
     def test_run_handles_awaitable_result(self):

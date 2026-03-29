@@ -37,6 +37,9 @@ def run() -> None:
     mcp.tool(name="search_expertise", description="Search expertise records by text query")(
         tools.search_expertise
     )
+    mcp.tool(name="search_palace", description="Search the Memory Palace for distilled conversation memories")(
+        tools.search_palace
+    )
 
     result = mcp.run()
     if inspect.isawaitable(result):

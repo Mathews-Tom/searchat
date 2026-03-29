@@ -37,6 +37,7 @@ _watcher = None
 _duckdb_store = None
 _expertise_store = None
 _knowledge_graph_store = None
+_palace_query = None
 
 # Snapshot-scoped caches (keyed by dataset root, i.e. backup directory path).
 _duckdb_store_by_dir: dict[str, "StorageBackend"] = {}
@@ -280,6 +281,28 @@ def get_knowledge_graph_store():
     if _knowledge_graph_store is None:
         raise RuntimeError("Knowledge graph store not initialized. Check knowledge_graph.enabled in config.")
     return _knowledge_graph_store
+
+
+def get_palace_query():
+    """Get palace query singleton (lazy-initialized)."""
+    global _palace_query
+    if _palace_query is not None:
+        return _palace_query
+
+    config = get_config()
+    if not config.palace.enabled:
+        raise RuntimeError("Palace is not enabled. Set palace.enabled = true in config.")
+
+    search_dir = get_search_dir()
+    with _service_lock:
+        if _palace_query is not None:
+            return _palace_query
+
+        from searchat.palace.query import PalaceQuery
+
+        data_dir = search_dir / "data"
+        _palace_query = PalaceQuery(data_dir=data_dir, config=config)
+        return _palace_query
 
 
 def get_bookmarks_service():

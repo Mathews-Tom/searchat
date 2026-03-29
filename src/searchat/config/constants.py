@@ -365,6 +365,57 @@ PATTERN_MINING_SEEDS: list[str] = [
 ]
 
 # ============================================================================
+# Distillation Defaults
+# ============================================================================
+
+DEFAULT_DISTILLATION_PROVIDER = "auto"
+DEFAULT_DISTILLATION_CLI_MODEL = "claude-haiku-4-5-20251001"
+DEFAULT_DISTILLATION_CLI_MODEL_OPENAI = "gpt-5.3-codex"
+DEFAULT_DISTILLATION_BATCH_SIZE = 10
+DEFAULT_DISTILLATION_MAX_PLY_LENGTH = 20
+DEFAULT_DISTILLATION_MIN_EXCHANGE_CHARS = 50
+
+DEFAULT_DISTILLATION_PROMPT = """Distill this conversation exchange into JSON:
+
+- "exchange_core": 1-2 sentences. What was accomplished or decided? Use the specific terms from the exchange. Do not invent details not present in the text. If the exchange is mostly empty, say so briefly.
+- "specific_context": One concrete detail from the text: a number, error message, parameter name, or file path. Copy it exactly from the text. Do not use the project path.
+- "room_assignments": 1-3 rooms. Each room is a topic this exchange belongs to. {{"room_type": "<file|concept|workflow>", "room_key": "<identifier>", "room_label": "<short label>", "relevance": <0.0-1.0>}}. A room should be specific enough to group related exchanges (e.g. "retry_timeout" not "errors").
+
+Project: {project_id}
+Exchange plies: {ply_start} - {ply_end}
+
+{messages_text}
+
+Return ONLY valid JSON matching this schema:
+{{"exchange_core": "...", "specific_context": "...", "room_assignments": [...]}}
+"""
+
+DEFAULT_PERTURN_PROMPT = """Distill this conversation exchange into JSON:
+
+- "exchange_core": 1-2 sentences. What was accomplished or decided? Use specific terms from the text.
+- "specific_context": One concrete detail: number, error message, parameter, or file path. Copy exactly.
+- "tags": 2-4 keywords for retrieval (lowercase, underscore-separated).
+
+User said:
+{user_text}
+
+Assistant said:
+{assistant_text}
+
+Return ONLY valid JSON matching this schema:
+{{"exchange_core": "...", "specific_context": "...", "tags": [...]}}
+"""
+
+DEFAULT_PALACE_ENABLED = False
+
+ENV_DISTILLATION_PROVIDER = "SEARCHAT_DISTILLATION_PROVIDER"
+ENV_DISTILLATION_CLI_MODEL = "SEARCHAT_DISTILLATION_CLI_MODEL"
+ENV_DISTILLATION_BATCH_SIZE = "SEARCHAT_DISTILLATION_BATCH_SIZE"
+ENV_DISTILLATION_MAX_PLY_LENGTH = "SEARCHAT_DISTILLATION_MAX_PLY_LENGTH"
+ENV_DISTILLATION_MIN_EXCHANGE_CHARS = "SEARCHAT_DISTILLATION_MIN_EXCHANGE_CHARS"
+ENV_PALACE_ENABLED = "SEARCHAT_PALACE_ENABLED"
+
+# ============================================================================
 # Agent Config Templates
 # ============================================================================
 
