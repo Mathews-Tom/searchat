@@ -3,7 +3,7 @@ terminal: B
 title: "Phase 1 — DuckDB dual-write"
 campaign: v2-migration
 wave: 2
-status: in_progress
+status: complete
 branch: feat/phase-1-duckdb-dual-write
 writes_to:
   - src/searchat/storage/
@@ -29,7 +29,7 @@ updated: "2026-03-29T12:40:00Z"
 
 | Issue | Task | Target | Status | Actual |
 |-------|------|--------|--------|--------|
-| #66 | DuckDB unified storage with dual-write migration | DuckDB schema + dual-writer + ETL + CLI | in_progress | 8/8 modules, 44 new tests, 1873 total pass |
+| #66 | DuckDB unified storage with dual-write migration | DuckDB schema + dual-writer + ETL + CLI | complete | 8/8 modules, 44 new tests, 1873 total pass, PR #76 |
 
 ## Results
 
@@ -50,4 +50,5 @@ updated: "2026-03-29T12:40:00Z"
 ## Log
 
 - **2026-03-29 12:00** — Terminal B started. Branch `feat/phase-1-duckdb-dual-write` created from main. Upstream has Rust port (no Python v2 storage to port). Building DuckDB schema, UnifiedStorage, DualWriter, migration ETL, and CLI from scratch.
-- **2026-03-29 12:40** — All 8 modules implemented. 44 new tests pass, 1873 total. Commit 3cbb93f pushed to origin. PR pending.
+- **2026-03-29 12:40** — All 8 modules implemented. 44 new tests pass, 1873 total. Commit 3cbb93f pushed to origin.
+- **2026-03-29 12:45** — PR #76 created, issue #66 closed. Terminal B complete.
