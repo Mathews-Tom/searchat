@@ -60,6 +60,11 @@ class SearchResult:
     snippet: str
     message_start_index: int | None = None
     message_end_index: int | None = None
+    # V2 fields — optional for backward compatibility
+    exchange_id: str | None = None
+    exchange_text: str | None = None
+    bm25_score: float | None = None
+    semantic_score: float | None = None
 
 
 @dataclass

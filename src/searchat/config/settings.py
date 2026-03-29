@@ -33,6 +33,17 @@ from .constants import (
     DEFAULT_HNSW_M,
     ENV_STORAGE_BACKEND,
     ENV_DUCKDB_PATH,
+    # Search engine / ranking defaults
+    DEFAULT_SEARCH_ENGINE,
+    DEFAULT_RANKING_INTERSECTION_BOOST,
+    DEFAULT_RANKING_KEYWORD_WEIGHT,
+    DEFAULT_RANKING_SEMANTIC_WEIGHT,
+    DEFAULT_RANKING_BM25_K1,
+    DEFAULT_RANKING_BM25_B,
+    ENV_SEARCH_ENGINE,
+    ENV_RANKING_INTERSECTION_BOOST,
+    ENV_RANKING_KEYWORD_WEIGHT,
+    ENV_RANKING_SEMANTIC_WEIGHT,
     # Defaults
     DEFAULT_EMBEDDING_MODEL,
     DEFAULT_EMBEDDING_BATCH_SIZE,
@@ -291,6 +302,7 @@ class SearchConfig:
     temporal_decay_enabled: bool
     temporal_decay_factor: float
     temporal_weight: float
+    engine: str  # "legacy" | "unified"
 
     @classmethod
     def from_dict(cls, data: dict) -> "SearchConfig":
@@ -320,6 +332,39 @@ class SearchConfig:
                 "SEARCHAT_TEMPORAL_WEIGHT",
                 float(data.get("temporal_weight", DEFAULT_TEMPORAL_WEIGHT)),
             ),
+            engine=_get_env_str(
+                ENV_SEARCH_ENGINE,
+                data.get("engine", DEFAULT_SEARCH_ENGINE),
+            ) or DEFAULT_SEARCH_ENGINE,
+        )
+
+
+@dataclass
+class RankingConfig:
+    """Fusion and ranking parameters for the unified search engine."""
+    intersection_boost: float
+    keyword_weight: float
+    semantic_weight: float
+    bm25_k1: float
+    bm25_b: float
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "RankingConfig":
+        return cls(
+            intersection_boost=_get_env_float(
+                ENV_RANKING_INTERSECTION_BOOST,
+                float(data.get("intersection_boost", DEFAULT_RANKING_INTERSECTION_BOOST)),
+            ),
+            keyword_weight=_get_env_float(
+                ENV_RANKING_KEYWORD_WEIGHT,
+                float(data.get("keyword_weight", DEFAULT_RANKING_KEYWORD_WEIGHT)),
+            ),
+            semantic_weight=_get_env_float(
+                ENV_RANKING_SEMANTIC_WEIGHT,
+                float(data.get("semantic_weight", DEFAULT_RANKING_SEMANTIC_WEIGHT)),
+            ),
+            bm25_k1=float(data.get("bm25_k1", DEFAULT_RANKING_BM25_K1)),
+            bm25_b=float(data.get("bm25_b", DEFAULT_RANKING_BM25_B)),
         )
 
 
@@ -809,6 +854,7 @@ class Config:
     server: ServerConfig
     expertise: ExpertiseConfig
     knowledge_graph: KnowledgeGraphConfig
+    ranking: RankingConfig
     logging: LogConfig
 
     @classmethod
@@ -888,5 +934,6 @@ class Config:
             server=ServerConfig.from_dict(data.get("server", {})),
             expertise=ExpertiseConfig.from_dict(data.get("expertise", {})),
             knowledge_graph=KnowledgeGraphConfig.from_dict(data.get("knowledge_graph", {})),
+            ranking=RankingConfig.from_dict(data.get("ranking", {})),
             logging=LogConfig(**data.get("logging", {})),
         )
