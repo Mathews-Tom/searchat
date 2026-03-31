@@ -1,6 +1,6 @@
 # Searchat Infographics
 
-Interactive HTML visualizations of Searchat's architecture, data flows, and features.
+Architecture and feature visuals for Searchat, spanning Markdown + Mermaid system diagrams and self-contained HTML walkthroughs.
 
 ## Quick Links
 
@@ -10,6 +10,14 @@ Interactive HTML visualizations of Searchat's architecture, data flows, and feat
 - **Source Code**: [GitHub Repository](https://github.com/Mathews-Tom/searchat)
 
 ## Available Infographics
+
+### System Overview
+
+#### [Current Architecture Overview](../architecture.md)
+**Covers:** Connector ingestion, watcher/indexer flow, DuckDB storage, unified retrieval, expertise, knowledge graph, palace, API/MCP/CLI/UI surfaces
+**Useful for:** Understanding the live system topology and how the major subsystems fit together today
+**Format:** Markdown + Mermaid
+**Updated:** 2026-04-01
 
 ### Core Features
 
@@ -39,9 +47,10 @@ Interactive HTML visualizations of Searchat's architecture, data flows, and feat
 
 ## Design System
 
-All infographics follow a consistent design system:
+The repository uses two documentation formats:
 
-- **Self-contained HTML**: No external dependencies, viewable offline
+- **Markdown + Mermaid**: Canonical system-level architecture and code-aligned diagrams
+- **Self-contained HTML**: Feature-specific visual walkthroughs, viewable offline
 - **Color-coded tiers**: Blue (sources), Amber (processing), Green (storage), Purple (query), Rose (API), Teal (UI), Gold (watcher)
 - **Interactive elements**: Hover states, semantic HTML, ARIA labels
 - **Performance metrics**: Real benchmarks from production code
@@ -50,13 +59,14 @@ All infographics follow a consistent design system:
 ## Viewing Infographics
 
 **In browser**: Open any `.html` file directly in Chrome, Firefox, or Safari
+**In Markdown renderers**: View `docs/architecture.md` anywhere Mermaid diagrams are supported
 **From docs**: Follow links from `README.md` or `docs/architecture.md`
 
 ## Maintenance
 
 When updating infographics:
 1. Identify affected diagram(s)
-2. Update inline HTML/CSS/SVG
+2. Update Mermaid or inline HTML/CSS/SVG, depending on the artifact
 3. Update version number and "Last updated" date
 4. Add changelog entry in footer
 5. Commit changes to git
