@@ -3,6 +3,7 @@
 export const chatStore = {
   provider: "ollama",
   model: "",
+  sessionId: "",
   temperature: null as number | null,
   maxTokens: null as number | null,
   systemPrompt: "",
@@ -23,6 +24,8 @@ export const chatStore = {
     if (saved) this.provider = saved;
     const savedModel = localStorage.getItem("chatModel");
     if (savedModel) this.model = savedModel;
+    const savedSessionId = localStorage.getItem("chatSessionId");
+    if (savedSessionId) this.sessionId = savedSessionId;
   },
 
   setProvider(provider: string) {
@@ -44,15 +47,18 @@ export const chatStore = {
     this.status = "Searching for relevant context...";
     this.controller = new AbortController();
 
-    const body: Record<string, unknown> = { query: this.query };
-    if (this.provider) body.provider = this.provider;
-    if (this.model) body.model = this.model;
+    const body: Record<string, unknown> = {
+      query: this.query,
+      model_provider: this.provider,
+    };
+    if (this.model) body.model_name = this.model;
+    if (this.sessionId) body.session_id = this.sessionId;
     if (this.temperature !== null) body.temperature = this.temperature;
     if (this.maxTokens !== null) body.max_tokens = this.maxTokens;
     if (this.systemPrompt) body.system_prompt = this.systemPrompt;
 
     try {
-      const response = await fetch("/api/chat", {
+      const response = await fetch("/api/chat-rag", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -64,42 +70,13 @@ export const chatStore = {
         throw new Error(err.detail || `HTTP ${response.status}`);
       }
 
-      this.status = "Generating response...";
-
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error("No response body");
-
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          const data = line.slice(6);
-          if (data === "[DONE]") continue;
-
-          try {
-            const parsed = JSON.parse(data);
-            if (parsed.type === "token") {
-              this.answer += parsed.content;
-            } else if (parsed.type === "sources") {
-              this.sources = parsed.sources;
-            } else if (parsed.type === "status") {
-              this.status = parsed.message;
-            }
-          } catch {
-            // Skip malformed SSE lines
-          }
-        }
+      const data = await response.json();
+      this.answer = data?.answer ?? "";
+      this.sources = Array.isArray(data?.sources) ? data.sources : [];
+      if (data?.session_id) {
+        this.sessionId = data.session_id;
+        localStorage.setItem("chatSessionId", this.sessionId);
       }
-
       this.status = "";
     } catch (err: unknown) {
       if (err instanceof Error && err.name === "AbortError") {
@@ -125,5 +102,7 @@ export const chatStore = {
     this.sources = [];
     this.status = "";
     this.sending = false;
+    this.sessionId = "";
+    localStorage.removeItem("chatSessionId");
   },
 };
