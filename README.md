@@ -94,12 +94,13 @@ This fork has since expanded substantially beyond that baseline. It now includes
 
 Visual architecture diagrams and flow charts:
 
+- [System Overview](docs/architecture.md) - Current end-to-end architecture across connectors, indexing, storage, retrieval, knowledge layers, and interfaces
 - [RAG Chat Pipeline](docs/infographics/rag-chat-pipeline.html) - AI-powered Q&A over conversations
 - [Backup & Restore](docs/infographics/backup-restore-flow.html) - Data safety and recovery procedures
 - [File Watching](docs/infographics/file-watching-indexing.html) - Live indexing and event handling
 - [Multi-Agent Connectors](docs/infographics/multi-agent-connectors.html) - Agent support architecture
 
-View in browser for interactive experience. [See all infographics →](docs/infographics/README.md)
+Use the HTML diagrams in a browser for interactive walkthroughs, and use `docs/architecture.md` for the canonical Mermaid system map. [See all infographics →](docs/infographics/README.md)
 
 ## Quick Start
 
