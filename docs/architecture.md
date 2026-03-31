@@ -1,513 +1,226 @@
 # Searchat Architecture
 
-## Visual Documentation
+This document is the canonical system overview for the current codebase. It replaces earlier descriptions that were still centered on the pre-unified index and older API surface.
 
-For interactive visual representations of Searchat's architecture:
+## System Overview
 
-- [Multi-Agent Connector Architecture](infographics/multi-agent-connectors.html) - Protocol-based extensibility for 8 AI agents
-- [File Watching & Live Indexing](infographics/file-watching-indexing.html) - Event-driven real-time indexing system
-- [RAG Chat Pipeline](infographics/rag-chat-pipeline.html) - Retrieval-Augmented Generation flow
-- [Backup & Restore Flow](infographics/backup-restore-flow.html) - Data safety procedures
+```mermaid
+flowchart LR
+    subgraph Sources["Conversation Sources"]
+        Claude["Claude Code JSONL"]
+        Vibe["Mistral Vibe JSON"]
+        OpenCode["OpenCode JSON"]
+        Codex["OpenAI Codex JSONL"]
+        Gemini["Gemini CLI JSON"]
+        Continue["Continue JSON"]
+        Cursor["Cursor SQLite"]
+        Aider["Aider Markdown"]
+    end
 
-These diagrams show component relationships, data flows, and system interactions.
+    subgraph Ingest["Ingestion and Indexing"]
+        Registry["Connector registry<br/>built-ins + entry points"]
+        Watcher["ConversationWatcher<br/>discover + debounce + batch"]
+        Indexer["UnifiedIndexer<br/>parse, segment, embed, extract code"]
+        ExpertiseExtract["Best-effort expertise extraction<br/>heuristic-first pipeline"]
+    end
 
----
+    subgraph Data["Persistent Data Plane"]
+        Storage["UnifiedStorage (DuckDB)<br/>conversations, messages, exchanges,<br/>verbatim_embeddings, source_file_state, code_blocks"]
+        Expertise["ExpertiseStore"]
+        KG["KnowledgeGraphStore"]
+        Palace["PalaceStorage + FAISS + BM25"]
+        Backups["Backup artifacts + snapshot datasets"]
+    end
 
-## Project Structure
+    subgraph Retrieval["Retrieval and Reasoning"]
+        Search["UnifiedSearchEngine<br/>keyword, semantic, hybrid, adaptive,<br/>cross_layer, distill"]
+        Chat["RAG chat + streaming answers"]
+        Patterns["Pattern mining + tech-doc generation"]
+        Highlight["Highlight extraction"]
+    end
 
-```
-searchat/                          # Project root
-├── src/                          # All source code
-│   └── searchat/                 # Main package
-│       ├── __init__.py           # Package exports
-│       ├── backup.py             # Backup/restore management
-│       ├── platform_utils.py     # Platform detection and terminal launching
-│       ├── query_parser.py       # Query parsing
-│       │
-│       ├── api/                  # FastAPI application layer
-│       │   ├── __init__.py       # Router registry
-│       │   ├── app.py            # FastAPI app factory
-│       │   ├── dependencies.py   # Dependency injection
-│       │   ├── models/           # Request/response models
-│       │   │   ├── requests.py
-│       │   │   └── responses.py
-│       │   └── routers/          # API route modules
-│       │       ├── search.py     # Search, projects
-│       │       ├── conversations.py  # Conversation retrieval, resume
-│       │       ├── indexing.py   # Reindex, index_missing
-│       │       ├── backup.py     # Backup CRUD operations
-│       │       ├── admin.py      # Shutdown, watcher status
-│       │       ├── stats.py      # Index statistics
-│       │       ├── status.py     # Server status and features
-│       │       ├── chat.py       # RAG chat endpoints
-│       │       ├── queries.py    # Saved queries CRUD
-│       │       ├── code.py       # Code extraction and highlighting
-│       │       ├── docs.py       # Tech docs + agent config
-│       │       ├── patterns.py   # Pattern mining
-│       │       ├── bookmarks.py  # Bookmark management
-│       │       └── dashboards.py # Dashboard CRUD and rendering
-│       │
-│       ├── cli/                  # CLI interface
-│       │   └── main.py           # SearchCLI class
-│       │
-│       ├── config/               # Configuration management
-│       │   ├── settings.py       # Config class
-│       │   ├── constants.py      # Global constants
-│       │   └── path_resolver.py  # Path resolution logic
-│       │
-│       ├── core/                 # Business logic
-│       │   ├── indexer.py        # Index building
-│       │   ├── search_engine.py  # Search implementation
-│       │   └── watcher.py        # File system watching
-│       │
-│       ├── services/             # Business services
-│       │   ├── chat_service.py   # Session-based RAG pipeline
-│       │   ├── pattern_mining.py # Pattern extraction from archives
-│       │   ├── llm_service.py    # Multi-provider LLM interface
-│       │   └── tech_docs_service.py # Tech docs generation
-│       │
-│       ├── models/               # Data models
-│       │   ├── domain.py         # ConversationRecord, MessageRecord
-│       │   ├── enums.py          # SearchMode, DateFilter
-│       │   └── schemas.py        # PyArrow schemas
-│       │
-│       ├── setup/                # Setup wizard
-│       │   └── wizard.py
-│       │
-│       └── web/                  # Frontend assets
-│           ├── templates/
-│           │   └── index.html    # Main HTML template
-│           └── static/
-│               ├── css/          # Modular stylesheets
-│               │   ├── variables.css  # Theme colors
-│               │   ├── base.css       # Base styles
-│               │   ├── layout.css     # Grid layout
-│               │   └── components.css # UI components
-│               └── js/           # ES6 modules
-│                   ├── main.js        # Entry point
-│                   └── modules/
-│                       ├── api.js          # API client
-│                       ├── search.js       # Search UI
-│                       ├── conversations.js # Conversation viewer
-│                       ├── backup.js       # Backup UI
-│                       ├── theme.js        # Theme management
-│                       └── session.js      # State persistence
-│
-├── scripts/                      # Executable wrappers
-│   ├── searchat                  # CLI wrapper
-│   ├── searchat-web              # Web server wrapper
-│   ├── setup-index               # Initial indexing
-│   └── index-missing             # Append-only indexing
-│
-├── analysis/                     # Quality analysis tools
-│   ├── README.md
-│   ├── requirements.txt          # Separate dependencies
-│   ├── scripts/                  # Analysis scripts
-│   ├── data/                     # Sample data
-│   └── output/                   # Analysis results
-│
-├── utils/                        # Utility scripts
-│   └── vibe_converter.py         # Vibe history converter
-│
-├── tests/                        # Test suite
-│   ├── conftest.py               # Pytest fixtures
-│   ├── test_chunking.py          # Text chunking tests
-│   ├── test_incremental.py       # Append-only indexing tests
-│   ├── test_indexer.py           # Conversation processing tests
-│   ├── test_query_parser.py      # Query parsing tests
-│   ├── test_platform_utils.py    # Platform detection tests
-│   ├── api/                      # API endpoint tests (120+ tests)
-│   │   ├── test_search_routes.py
-│   │   ├── test_conversations_routes.py
-│   │   ├── test_chat_rag_routes.py
-│   │   ├── test_patterns_routes.py
-│   │   ├── test_agent_config.py
-│   │   ├── test_stats_backup_routes.py
-│   │   ├── test_indexing_admin_routes.py
-│   │   ├── test_bookmarks_routes.py
-│   │   ├── test_dashboards_routes.py
-│   │   ├── test_analytics_routes.py
-│   │   └── ...                   # 27 test files
-│   └── unit/                     # Unit tests
-│       ├── services/             # Service unit tests
-│       ├── config/               # Config unit tests
-│       ├── core/                 # Core logic tests
-│       └── ...
-│
-├── config/                       # Config templates
-│   ├── settings.default.toml
-│   └── .env.example
-│
-├── docs/                         # Documentation
-│   ├── architecture.md           # This file
-│   ├── api-reference.md          # API endpoint documentation
-│   └── terminal-launching.md     # Platform-specific terminal launching
-│
-├── pyproject.toml                # Modern Python packaging
-├── pytest.ini                    # Pytest configuration
-├── README.md
-├── CONTRIBUTING.md
-├── CLAUDE.md                     # Project-specific instructions
-└── .gitignore
+    subgraph Interfaces["Interfaces"]
+        API["FastAPI app + routers + HTMX fragments"]
+        MCP["FastMCP server"]
+        CLI["CLI commands"]
+        UI["Web UI"]
+    end
+
+    Claude --> Registry
+    Vibe --> Registry
+    OpenCode --> Registry
+    Codex --> Registry
+    Gemini --> Registry
+    Continue --> Registry
+    Cursor --> Registry
+    Aider --> Registry
+
+    Registry --> Watcher
+    Registry --> Indexer
+    Watcher --> Indexer
+    Indexer --> Storage
+    Indexer --> ExpertiseExtract
+    ExpertiseExtract --> Expertise
+    Expertise --> KG
+
+    Storage --> Search
+    Storage --> Backups
+    Backups --> API
+    Palace --> Search
+    Search --> Chat
+    Search --> Patterns
+    Search --> Highlight
+
+    Search --> API
+    Expertise --> API
+    KG --> API
+    Palace --> API
+    Storage --> API
+
+    Search --> CLI
+    Expertise --> CLI
+    KG --> CLI
+    Palace --> CLI
+    Storage --> MCP
+    Search --> MCP
+    Expertise --> MCP
+    Palace --> MCP
+    API --> UI
 ```
 
-## Core Components
+## Runtime Layers
 
-### 1. Indexer (`indexer.py`)
+| Layer | Current implementation | Responsibility |
+| --- | --- | --- |
+| Source discovery | [`src/searchat/core/connectors/registry.py`](../src/searchat/core/connectors/registry.py) + connector modules | Detects supported agent logs, resolves watch directories, supports plugin-style entry points. |
+| Live indexing | [`src/searchat/core/watcher.py`](../src/searchat/core/watcher.py) + [`src/searchat/core/unified_indexer.py`](../src/searchat/core/unified_indexer.py) | Debounces file events, parses conversations, segments user→assistant exchanges, stores embeddings and code blocks, then runs expertise extraction. |
+| Primary storage | [`src/searchat/storage/unified_storage.py`](../src/searchat/storage/unified_storage.py) + [`src/searchat/storage/schema.py`](../src/searchat/storage/schema.py) | Persistent DuckDB-backed store for the searchable archive and indexing metadata. |
+| Retrieval | [`src/searchat/core/unified_search.py`](../src/searchat/core/unified_search.py) | Executes DuckDB FTS + FAISS retrieval, adaptive weighting, fallbacks, reranking, cross-layer and distill modes. |
+| Knowledge layers | [`src/searchat/expertise/`](../src/searchat/expertise), [`src/searchat/knowledge_graph/`](../src/searchat/knowledge_graph), [`src/searchat/palace/`](../src/searchat/palace) | Extracts reusable expertise, links contradictions/lineage, and supports distilled memory search. |
+| Serving surfaces | [`src/searchat/api/`](../src/searchat/api), [`src/searchat/mcp/`](../src/searchat/mcp), [`src/searchat/cli/`](../src/searchat/cli), [`src/searchat/web/`](../src/searchat/web) | Exposes the archive through REST, HTMX fragments, MCP tools, CLI workflows, and the browser UI. |
 
-**Purpose:** Builds and manages the search index from conversation files.
+## Startup and Request Lifecycle
 
-**Key Classes:**
-- `ConversationIndexer`: Main indexing logic
-- `IndexStatistics`: Index metadata and stats
+```mermaid
+sequenceDiagram
+    participant User
+    participant API as FastAPI lifespan
+    participant Deps as api.dependencies
+    participant Warmup as background warmup
+    participant Watcher as ConversationWatcher
+    participant Indexer as UnifiedIndexer
+    participant Store as UnifiedStorage
+    participant Search as UnifiedSearchEngine
 
-**Methods:**
-- `index_all(force=False)`: Full rebuild (blocked if existing index)
-- `index_append_only(file_paths)`: Safe append-only indexing
-- `get_indexed_file_paths()`: Returns already indexed files
-- `_process_conversation(file_path)`: Parse single conversation
-
-**Data Flow:**
-```
-JSONL/JSON files
-    ↓
-_process_conversation()
-    ↓
-ConversationRecord
-    ↓
-Embeddings (sentence-transformers)
-    ↓
-Parquet (conversations) + FAISS (vectors)
-```
-
-### 2. Search Engine (`search_engine.py`)
-
-**Purpose:** Executes hybrid search across conversations.
-
-**Key Classes:**
-- `SearchEngine`: Main search interface
-- `SearchResult`: Individual result
-- `SearchResults`: Result collection
-
-**Search Modes:**
-- **Hybrid**: DuckDB FTS + FAISS with Reciprocal Rank Fusion
-- **Semantic**: FAISS vector similarity only
-- **Keyword**: DuckDB FTS text search only
-
-**Methods:**
-- `search(query, mode="hybrid", filters=None)`: Execute search
-- `get_conversation(conversation_id)`: Fetch full conversation
-- `get_statistics()`: Index statistics
-
-**Search Flow:**
-```
-User Query
-    ↓
-query_parser.parse() → structured query
-    ↓
-Synonym Expansion
-    ↓
-┌─────────────┬─────────────┐
-│  DuckDB FTS │  FAISS      │
-│  (keyword)  │  (semantic) │
-└─────────────┴─────────────┘
-    ↓           ↓
-Reciprocal Rank Fusion (RRF)
-    ↓
-Optional: Cross-Encoder Re-ranking
-    ↓
-Ranked Results
+    User->>API: start `searchat web`
+    API->>Deps: initialize_services()
+    Deps->>Store: open DuckDB-backed storage
+    Deps->>Deps: initialize bookmarks, queries, dashboards, analytics
+    API->>Warmup: schedule warmup tasks
+    API->>Watcher: start watcher in background
+    Watcher->>Indexer: batch changed files
+    Indexer->>Store: upsert conversations/messages/exchanges/code/embeddings
+    Indexer->>Store: refresh searchable state
+    Indexer->>Deps: invalidate search caches
+    User->>API: HTTP or HTMX request
+    API->>Search: dataset-scoped retrieval
+    Search->>Store: DuckDB FTS + metadata reads
+    Search->>Search: FAISS / reranking / merger / fallback
+    Search-->>API: ranked results or chat context
+    API-->>User: JSON, HTML fragment, or stream
 ```
 
-### 3. Web API (`api/`)
+## Data Plane
 
-**Purpose:** FastAPI server with modular routers and web UI.
+### Core indexed dataset
 
-**Structure:**
-- `app.py` - FastAPI app factory, middleware, static file serving
-- `dependencies.py` - Singleton instances (SearchEngine, BackupManager)
-- `routers/` - 14 modular routers with 55+ endpoints
-- `models/` - Pydantic request/response schemas
+| Table / store | Purpose | Produced by |
+| --- | --- | --- |
+| `conversations` | Conversation-level metadata and full text | `UnifiedIndexer._write_conversation()` |
+| `messages` | Ordered message stream for each conversation | `UnifiedIndexer.index_append_only()` |
+| `exchanges` | User→assistant exchange segmentation, the main retrieval unit | `_segment_exchanges()` in `UnifiedIndexer` |
+| `verbatim_embeddings` | Exchange embeddings for semantic retrieval | `UnifiedIndexer._embed_exchanges()` |
+| `source_file_state` | Incremental indexing state and connector provenance | `UnifiedIndexer.index_append_only()` |
+| `code_blocks` | Extracted fenced code + symbol metadata | `UnifiedIndexer._write_code_blocks()` |
 
-**Routers:**
-- `search.py` - Search, list projects
-- `conversations.py` - Conversation retrieval, session resume
-- `stats.py` - Index statistics
-- `backup.py` - Backup create/list/restore/delete
-- `indexing.py` - Reindex (blocked), index_missing
-- `admin.py` - Shutdown, watcher status
-- `status.py` - Server status and feature flags
-- `chat.py` - RAG chat (streaming and non-streaming)
-- `queries.py` - Saved queries CRUD
-- `code.py` - Code extraction and highlighting
-- `docs.py` - Tech docs summaries and agent config export
-- `patterns.py` - Pattern mining from archives
-- `bookmarks.py` - Bookmark management
-- `dashboards.py` - Dashboard CRUD and rendering
+### Auxiliary stores
 
-**See:** `docs/api-reference.md` for complete endpoint documentation
+| Store | Backing implementation | Role in the system |
+| --- | --- | --- |
+| Expertise store | Local DuckDB/Parquet-backed expertise subsystem | Reusable conventions, failures, decisions, boundaries, and onboarding material. |
+| Knowledge graph | [`KnowledgeGraphStore`](../src/searchat/knowledge_graph/store.py) | Contradictions, lineage, resolution workflows, and graph stats over expertise records. |
+| Palace | `PalaceStorage` + palace FAISS/BM25 indexes | Distilled memory layer used directly via `/api/palace/*` and via `distill` / `cross_layer` search modes. |
+| Backups and snapshots | [`BackupManager`](../src/searchat/services/backup.py) | Backup chains, validation, restore, and read-only dataset browsing. |
 
-**Features:**
-- Live file watching (watchdog)
-- Debounced re-indexing (5min default)
-- Safe shutdown (checks ongoing indexing)
-- CORS restricted to configurable origins (default: localhost only)
-- Modular ES6 frontend (CSS/JS separated)
+## Search and Reasoning Path
 
-### 4. Configuration (`config.py`)
+```mermaid
+flowchart TD
+    Query["User query"] --> Parse["QueryParser + filters"]
+    Parse --> Algo["Algorithm selection<br/>legacy mode or AlgorithmType"]
+    Algo --> Keyword["DuckDB FTS / BM25 over exchanges"]
+    Algo --> Semantic["FAISS vector search over exchange embeddings"]
+    Algo --> Adaptive["QueryClassifier-adjusted weights"]
+    Keyword --> Merge["ResultMerger + intersection boost"]
+    Semantic --> Merge
+    Adaptive --> Merge
+    Merge --> Filter["ConversationFilter + fallback handling"]
+    Filter --> Rerank["Optional reranking / enrichment"]
+    Rerank --> Results["SearchResults"]
 
-**Purpose:** Load and manage configuration.
+    Results --> Chat["Chat service"]
+    Results --> Patterns["Pattern mining"]
+    Results --> Docs["Tech-doc generation"]
+    Results --> UI["REST / HTMX / CLI / MCP consumers"]
 
-**Sources (priority order):**
-1. Environment variables
-2. `~/.searchat/config/settings.toml`
-3. Default values
-
-**Config Sections:**
-- `paths`: Data directories
-- `indexing`: Batch size, auto-index
-- `search`: Default mode, result limits
-- `embedding`: Model selection
-- `performance`: Memory limits, caching
-- `reranking`: Cross-encoder re-ranking settings
-- `server`: CORS and server configuration
-
-### 5. Path Resolver (`path_resolver.py`)
-
-**Purpose:** Cross-platform path resolution.
-
-**Features:**
-- Platform detection (Windows, WSL, Linux, macOS)
-- Claude directory discovery
-- Vibe directory discovery
-- Shared search directory resolution
-- WSL/Windows path translation
-
-### 6. Watcher (`watcher.py`)
-
-**Purpose:** Monitor conversation directories for changes.
-
-**Features:**
-- Watchdog-based file system monitoring
-- Debounced re-indexing (configurable)
-- New file detection
-- Modified file tracking
-- Safe shutdown (waits for indexing)
-
-## Data Storage
-
-### Directory Layout
-
-```
-~/.searchat/
-├── data/
-│   ├── conversations/           # Parquet files
-│   │   ├── shard_0.parquet
-│   │   ├── shard_1.parquet
-│   │   └── ...
-│   └── indices/
-│       ├── embeddings.faiss     # FAISS index
-│       ├── embeddings.metadata.parquet
-│       └── index_metadata.json
-├── config/
-│   ├── settings.toml            # User config
-│   └── .env                     # Environment variables
-└── logs/
-    └── searchat.log             # Application logs
+    PalaceOnly["Palace hybrid search"] --> Results
 ```
 
-### Parquet Schema
+### What is true in the current code
 
-**conversations/**
-```
-conversation_id: string
-project_id: string (nullable)
-file_path: string
-title: string
-created_at: timestamp
-updated_at: timestamp
-message_count: int64
-messages: list[struct[...]]
-full_text: string
-embedding_id: int64
-file_hash: string
-indexed_at: timestamp
-files_mentioned: list[string]
-git_branch: string
-tool: string
-```
+| Topic | Current state |
+| --- | --- |
+| Default retrieval backend | `UnifiedSearchEngine` built by `build_retrieval_service()` |
+| Default storage backend | `UnifiedStorage` built by `build_storage_service()` |
+| Core search modes | `keyword`, `semantic`, `hybrid` |
+| Extended algorithm types | `adaptive`, `cross_layer`, `distill` |
+| Distilled memory integration | Palace search is real and lazily loaded; `distill` and `cross_layer` are implemented in `UnifiedSearchEngine` when palace is enabled. |
+| Snapshot reads | Storage and retrieval can be resolved against backup directories through dataset-scoped helpers. |
+| RAG readiness | Semantic readiness is checked per request for chat and other semantic workflows. |
 
-**embeddings.metadata.parquet**
-```
-embedding_id: int64
-conversation_id: string
-vector_index: int64
-```
+## Interface Surface
 
-### FAISS Index
+| Surface | Current role | Representative modules |
+| --- | --- | --- |
+| REST API | Main integration surface for search, chat, indexing, backup, analytics, expertise, knowledge graph, palace | `src/searchat/api/app.py`, `src/searchat/api/routers/*.py` |
+| HTMX fragments | Server-rendered partials for search, dashboards, contradictions, management views | `src/searchat/api/routers/fragments.py`, `src/searchat/web/templates/fragments/` |
+| Web UI | Browser shell, navigation, search workflows, chat, dashboards, contradictions, bookmarks | `src/searchat/web/templates/`, `src/searchat/web/static/js/modules/` |
+| CLI | Search, setup, health, expertise, contradictions, knowledge graph, distillation, validation, CI checks | `src/searchat/cli/main.py` + command modules |
+| MCP | Tool bridge for search, chat-over-history, expertise priming/recording, palace search | `src/searchat/mcp/server.py`, `src/searchat/mcp/tools.py` |
 
-- **Type**: IndexFlatL2 (brute force, exact search)
-- **Dimensions**: 384 (all-MiniLM-L6-v2)
-- **Size**: ~1.5KB per conversation
+## Architectural Corrections From The Older Version
 
-## Search Algorithm
+The earlier architecture description is no longer accurate in these ways:
 
-### Hybrid Search (RRF)
+| Older framing | Current reality |
+| --- | --- |
+| Search centered on older `search_engine.py` / conversation-level retrieval | Search is centered on `UnifiedSearchEngine` with exchange-level retrieval and optional palace merge. |
+| Index storage described as Parquet + FAISS as the primary architecture | The active storage contract is `UnifiedStorage` backed by a persistent DuckDB database; FAISS remains part of semantic retrieval. |
+| API described as a smaller router set | The FastAPI surface now includes search, conversations, code, chat, docs, patterns, dashboards, expertise, knowledge graph, health, fragments, backup, status, palace, and more. |
+| Architecture omitted higher-order memory systems | Expertise, contradiction-aware knowledge graph, and palace distillation are now first-class subsystems. |
+| Connectors framed as a narrow set | The current connector layer supports eight built-in agents plus entry-point extensibility. |
 
-```python
-def hybrid_search(query):
-    # 1. Synonym expansion
-    expanded_query = expand_synonyms(query)
+## Code Pointers
 
-    # 2. DuckDB FTS keyword search
-    fts_results = duckdb_fts_search(expanded_query)
-    fts_ranks = {doc_id: 1/(k+rank) for rank, doc_id in enumerate(fts_results)}
-
-    # 3. FAISS semantic search
-    query_embedding = embed(query)
-    faiss_results = faiss.search(query_embedding)
-    faiss_ranks = {doc_id: 1/(k+rank) for rank, doc_id in enumerate(faiss_results)}
-
-    # 4. Reciprocal Rank Fusion
-    all_docs = set(fts_ranks.keys()) | set(faiss_ranks.keys())
-    rrf_scores = {
-        doc_id: fts_ranks.get(doc_id, 0) + faiss_ranks.get(doc_id, 0)
-        for doc_id in all_docs
-    }
-
-    # 5. Optional cross-encoder re-ranking
-    if config.reranking.enabled:
-        top_k = sorted(rrf_scores.items(), key=lambda x: -x[1])[:config.reranking.top_k]
-        reranked = cross_encoder.rerank(query, top_k)
-        return reranked
-
-    # 6. Sort by fused score
-    return sorted(rrf_scores.items(), key=lambda x: -x[1])
-```
-
-### Query Processing
-
-```python
-# Query parser supports:
-query = "async +python -javascript \"exact phrase\""
-
-parsed = {
-    "terms": ["async"],
-    "must_include": ["python"],
-    "must_exclude": ["javascript"],
-    "exact_phrases": ["exact phrase"]
-}
-```
-
-## Performance Characteristics
-
-### Indexing
-
-| Operation | Speed |
-|-----------|-------|
-| Initial index | ~60s/100K conversations |
-| Append-only add | ~0.1s/conversation (CPU), ~0.008s (GPU) |
-| Embedding generation | Batched (32/batch) |
-
-### Search
-
-| Operation | Latency | Implementation |
-|-----------|---------|----------------|
-| Hybrid search | <100ms | DuckDB FTS + FAISS + RRF |
-| Semantic search | <50ms | FAISS vector search |
-| Keyword search | <30ms | DuckDB FTS |
-| Filtered queries | <20ms | DuckDB predicate pushdown |
-
-### Memory Usage
-
-| Component | Size |
-|-----------|------|
-| Base | ~500MB |
-| Embedding model | ~500MB |
-| FAISS index | ~1.5KB per conversation |
-| Parquet | ~50KB per 1K conversations |
-| Filtered queries | Loads only matching rows (DuckDB predicate pushdown) |
-
-
-## Extension Points
-
-### Adding New Agent Support
-
-1. Add parser in `indexer.py`:
-```python
-def _parse_new_agent_file(self, file_path: Path) -> ConversationRecord:
-    # Parse custom format
-    pass
-```
-
-2. Update `path_resolver.py`:
-```python
-@staticmethod
-def resolve_new_agent_dirs():
-    # Return list of directories
-    pass
-```
-
-3. Add configuration in `constants.py`
-
-### Custom Search Modes
-
-Add to `search_engine.py`:
-```python
-def custom_search(self, query: str) -> SearchResults:
-    # Custom search logic
-    pass
-```
-
-### New API Endpoints
-
-Add to `web_api.py`:
-```python
-@app.get("/api/custom")
-async def custom_endpoint():
-    # Custom API logic
-    pass
-```
-
-## Testing
-
-### Test Coverage
-
-**Unit Tests (tests/):**
-- `test_chunking.py` - Text chunking logic
-- `test_incremental.py` - Append-only indexing
-- `test_indexer.py` - Conversation processing
-- `test_query_parser.py` - Query parsing
-- `test_platform_utils.py` - Platform detection
-
-**API Tests (tests/api/) - 120+ tests across 27 files:**
-- `test_search_routes.py` (21 tests) - Search modes, filters, sorting
-- `test_conversations_routes.py` (21 tests) - List, retrieve, resume
-- `test_chat_rag_routes.py` - Chat and RAG endpoint tests
-- `test_patterns_routes.py` - Pattern mining endpoint tests
-- `test_agent_config.py` - Agent config generation tests
-- `test_stats_backup_routes.py` (13 tests) - Statistics, backup operations
-- `test_indexing_admin_routes.py` (8 tests) - Indexing, watcher, shutdown
-- `test_bookmarks_routes.py` - Bookmark management tests
-- `test_dashboards_routes.py` - Dashboard CRUD tests
-- `test_analytics_routes.py` - Analytics endpoint tests
-- And 17 more test files...
-
-### Running Tests
-
-```bash
-pytest                          # Run all tests
-pytest tests/api/              # Run API tests only
-pytest -v                      # Verbose output
-pytest -k test_search          # Run specific tests
-pytest --cov=searchat          # Coverage report
-pytest --cov-report=html       # HTML coverage report
-```
-
-## Security Considerations
-
-1. **Local-only API**: No external network access
-2. **No authentication**: Assumes trusted local environment
-3. **File path validation**: Prevents directory traversal
-4. **Safe indexing**: Append-only by default
-5. **No code execution**: Only reads conversation data
+| Concern | Primary file |
+| --- | --- |
+| App lifecycle and router wiring | [`src/searchat/api/app.py`](../src/searchat/api/app.py) |
+| Dependency graph and lazy singletons | [`src/searchat/api/dependencies.py`](../src/searchat/api/dependencies.py) |
+| Dataset-scoped snapshot routing | [`src/searchat/api/dataset_access.py`](../src/searchat/api/dataset_access.py) |
+| Indexing pipeline | [`src/searchat/core/unified_indexer.py`](../src/searchat/core/unified_indexer.py) |
+| Retrieval engine | [`src/searchat/core/unified_search.py`](../src/searchat/core/unified_search.py) |
+| Unified DuckDB storage | [`src/searchat/storage/unified_storage.py`](../src/searchat/storage/unified_storage.py) |
+| Connector registry | [`src/searchat/core/connectors/registry.py`](../src/searchat/core/connectors/registry.py) |
+| Expertise pipeline | [`src/searchat/expertise/pipeline.py`](../src/searchat/expertise/pipeline.py) |
+| Knowledge graph | [`src/searchat/knowledge_graph/store.py`](../src/searchat/knowledge_graph/store.py) |
+| Palace query/distillation | [`src/searchat/palace/query.py`](../src/searchat/palace/query.py), [`src/searchat/palace/distiller.py`](../src/searchat/palace/distiller.py) |
