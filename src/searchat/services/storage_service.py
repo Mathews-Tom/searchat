@@ -1,4 +1,5 @@
 """Storage-facing service contract and construction helpers."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -45,16 +46,24 @@ class StorageService(Protocol):
     def get_statistics(self): ...
 
 
-def build_storage_service(search_dir: Path, *, config: Config) -> StorageService:
+def build_storage_service(
+    search_dir: Path, *, config: Config, read_only: bool | None = None
+) -> StorageService:
     """Create the storage service for a dataset root.
 
     Returns UnifiedStorage (DuckDB-native) backed by the persistent DuckDB file.
     Creates the database if it does not exist yet.
+
+    Args:
+        read_only: Explicit access mode. ``None`` auto-detects: read-only when
+            the database file already exists, read-write otherwise (first-run
+            bootstrap).
     """
     from searchat.storage.unified_storage import UnifiedStorage
 
     db_path = config.storage.resolve_duckdb_path(search_dir)
-    read_only = db_path.exists()
+    if read_only is None:
+        read_only = db_path.exists()
     return UnifiedStorage(
         db_path,
         memory_limit_mb=config.performance.memory_limit_mb,

@@ -69,6 +69,51 @@ class TestBuildStorageServiceRouting:
         assert isinstance(store, UnifiedStorage)
         assert db_path.exists()
 
+    def test_explicit_read_only_false_opens_writable(self, tmp_path: Path) -> None:
+        from searchat.services.storage_service import build_storage_service
+
+        db_path = tmp_path / "data" / "searchat.duckdb"
+        _create_duckdb_file(db_path)
+
+        cfg = SimpleNamespace(
+            storage=SimpleNamespace(
+                backend="duckdb",
+                resolve_duckdb_path=lambda _sd: db_path,
+                hnsw_ef_construction=128,
+                hnsw_ef_search=64,
+                hnsw_m=16,
+            ),
+            performance=SimpleNamespace(memory_limit_mb=None),
+        )
+
+        store = build_storage_service(tmp_path, config=cfg, read_only=False)
+        from searchat.storage.unified_storage import UnifiedStorage
+
+        assert isinstance(store, UnifiedStorage)
+        assert not store._read_only
+
+    def test_explicit_read_only_true_when_db_missing_raises(
+        self, tmp_path: Path
+    ) -> None:
+        from searchat.services.storage_service import build_storage_service
+
+        db_path = tmp_path / "data" / "searchat.duckdb"
+        # DB does not exist — opening read-only should fail
+
+        cfg = SimpleNamespace(
+            storage=SimpleNamespace(
+                backend="duckdb",
+                resolve_duckdb_path=lambda _sd: db_path,
+                hnsw_ef_construction=128,
+                hnsw_ef_search=64,
+                hnsw_m=16,
+            ),
+            performance=SimpleNamespace(memory_limit_mb=None),
+        )
+
+        with pytest.raises(Exception):
+            build_storage_service(tmp_path, config=cfg, read_only=True)
+
 
 # ── Retrieval factory routing ────────────────────────────────────
 
