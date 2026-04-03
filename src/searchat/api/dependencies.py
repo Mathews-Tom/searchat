@@ -3,6 +3,7 @@
 This module must stay lightweight: avoid importing heavy ML/search modules at
 import time. Heavy resources are initialized lazily and/or in background warmup.
 """
+
 from __future__ import annotations
 
 import logging
@@ -15,6 +16,7 @@ from searchat.contracts.errors import snapshot_mode_disabled_message
 from searchat.services import BackupManager, PlatformManager
 from searchat.config import Config, PathResolver
 from searchat.api.readiness import get_readiness
+
 logger = logging.getLogger(__name__)
 
 
@@ -48,7 +50,18 @@ _service_lock = Lock()
 
 def initialize_services():
     """Initialize all services on app startup."""
-    global _config, _search_dir, _backup_manager, _platform_manager, _bookmarks_service, _saved_queries_service, _dashboards_service, _analytics_service, _duckdb_store, _expertise_store, _knowledge_graph_store
+    global \
+        _config, \
+        _search_dir, \
+        _backup_manager, \
+        _platform_manager, \
+        _bookmarks_service, \
+        _saved_queries_service, \
+        _dashboards_service, \
+        _analytics_service, \
+        _duckdb_store, \
+        _expertise_store, \
+        _knowledge_graph_store
 
     readiness = get_readiness()
     readiness.set_component("services", "loading")
@@ -68,9 +81,11 @@ def initialize_services():
 
         if _config.expertise.enabled:
             from searchat.expertise.store import ExpertiseStore
+
             _expertise_store = ExpertiseStore(_search_dir)
         if _config.knowledge_graph.enabled:
             from searchat.knowledge_graph import KnowledgeGraphStore
+
             _knowledge_graph_store = KnowledgeGraphStore(_search_dir)
         _bookmarks_service = BookmarksService(_config)
         _analytics_service = SearchAnalyticsService(_config)
@@ -130,21 +145,27 @@ def invalidate_search_index() -> None:
 def get_config() -> Config:
     """Get configuration singleton."""
     if _config is None:
-        raise RuntimeError("Services not initialized. Call initialize_services() first.")
+        raise RuntimeError(
+            "Services not initialized. Call initialize_services() first."
+        )
     return _config
 
 
 def get_search_dir() -> Path:
     """Get search directory path."""
     if _search_dir is None:
-        raise RuntimeError("Services not initialized. Call initialize_services() first.")
+        raise RuntimeError(
+            "Services not initialized. Call initialize_services() first."
+        )
     return _search_dir
 
 
 def get_duckdb_store():
     """Get DuckDBStore singleton."""
     if _duckdb_store is None:
-        raise RuntimeError("Services not initialized. Call initialize_services() first.")
+        raise RuntimeError(
+            "Services not initialized. Call initialize_services() first."
+        )
     return _duckdb_store
 
 
@@ -188,7 +209,9 @@ def resolve_dataset_search_dir(snapshot: str | None) -> tuple[Path, str | None]:
         raise ValueError("Snapshot not found")
     # Only allow snapshot browsing for backups that are explicitly marked as browsable.
     try:
-        artifact = backup_manager.validate_backup_artifact(snapshot, verify_hashes=False)
+        artifact = backup_manager.validate_backup_artifact(
+            snapshot, verify_hashes=False
+        )
     except AttributeError:
         artifact = {"snapshot_browsable": backup_manager.validate_backup(snapshot_dir)}
     if not artifact.get("snapshot_browsable"):
@@ -237,7 +260,9 @@ def get_or_create_search_engine_for(search_dir: Path) -> "RetrievalBackend":
 def get_search_engine():
     """Get search engine singleton."""
     if _config is None or _search_dir is None:
-        raise RuntimeError("Services not initialized. Call initialize_services() first.")
+        raise RuntimeError(
+            "Services not initialized. Call initialize_services() first."
+        )
     engine = _search_engine
     if engine is None:
         raise RuntimeError("Search engine not ready")
@@ -247,7 +272,9 @@ def get_search_engine():
 def get_indexer():
     """Get indexer singleton."""
     if _config is None or _search_dir is None:
-        raise RuntimeError("Services not initialized. Call initialize_services() first.")
+        raise RuntimeError(
+            "Services not initialized. Call initialize_services() first."
+        )
     idx = _indexer
     if idx is None:
         # Indexer is created lazily on first use.
@@ -258,28 +285,36 @@ def get_indexer():
 def get_backup_manager() -> BackupManager:
     """Get backup manager singleton."""
     if _backup_manager is None:
-        raise RuntimeError("Services not initialized. Call initialize_services() first.")
+        raise RuntimeError(
+            "Services not initialized. Call initialize_services() first."
+        )
     return _backup_manager
 
 
 def get_platform_manager() -> PlatformManager:
     """Get platform manager singleton."""
     if _platform_manager is None:
-        raise RuntimeError("Services not initialized. Call initialize_services() first.")
+        raise RuntimeError(
+            "Services not initialized. Call initialize_services() first."
+        )
     return _platform_manager
 
 
 def get_expertise_store():
     """Get expertise store singleton."""
     if _expertise_store is None:
-        raise RuntimeError("Expertise store not initialized. Check expertise.enabled in config.")
+        raise RuntimeError(
+            "Expertise store not initialized. Check expertise.enabled in config."
+        )
     return _expertise_store
 
 
 def get_knowledge_graph_store():
     """Get knowledge graph store singleton."""
     if _knowledge_graph_store is None:
-        raise RuntimeError("Knowledge graph store not initialized. Check knowledge_graph.enabled in config.")
+        raise RuntimeError(
+            "Knowledge graph store not initialized. Check knowledge_graph.enabled in config."
+        )
     return _knowledge_graph_store
 
 
@@ -291,7 +326,9 @@ def get_palace_query():
 
     config = get_config()
     if not config.palace.enabled:
-        raise RuntimeError("Palace is not enabled. Set palace.enabled = true in config.")
+        raise RuntimeError(
+            "Palace is not enabled. Set palace.enabled = true in config."
+        )
 
     search_dir = get_search_dir()
     with _service_lock:
@@ -308,28 +345,36 @@ def get_palace_query():
 def get_bookmarks_service():
     """Get bookmarks service singleton."""
     if _bookmarks_service is None:
-        raise RuntimeError("Services not initialized. Call initialize_services() first.")
+        raise RuntimeError(
+            "Services not initialized. Call initialize_services() first."
+        )
     return _bookmarks_service
 
 
 def get_saved_queries_service():
     """Get saved queries service singleton."""
     if _saved_queries_service is None:
-        raise RuntimeError("Services not initialized. Call initialize_services() first.")
+        raise RuntimeError(
+            "Services not initialized. Call initialize_services() first."
+        )
     return _saved_queries_service
 
 
 def get_dashboards_service():
     """Get dashboards service singleton."""
     if _dashboards_service is None:
-        raise RuntimeError("Services not initialized. Call initialize_services() first.")
+        raise RuntimeError(
+            "Services not initialized. Call initialize_services() first."
+        )
     return _dashboards_service
 
 
 def get_analytics_service():
     """Get analytics service singleton."""
     if _analytics_service is None:
-        raise RuntimeError("Services not initialized. Call initialize_services() first.")
+        raise RuntimeError(
+            "Services not initialized. Call initialize_services() first."
+        )
     return _analytics_service
 
 
@@ -388,12 +433,7 @@ def _ensure_indexer():
         try:
             from searchat.core.unified_indexer import UnifiedIndexer
 
-            from searchat.storage.unified_storage import UnifiedStorage
-
-            storage = _duckdb_store if isinstance(_duckdb_store, UnifiedStorage) else None
-            _indexer = UnifiedIndexer(
-                _search_dir, _config, storage=storage
-            )
+            _indexer = UnifiedIndexer(_search_dir, _config)
             readiness.set_component("indexer", "ready")
         except Exception as e:
             readiness.set_component("indexer", "error", error=str(e))
