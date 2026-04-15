@@ -1,11 +1,12 @@
 """Additional tests for api/dependencies.py — warmup, snapshot, and singleton paths."""
+
 from __future__ import annotations
 
 import sys
 import types
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -43,7 +44,9 @@ class FakeReadiness:
         self.errors: dict[str, str] = {}
         self.warmup_started = False
 
-    def set_component(self, name: str, status: str, *, error: str | None = None) -> None:
+    def set_component(
+        self, name: str, status: str, *, error: str | None = None
+    ) -> None:
         self.components[name] = status
         if error is not None:
             self.errors[name] = error
@@ -125,24 +128,39 @@ class TestGetterErrors:
 
 
 class TestGetDuckdbStoreFor:
-    def test_returns_main_store_for_same_dir(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    def test_returns_main_store_for_same_dir(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ):
         monkeypatch.setattr(deps, "_config", object())
         monkeypatch.setattr(deps, "_search_dir", tmp_path)
         monkeypatch.setattr(deps, "_duckdb_store", "MAIN")
 
         assert deps.get_duckdb_store_for(tmp_path) == "MAIN"
 
-    def test_creates_store_for_other_dir(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    def test_creates_store_for_other_dir(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ):
         import searchat.services.storage_service as storage_mod
 
         other = tmp_path / "other"
         other.mkdir()
-        monkeypatch.setattr(deps, "_config", SimpleNamespace(performance=SimpleNamespace(memory_limit_mb=128), storage=SimpleNamespace(backend="duckdb")))
+        monkeypatch.setattr(
+            deps,
+            "_config",
+            SimpleNamespace(
+                performance=SimpleNamespace(memory_limit_mb=128),
+                storage=SimpleNamespace(backend="duckdb"),
+            ),
+        )
         monkeypatch.setattr(deps, "_search_dir", tmp_path)
         monkeypatch.setattr(deps, "_duckdb_store", "MAIN")
 
         sentinel = SimpleNamespace(path=other)
-        monkeypatch.setattr(storage_mod, "build_storage_service", lambda _sd, *, config: sentinel)
+        monkeypatch.setattr(
+            storage_mod,
+            "build_storage_service",
+            lambda _sd, *, config, read_only=None: sentinel,
+        )
 
         store = deps.get_duckdb_store_for(other)
         assert store.path == other
@@ -153,7 +171,14 @@ class TestGetDuckdbStoreFor:
     def test_caches_by_dir(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
         other = tmp_path / "alt"
         other.mkdir()
-        monkeypatch.setattr(deps, "_config", SimpleNamespace(performance=SimpleNamespace(memory_limit_mb=128), storage=SimpleNamespace(backend="parquet")))
+        monkeypatch.setattr(
+            deps,
+            "_config",
+            SimpleNamespace(
+                performance=SimpleNamespace(memory_limit_mb=128),
+                storage=SimpleNamespace(backend="parquet"),
+            ),
+        )
         monkeypatch.setattr(deps, "_search_dir", tmp_path)
         monkeypatch.setattr(deps, "_duckdb_store", "MAIN")
 
@@ -167,7 +192,9 @@ class TestGetDuckdbStoreFor:
 
 
 class TestGetOrCreateSearchEngineFor:
-    def test_returns_main_engine_for_same_dir(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    def test_returns_main_engine_for_same_dir(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ):
         readiness = FakeReadiness()
         monkeypatch.setattr(deps, "get_readiness", lambda: readiness)
         monkeypatch.setattr(deps, "_config", object())
@@ -182,14 +209,20 @@ class TestGetOrCreateSearchEngineFor:
         monkeypatch.setitem(
             sys.modules,
             "searchat.services.retrieval_service",
-            types.SimpleNamespace(build_retrieval_service=lambda search_dir, *, config: _SE(search_dir, config)),
+            types.SimpleNamespace(
+                build_retrieval_service=lambda search_dir, *, config: _SE(
+                    search_dir, config
+                )
+            ),
         )
         monkeypatch.setattr(deps, "_search_engine", fake_engine)
 
         result = deps.get_or_create_search_engine_for(tmp_path)
         assert result is fake_engine
 
-    def test_creates_engine_for_other_dir(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    def test_creates_engine_for_other_dir(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ):
         other = tmp_path / "snap"
         other.mkdir()
         cfg = object()
@@ -204,7 +237,11 @@ class TestGetOrCreateSearchEngineFor:
         monkeypatch.setitem(
             sys.modules,
             "searchat.services.retrieval_service",
-            types.SimpleNamespace(build_retrieval_service=lambda search_dir, *, config: _SE(search_dir, config)),
+            types.SimpleNamespace(
+                build_retrieval_service=lambda search_dir, *, config: _SE(
+                    search_dir, config
+                )
+            ),
         )
 
         engine = deps.get_or_create_search_engine_for(other)
@@ -218,7 +255,9 @@ class TestGetOrCreateSearchEngineFor:
 
 
 class TestWarmupEmbeddedModel:
-    def test_skips_when_provider_not_embedded(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    def test_skips_when_provider_not_embedded(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ):
         import searchat.api.warmup as api_warmup
 
         readiness = FakeReadiness()
@@ -232,7 +271,9 @@ class TestWarmupEmbeddedModel:
         deps._warmup_embedded_model()
         assert readiness.components["embedded_model"] == "idle"
 
-    def test_ready_when_model_path_exists(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    def test_ready_when_model_path_exists(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ):
         import searchat.api.warmup as api_warmup
 
         readiness = FakeReadiness()
@@ -263,7 +304,9 @@ class TestWarmupEmbeddedModel:
         deps._warmup_embedded_model()
         assert "embedded_model" not in readiness.components
 
-    def test_malformed_config_marks_embedded_model_idle(self, monkeypatch: pytest.MonkeyPatch):
+    def test_malformed_config_marks_embedded_model_idle(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
         import searchat.api.warmup as api_warmup
 
         readiness = FakeReadiness()
@@ -278,7 +321,9 @@ class TestWarmupEmbeddedModel:
 
 
 class TestInitializeWithExpertise:
-    def test_initializes_expertise_store_when_enabled(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    def test_initializes_expertise_store_when_enabled(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ):
         readiness = FakeReadiness()
         monkeypatch.setattr(deps, "get_readiness", lambda: readiness)
 
@@ -291,29 +336,58 @@ class TestInitializeWithExpertise:
             storage=SimpleNamespace(backend="duckdb"),
         )
         monkeypatch.setattr(deps.Config, "load", staticmethod(lambda: cfg))
-        monkeypatch.setattr(deps.PathResolver, "get_shared_search_dir", staticmethod(lambda _: tmp_path))
+        monkeypatch.setattr(
+            deps.PathResolver, "get_shared_search_dir", staticmethod(lambda _: tmp_path)
+        )
         monkeypatch.setattr(deps, "BackupManager", lambda _: object())
         monkeypatch.setattr(deps, "PlatformManager", lambda: object())
 
         import searchat.services.storage_service as storage_mod
-        monkeypatch.setattr(storage_mod, "build_storage_service", lambda _sd, *, config: object())
+
+        monkeypatch.setattr(
+            storage_mod,
+            "build_storage_service",
+            lambda _sd, *, config, read_only=None: object(),
+        )
 
         class _ExpertiseStore:
             def __init__(self, path):
                 self.path = path
 
-        monkeypatch.setitem(sys.modules, "searchat.services.bookmarks", types.SimpleNamespace(BookmarksService=lambda _: object()))
-        monkeypatch.setitem(sys.modules, "searchat.services.saved_queries", types.SimpleNamespace(SavedQueriesService=lambda _: object()))
-        monkeypatch.setitem(sys.modules, "searchat.services.dashboards", types.SimpleNamespace(DashboardsService=lambda _: object()))
-        monkeypatch.setitem(sys.modules, "searchat.services.analytics", types.SimpleNamespace(SearchAnalyticsService=lambda _: object()))
-        monkeypatch.setitem(sys.modules, "searchat.expertise.store", types.SimpleNamespace(ExpertiseStore=_ExpertiseStore))
+        monkeypatch.setitem(
+            sys.modules,
+            "searchat.services.bookmarks",
+            types.SimpleNamespace(BookmarksService=lambda _: object()),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "searchat.services.saved_queries",
+            types.SimpleNamespace(SavedQueriesService=lambda _: object()),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "searchat.services.dashboards",
+            types.SimpleNamespace(DashboardsService=lambda _: object()),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "searchat.services.analytics",
+            types.SimpleNamespace(SearchAnalyticsService=lambda _: object()),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "searchat.expertise.store",
+            types.SimpleNamespace(ExpertiseStore=_ExpertiseStore),
+        )
 
         deps.initialize_services()
 
         store = deps.get_expertise_store()
         assert store.path == tmp_path
 
-    def test_initializes_kg_store_when_enabled(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    def test_initializes_kg_store_when_enabled(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ):
         readiness = FakeReadiness()
         monkeypatch.setattr(deps, "get_readiness", lambda: readiness)
 
@@ -326,22 +400,49 @@ class TestInitializeWithExpertise:
             storage=SimpleNamespace(backend="duckdb"),
         )
         monkeypatch.setattr(deps.Config, "load", staticmethod(lambda: cfg))
-        monkeypatch.setattr(deps.PathResolver, "get_shared_search_dir", staticmethod(lambda _: tmp_path))
+        monkeypatch.setattr(
+            deps.PathResolver, "get_shared_search_dir", staticmethod(lambda _: tmp_path)
+        )
         monkeypatch.setattr(deps, "BackupManager", lambda _: object())
         monkeypatch.setattr(deps, "PlatformManager", lambda: object())
 
         import searchat.services.storage_service as storage_mod
-        monkeypatch.setattr(storage_mod, "build_storage_service", lambda _sd, *, config: object())
+
+        monkeypatch.setattr(
+            storage_mod,
+            "build_storage_service",
+            lambda _sd, *, config, read_only=None: object(),
+        )
 
         class _KGStore:
             def __init__(self, path):
                 self.path = path
 
-        monkeypatch.setitem(sys.modules, "searchat.services.bookmarks", types.SimpleNamespace(BookmarksService=lambda _: object()))
-        monkeypatch.setitem(sys.modules, "searchat.services.saved_queries", types.SimpleNamespace(SavedQueriesService=lambda _: object()))
-        monkeypatch.setitem(sys.modules, "searchat.services.dashboards", types.SimpleNamespace(DashboardsService=lambda _: object()))
-        monkeypatch.setitem(sys.modules, "searchat.services.analytics", types.SimpleNamespace(SearchAnalyticsService=lambda _: object()))
-        monkeypatch.setitem(sys.modules, "searchat.knowledge_graph", types.SimpleNamespace(KnowledgeGraphStore=_KGStore))
+        monkeypatch.setitem(
+            sys.modules,
+            "searchat.services.bookmarks",
+            types.SimpleNamespace(BookmarksService=lambda _: object()),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "searchat.services.saved_queries",
+            types.SimpleNamespace(SavedQueriesService=lambda _: object()),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "searchat.services.dashboards",
+            types.SimpleNamespace(DashboardsService=lambda _: object()),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "searchat.services.analytics",
+            types.SimpleNamespace(SearchAnalyticsService=lambda _: object()),
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "searchat.knowledge_graph",
+            types.SimpleNamespace(KnowledgeGraphStore=_KGStore),
+        )
 
         deps.initialize_services()
 
@@ -357,7 +458,11 @@ class TestTriggerSearchEngineWarmup:
         import searchat.api.warmup as api_warmup
 
         called = {"count": 0}
-        monkeypatch.setattr(api_warmup, "start_background_warmup", lambda: called.__setitem__("count", called["count"] + 1))
+        monkeypatch.setattr(
+            api_warmup,
+            "start_background_warmup",
+            lambda: called.__setitem__("count", called["count"] + 1),
+        )
 
         deps.trigger_search_engine_warmup()
         assert called["count"] == 1
@@ -367,7 +472,9 @@ class TestTriggerSearchEngineWarmup:
 
 
 class TestResolveDatasetSearchDir:
-    def test_returns_main_dir_when_snapshot_none(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    def test_returns_main_dir_when_snapshot_none(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ):
         monkeypatch.setattr(deps, "_config", object())
         monkeypatch.setattr(deps, "_search_dir", tmp_path)
 
@@ -375,7 +482,9 @@ class TestResolveDatasetSearchDir:
         assert search_dir == tmp_path
         assert snap is None
 
-    def test_returns_main_dir_when_snapshot_empty(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    def test_returns_main_dir_when_snapshot_empty(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ):
         monkeypatch.setattr(deps, "_config", object())
         monkeypatch.setattr(deps, "_search_dir", tmp_path)
 
@@ -383,15 +492,23 @@ class TestResolveDatasetSearchDir:
         assert search_dir == tmp_path
         assert snap is None
 
-    def test_raises_when_snapshots_disabled(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-        monkeypatch.setattr(deps, "_config", SimpleNamespace(snapshots=SimpleNamespace(enabled=False)))
+    def test_raises_when_snapshots_disabled(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ):
+        monkeypatch.setattr(
+            deps, "_config", SimpleNamespace(snapshots=SimpleNamespace(enabled=False))
+        )
         monkeypatch.setattr(deps, "_search_dir", tmp_path)
 
         with pytest.raises(ValueError, match="Snapshot mode is disabled"):
             deps.resolve_dataset_search_dir("some_snap")
 
-    def test_raises_for_invalid_snapshot_name(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-        monkeypatch.setattr(deps, "_config", SimpleNamespace(snapshots=SimpleNamespace(enabled=True)))
+    def test_raises_for_invalid_snapshot_name(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ):
+        monkeypatch.setattr(
+            deps, "_config", SimpleNamespace(snapshots=SimpleNamespace(enabled=True))
+        )
         monkeypatch.setattr(deps, "_search_dir", tmp_path)
 
         with pytest.raises(ValueError, match="Invalid snapshot name"):
