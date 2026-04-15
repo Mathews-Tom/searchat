@@ -65,7 +65,7 @@ use_rich_console = true
 [llm]
 default_provider = "ollama"
 openai_model = "gpt-4.1-mini"
-ollama_model = "ollama/gemma3"
+ollama_model = "ollama/gemma4:latest"
 
 [chat]
 # Controls the non-streaming RAG endpoint and citation/source output.
