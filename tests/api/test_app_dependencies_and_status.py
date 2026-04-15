@@ -88,7 +88,9 @@ async def test_status_endpoint_returns_readiness_snapshot() -> None:
     }
 
 
-def test_status_features_endpoint_returns_flags(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_status_features_endpoint_returns_flags(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from searchat.api.app import app
 
     retrieval_service = Mock()
@@ -101,7 +103,9 @@ def test_status_features_endpoint_returns_flags(monkeypatch: pytest.MonkeyPatch)
     config = SimpleNamespace(
         analytics=SimpleNamespace(enabled=True),
         chat=SimpleNamespace(enable_rag=True, enable_citations=False),
-        export=SimpleNamespace(enable_ipynb=False, enable_pdf=True, enable_tech_docs=False),
+        export=SimpleNamespace(
+            enable_ipynb=False, enable_pdf=True, enable_tech_docs=False
+        ),
         dashboards=SimpleNamespace(enabled=True),
         snapshots=SimpleNamespace(enabled=True),
     )
@@ -118,11 +122,16 @@ def test_status_features_endpoint_returns_flags(monkeypatch: pytest.MonkeyPatch)
     assert data["export"]["enable_pdf"] is True
     assert data["snapshots"]["enabled"] is True
     assert data["retrieval"]["semantic_available"] is False
-    assert data["retrieval"]["semantic_reason"] == "Embedding model unavailable: all-MiniLM-L6-v2"
+    assert (
+        data["retrieval"]["semantic_reason"]
+        == "Embedding model unavailable: all-MiniLM-L6-v2"
+    )
 
 
 @pytest.mark.asyncio
-async def test_status_endpoint_includes_retrieval_capabilities(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_status_endpoint_includes_retrieval_capabilities(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from searchat.api.routers.status import get_status
     from searchat.api.readiness import get_readiness
 
@@ -163,7 +172,9 @@ def test_dependencies_getters_raise_when_not_initialized() -> None:
         deps.get_platform_manager()
 
 
-def test_start_background_warmup_no_event_loop_returns(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_start_background_warmup_no_event_loop_returns(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     import searchat.api.dependencies as deps
 
     deps._config = object()
@@ -173,7 +184,9 @@ def test_start_background_warmup_no_event_loop_returns(monkeypatch: pytest.Monke
     deps.start_background_warmup()
 
 
-def test_initialize_services_sets_error_on_exception(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_initialize_services_sets_error_on_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     import searchat.api.dependencies as deps
     from searchat.api.readiness import get_readiness
 
@@ -190,7 +203,9 @@ def test_initialize_services_sets_error_on_exception(monkeypatch: pytest.MonkeyP
     assert "services" in snap.errors
 
 
-def test_dependencies_indexer_is_created_lazily(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+def test_dependencies_indexer_is_created_lazily(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
     import searchat.api.dependencies as deps
 
     deps._config = object()
@@ -198,8 +213,11 @@ def test_dependencies_indexer_is_created_lazily(monkeypatch: pytest.MonkeyPatch,
 
     fake_indexer = object()
 
+    deps._duckdb_store = object()
+
     class FakeIndexer:
         def __new__(cls, *args, **kwargs):
+            assert kwargs["storage"] is deps._duckdb_store
             return fake_indexer
 
     monkeypatch.setattr("searchat.core.unified_indexer.UnifiedIndexer", FakeIndexer)
@@ -218,9 +236,13 @@ async def test_app_shutdown_stops_watcher(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setattr(api_app, "set_watcher", set_watcher_mock)
     monkeypatch.setattr(api_app, "initialize_services", MagicMock())
     monkeypatch.setattr(api_app, "start_background_warmup", MagicMock())
-    monkeypatch.setattr(api_app, "get_config", lambda: SimpleNamespace(logging=SimpleNamespace()))
+    monkeypatch.setattr(
+        api_app, "get_config", lambda: SimpleNamespace(logging=SimpleNamespace())
+    )
     monkeypatch.setattr(api_app, "setup_logging", MagicMock())
-    monkeypatch.setattr(api_app.asyncio, "create_task", lambda coro: (coro.close(), MagicMock())[1])
+    monkeypatch.setattr(
+        api_app.asyncio, "create_task", lambda coro: (coro.close(), MagicMock())[1]
+    )
 
     async with api_app.lifespan(MagicMock()):
         pass  # shutdown runs after yield
@@ -230,12 +252,16 @@ async def test_app_shutdown_stops_watcher(monkeypatch: pytest.MonkeyPatch) -> No
 
 
 @pytest.mark.asyncio
-async def test_app_lifespan_initializes_services_and_schedules_watcher(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_app_lifespan_initializes_services_and_schedules_watcher(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     api_app = _api_app_module()
 
     monkeypatch.setattr(api_app, "initialize_services", MagicMock())
     monkeypatch.setattr(api_app, "start_background_warmup", MagicMock())
-    monkeypatch.setattr(api_app, "get_config", lambda: SimpleNamespace(logging=SimpleNamespace()))
+    monkeypatch.setattr(
+        api_app, "get_config", lambda: SimpleNamespace(logging=SimpleNamespace())
+    )
     monkeypatch.setattr(api_app, "setup_logging", MagicMock())
     monkeypatch.setattr(api_app, "get_watcher", lambda: None)
 
@@ -259,7 +285,9 @@ async def test_app_lifespan_profile_logging(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setenv("SEARCHAT_PROFILE_STARTUP", "1")
     monkeypatch.setattr(api_app, "initialize_services", MagicMock())
     monkeypatch.setattr(api_app, "start_background_warmup", MagicMock())
-    monkeypatch.setattr(api_app, "get_config", lambda: SimpleNamespace(logging=SimpleNamespace()))
+    monkeypatch.setattr(
+        api_app, "get_config", lambda: SimpleNamespace(logging=SimpleNamespace())
+    )
     monkeypatch.setattr(api_app, "setup_logging", MagicMock())
     monkeypatch.setattr(api_app, "get_watcher", lambda: None)
 
@@ -280,6 +308,7 @@ async def test_app_lifespan_profile_logging(monkeypatch: pytest.MonkeyPatch) -> 
 async def test_app_root_and_conversation_page_serve_html() -> None:
     """Verify that / and /conversation/{id} both return HTML via Jinja2 templates."""
     from httpx import ASGITransport, AsyncClient
+
     api_app = _api_app_module()
 
     transport = ASGITransport(app=api_app.app)
@@ -301,7 +330,9 @@ async def test_favicon_ico_redirects_to_svg() -> None:
     assert resp.headers.get("location") == "/static/favicon.svg"
 
 
-def test_on_new_conversations_indexes_and_invalidates(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_on_new_conversations_indexes_and_invalidates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     api_app = _api_app_module()
     import searchat.api.dependencies as deps
 
@@ -319,11 +350,15 @@ def test_on_new_conversations_indexes_and_invalidates(monkeypatch: pytest.Monkey
     invalidate.assert_called_once()
 
 
-def test_on_new_conversations_uses_adaptive_when_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_on_new_conversations_uses_adaptive_when_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     api_app = _api_app_module()
     import searchat.api.dependencies as deps
 
-    fake_stats = SimpleNamespace(new_conversations=0, updated_conversations=1, update_time_seconds=0.01)
+    fake_stats = SimpleNamespace(
+        new_conversations=0, updated_conversations=1, update_time_seconds=0.01
+    )
 
     class FakeIndexing:
         enable_adaptive_indexing = True
@@ -349,7 +384,9 @@ def test_on_new_conversations_uses_adaptive_when_enabled(monkeypatch: pytest.Mon
     invalidate.assert_called_once()
 
 
-def test_on_new_conversations_handles_config_error(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_on_new_conversations_handles_config_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     api_app = _api_app_module()
     import searchat.api.dependencies as deps
 
@@ -376,11 +413,15 @@ def test_on_new_conversations_handles_config_error(monkeypatch: pytest.MonkeyPat
     invalidate.assert_called_once()
 
 
-def test_on_new_conversations_handles_indexer_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_on_new_conversations_handles_indexer_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     api_app = _api_app_module()
     import searchat.api.dependencies as deps
 
-    monkeypatch.setattr(api_app, "get_indexer", lambda: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.setattr(
+        api_app, "get_indexer", lambda: (_ for _ in ()).throw(RuntimeError("boom"))
+    )
     monkeypatch.setattr(deps, "get_or_create_search_engine", lambda: object())
 
     api_app.on_new_conversations(["a.jsonl"])
@@ -388,7 +429,9 @@ def test_on_new_conversations_handles_indexer_failure(monkeypatch: pytest.Monkey
 
 
 @pytest.mark.asyncio
-async def test_start_watcher_background_sets_readiness_running(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_start_watcher_background_sets_readiness_running(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     api_app = _api_app_module()
     from searchat.api.readiness import get_readiness
 
@@ -415,7 +458,9 @@ async def test_start_watcher_background_sets_readiness_running(monkeypatch: pyte
 
 
 @pytest.mark.asyncio
-async def test_start_watcher_background_sets_readiness_error_on_exception(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_start_watcher_background_sets_readiness_error_on_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     api_app = _api_app_module()
     from searchat.api.readiness import get_readiness
 
@@ -432,7 +477,9 @@ async def test_start_watcher_background_sets_readiness_error_on_exception(monkey
     assert "watcher" in snap.errors
 
 
-def test_app_main_invalid_port_prints_and_returns(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_app_main_invalid_port_prints_and_returns(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     api_app = _api_app_module()
 
     monkeypatch.setenv(api_app.ENV_PORT, "not-a-number")
@@ -441,7 +488,9 @@ def test_app_main_invalid_port_prints_and_returns(monkeypatch: pytest.MonkeyPatc
     assert "Invalid" in out or "invalid" in out
 
 
-def test_app_main_invalid_port_out_of_range(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_app_main_invalid_port_out_of_range(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     api_app = _api_app_module()
 
     monkeypatch.setenv(api_app.ENV_PORT, "70000")
@@ -450,7 +499,9 @@ def test_app_main_invalid_port_out_of_range(monkeypatch: pytest.MonkeyPatch, cap
     assert "Invalid" in out or "invalid" in out
 
 
-def test_app_main_scans_for_available_port_and_calls_uvicorn(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_app_main_scans_for_available_port_and_calls_uvicorn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     api_app = _api_app_module()
 
     monkeypatch.delenv(api_app.ENV_PORT, raising=False)
@@ -471,7 +522,9 @@ def test_app_main_scans_for_available_port_and_calls_uvicorn(monkeypatch: pytest
 
     import types
 
-    fake_socket_mod = types.SimpleNamespace(AF_INET=0, SOCK_STREAM=0, socket=lambda *a, **k: DummySocket())
+    fake_socket_mod = types.SimpleNamespace(
+        AF_INET=0, SOCK_STREAM=0, socket=lambda *a, **k: DummySocket()
+    )
     fake_uvicorn = types.SimpleNamespace(run=MagicMock())
 
     monkeypatch.setitem(os.environ, api_app.ENV_HOST, "127.0.0.1")
@@ -484,7 +537,9 @@ def test_app_main_scans_for_available_port_and_calls_uvicorn(monkeypatch: pytest
     fake_uvicorn.run.assert_called_once()
 
 
-def test_app_main_port_scan_exhausted(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_app_main_port_scan_exhausted(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     api_app = _api_app_module()
 
     monkeypatch.delenv(api_app.ENV_PORT, raising=False)
@@ -503,7 +558,9 @@ def test_app_main_port_scan_exhausted(monkeypatch: pytest.MonkeyPatch, capsys: p
 
     import types
 
-    fake_socket_mod = types.SimpleNamespace(AF_INET=0, SOCK_STREAM=0, socket=lambda *a, **k: FailingSocket())
+    fake_socket_mod = types.SimpleNamespace(
+        AF_INET=0, SOCK_STREAM=0, socket=lambda *a, **k: FailingSocket()
+    )
     fake_uvicorn = types.SimpleNamespace(run=MagicMock())
 
     monkeypatch.setitem(sys.modules, "socket", fake_socket_mod)
@@ -584,7 +641,10 @@ def test_chat_streams_response_when_ready(monkeypatch: pytest.MonkeyPatch) -> No
 
     monkeypatch.setattr("searchat.api.routers.chat.get_config", lambda: object())
     monkeypatch.setattr("searchat.api.routers.chat.get_search_engine", lambda: object())
-    monkeypatch.setattr("searchat.api.routers.chat.generate_answer_stream", lambda **_kwargs: ("test-session-id", _fake_stream()))
+    monkeypatch.setattr(
+        "searchat.api.routers.chat.generate_answer_stream",
+        lambda **_kwargs: ("test-session-id", _fake_stream()),
+    )
 
     client = TestClient(app)
     response = client.post(
@@ -615,7 +675,9 @@ def test_chat_snapshot_mode_returns_403() -> None:
     assert response.json()["detail"] == "Chat is disabled in snapshot mode"
 
 
-def test_chat_returns_400_on_generate_value_error(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_chat_returns_400_on_generate_value_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from searchat.api.app import app
     from searchat.api.readiness import get_readiness
 
@@ -637,7 +699,9 @@ def test_chat_returns_400_on_generate_value_error(monkeypatch: pytest.MonkeyPatc
     assert resp.json()["detail"] == "Invalid chat request."
 
 
-def test_chat_returns_400_on_stable_generate_value_error(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_chat_returns_400_on_stable_generate_value_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from searchat.api.app import app
     from searchat.api.readiness import get_readiness
 
@@ -650,16 +714,23 @@ def test_chat_returns_400_on_stable_generate_value_error(monkeypatch: pytest.Mon
     monkeypatch.setattr("searchat.api.routers.chat.get_search_engine", lambda: object())
     monkeypatch.setattr(
         "searchat.api.routers.chat.generate_answer_stream",
-        lambda **_kwargs: (_ for _ in ()).throw(ValueError("model_name must be provided or configured for this provider.")),
+        lambda **_kwargs: (_ for _ in ()).throw(
+            ValueError("model_name must be provided or configured for this provider.")
+        ),
     )
 
     client = TestClient(app)
     resp = client.post("/api/chat", json={"query": "hello", "model_provider": "openai"})
     assert resp.status_code == 400
-    assert resp.json()["detail"] == "model_name must be provided or configured for this provider."
+    assert (
+        resp.json()["detail"]
+        == "model_name must be provided or configured for this provider."
+    )
 
 
-def test_chat_returns_503_on_generate_llm_error(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_chat_returns_503_on_generate_llm_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from searchat.api.app import app
     from searchat.api.readiness import get_readiness
     from searchat.services.llm_service import LLMServiceError
@@ -682,7 +753,9 @@ def test_chat_returns_503_on_generate_llm_error(monkeypatch: pytest.MonkeyPatch)
     assert resp.json()["detail"] == "Generation service unavailable."
 
 
-def test_chat_returns_503_on_stable_generate_llm_error(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_chat_returns_503_on_stable_generate_llm_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from searchat.api.app import app
     from searchat.api.readiness import get_readiness
     from searchat.services.llm_service import LLMServiceError
@@ -696,7 +769,9 @@ def test_chat_returns_503_on_stable_generate_llm_error(monkeypatch: pytest.Monke
     monkeypatch.setattr("searchat.api.routers.chat.get_search_engine", lambda: object())
     monkeypatch.setattr(
         "searchat.api.routers.chat.generate_answer_stream",
-        lambda **_kwargs: (_ for _ in ()).throw(LLMServiceError("Ollama provider unreachable or returned an error.")),
+        lambda **_kwargs: (_ for _ in ()).throw(
+            LLMServiceError("Ollama provider unreachable or returned an error.")
+        ),
     )
 
     client = TestClient(app)
@@ -705,7 +780,9 @@ def test_chat_returns_503_on_stable_generate_llm_error(monkeypatch: pytest.Monke
     assert resp.json()["detail"] == "Ollama provider unreachable or returned an error."
 
 
-def test_chat_generation_outage_returns_archival_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_chat_generation_outage_returns_archival_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from searchat.api.app import app
     from searchat.api.readiness import get_readiness
     from searchat.models import SearchResult, SearchResults
@@ -747,19 +824,29 @@ def test_chat_generation_outage_returns_archival_fallback(monkeypatch: pytest.Mo
         )
     )
     monkeypatch.setattr("searchat.api.routers.chat.get_config", lambda: config)
-    monkeypatch.setattr("searchat.api.routers.chat.get_search_engine", lambda: retrieval_service)
+    monkeypatch.setattr(
+        "searchat.api.routers.chat.get_search_engine", lambda: retrieval_service
+    )
 
-    with patch("searchat.services.chat_service.build_generation_service") as mock_builder:
-        mock_builder.return_value.stream_completion.side_effect = LLMServiceError("nope")
+    with patch(
+        "searchat.services.chat_service.build_generation_service"
+    ) as mock_builder:
+        mock_builder.return_value.stream_completion.side_effect = LLMServiceError(
+            "nope"
+        )
 
         client = TestClient(app)
-        resp = client.post("/api/chat", json={"query": "hello", "model_provider": "openai"})
+        resp = client.post(
+            "/api/chat", json={"query": "hello", "model_provider": "openai"}
+        )
 
     assert resp.status_code == 200
     assert resp.text.startswith("Generation is temporarily unavailable.")
 
 
-def test_chat_returns_500_on_generate_unexpected_error(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_chat_returns_500_on_generate_unexpected_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from searchat.api.app import app
     from searchat.api.readiness import get_readiness
 
@@ -798,7 +885,9 @@ def test_resolve_dataset_search_dir_snapshot_mode_disabled(tmp_path) -> None:
 
     deps._search_dir = tmp_path
     deps._config = SimpleNamespace(snapshots=SimpleNamespace(enabled=False))
-    deps._backup_manager = SimpleNamespace(backup_dir=tmp_path, validate_backup=lambda _p: True)
+    deps._backup_manager = SimpleNamespace(
+        backup_dir=tmp_path, validate_backup=lambda _p: True
+    )
 
     try:
         deps.resolve_dataset_search_dir("backup_20250101_000000")
@@ -812,7 +901,9 @@ def test_resolve_dataset_search_dir_invalid_name(tmp_path) -> None:
 
     deps._search_dir = tmp_path
     deps._config = SimpleNamespace(snapshots=SimpleNamespace(enabled=True))
-    deps._backup_manager = SimpleNamespace(backup_dir=tmp_path, validate_backup=lambda _p: True)
+    deps._backup_manager = SimpleNamespace(
+        backup_dir=tmp_path, validate_backup=lambda _p: True
+    )
 
     try:
         deps.resolve_dataset_search_dir("../nope")
@@ -832,7 +923,9 @@ def test_resolve_dataset_search_dir_invalid_snapshot_path_symlink(tmp_path) -> N
 
     deps._search_dir = tmp_path
     deps._config = SimpleNamespace(snapshots=SimpleNamespace(enabled=True))
-    deps._backup_manager = SimpleNamespace(backup_dir=backup_root, validate_backup=lambda _p: True)
+    deps._backup_manager = SimpleNamespace(
+        backup_dir=backup_root, validate_backup=lambda _p: True
+    )
 
     try:
         deps.resolve_dataset_search_dir("snap")
@@ -849,7 +942,9 @@ def test_resolve_dataset_search_dir_not_found(tmp_path) -> None:
 
     deps._search_dir = tmp_path
     deps._config = SimpleNamespace(snapshots=SimpleNamespace(enabled=True))
-    deps._backup_manager = SimpleNamespace(backup_dir=backup_root, validate_backup=lambda _p: True)
+    deps._backup_manager = SimpleNamespace(
+        backup_dir=backup_root, validate_backup=lambda _p: True
+    )
 
     try:
         deps.resolve_dataset_search_dir("missing")
@@ -867,7 +962,9 @@ def test_resolve_dataset_search_dir_validation_failed(tmp_path) -> None:
 
     deps._search_dir = tmp_path
     deps._config = SimpleNamespace(snapshots=SimpleNamespace(enabled=True))
-    deps._backup_manager = SimpleNamespace(backup_dir=backup_root, validate_backup=lambda _p: False)
+    deps._backup_manager = SimpleNamespace(
+        backup_dir=backup_root, validate_backup=lambda _p: False
+    )
 
     try:
         deps.resolve_dataset_search_dir("snap")
@@ -886,7 +983,9 @@ def test_resolve_dataset_search_dir_returns_snapshot_dir(tmp_path) -> None:
 
     deps._search_dir = tmp_path
     deps._config = SimpleNamespace(snapshots=SimpleNamespace(enabled=True))
-    deps._backup_manager = SimpleNamespace(backup_dir=backup_root, validate_backup=lambda _p: True)
+    deps._backup_manager = SimpleNamespace(
+        backup_dir=backup_root, validate_backup=lambda _p: True
+    )
 
     resolved, name = deps.resolve_dataset_search_dir("snap")
     assert resolved == snapshot_dir
@@ -917,7 +1016,9 @@ def test_resolve_dataset_search_dir_accepts_legacy_browsable_snapshot(tmp_path) 
     assert name == "legacy"
 
 
-def test_resolve_dataset_search_dir_fixture_snapshots_follow_contracts(tmp_path) -> None:
+def test_resolve_dataset_search_dir_fixture_snapshots_follow_contracts(
+    tmp_path,
+) -> None:
     import shutil
     import searchat.api.dependencies as deps
     from searchat.services.backup import BackupManager
@@ -934,7 +1035,9 @@ def test_resolve_dataset_search_dir_fixture_snapshots_follow_contracts(tmp_path)
     assert resolved == backup_root / "repairable_manifest_base"
     assert name == "repairable_manifest_base"
 
-    resolved_mixed, name_mixed = deps.resolve_dataset_search_dir("mixed_version_metadata_full")
+    resolved_mixed, name_mixed = deps.resolve_dataset_search_dir(
+        "mixed_version_metadata_full"
+    )
     assert resolved_mixed == backup_root / "mixed_version_metadata_full"
     assert name_mixed == "mixed_version_metadata_full"
 
@@ -943,7 +1046,9 @@ def test_resolve_dataset_search_dir_fixture_snapshots_follow_contracts(tmp_path)
 
 
 @pytest.mark.asyncio
-async def test_start_background_warmup_schedules_once(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+async def test_start_background_warmup_schedules_once(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
     import searchat.api.dependencies as deps
     import searchat.api.warmup as api_warmup
 
@@ -977,7 +1082,9 @@ async def test_start_background_warmup_schedules_once(monkeypatch: pytest.Monkey
         pass
 
 
-def test_warmup_duckdb_parquet_sets_error(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+def test_warmup_duckdb_parquet_sets_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
     import searchat.api.warmup as api_warmup
     from searchat.api.readiness import get_readiness
 
@@ -995,7 +1102,9 @@ def test_warmup_duckdb_parquet_sets_error(monkeypatch: pytest.MonkeyPatch, tmp_p
     assert snap.components["parquet"] == "error"
 
 
-def test_warmup_semantic_components_sets_error_only_for_not_ready(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_warmup_semantic_components_sets_error_only_for_not_ready(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     import searchat.api.warmup as api_warmup
     from searchat.api.readiness import get_readiness
 
@@ -1009,7 +1118,9 @@ def test_warmup_semantic_components_sets_error_only_for_not_ready(monkeypatch: p
         def ensure_embedder_loaded(self):
             raise AssertionError("should not be called")
 
-    monkeypatch.setattr("searchat.api.dependencies._ensure_search_engine", lambda: FakeEngine())
+    monkeypatch.setattr(
+        "searchat.api.dependencies._ensure_search_engine", lambda: FakeEngine()
+    )
 
     readiness = get_readiness()
     readiness.set_component("metadata", "idle")
@@ -1023,7 +1134,9 @@ def test_warmup_semantic_components_sets_error_only_for_not_ready(monkeypatch: p
     assert snap.components["embedder"] == "error"
 
 
-def test_get_duckdb_store_for_caches_per_dataset(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+def test_get_duckdb_store_for_caches_per_dataset(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
     import searchat.api.dependencies as deps
     import searchat.services.storage_service as storage_mod
 
@@ -1062,7 +1175,9 @@ def test_get_duckdb_store_for_caches_per_dataset(monkeypatch: pytest.MonkeyPatch
     assert created == [other]
 
 
-def test_get_or_create_search_engine_for_caches_per_dataset(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+def test_get_or_create_search_engine_for_caches_per_dataset(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
     import searchat.api.dependencies as deps
     import searchat.services.retrieval_service as retrieval_mod
 
@@ -1081,7 +1196,11 @@ def test_get_or_create_search_engine_for_caches_per_dataset(monkeypatch: pytest.
         def __init__(self, search_dir, _config):
             created.append(search_dir)
 
-    monkeypatch.setattr(retrieval_mod, "build_retrieval_service", lambda search_dir, *, config: FakeEngine(search_dir, config))
+    monkeypatch.setattr(
+        retrieval_mod,
+        "build_retrieval_service",
+        lambda search_dir, *, config: FakeEngine(search_dir, config),
+    )
 
     assert deps.get_or_create_search_engine_for(base) is deps._search_engine
 
@@ -1091,7 +1210,9 @@ def test_get_or_create_search_engine_for_caches_per_dataset(monkeypatch: pytest.
     assert created == [other]
 
 
-def test_ensure_search_engine_sets_readiness_error_on_failure(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+def test_ensure_search_engine_sets_readiness_error_on_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
     import searchat.api.dependencies as deps
     from searchat.api.readiness import get_readiness
     import searchat.services.retrieval_service as retrieval_mod
@@ -1104,7 +1225,11 @@ def test_ensure_search_engine_sets_readiness_error_on_failure(monkeypatch: pytes
         def __init__(self, *_a, **_k):
             raise RuntimeError("boom")
 
-    monkeypatch.setattr(retrieval_mod, "build_retrieval_service", lambda search_dir, *, config: BoomEngine(search_dir, config))
+    monkeypatch.setattr(
+        retrieval_mod,
+        "build_retrieval_service",
+        lambda search_dir, *, config: BoomEngine(search_dir, config),
+    )
 
     with pytest.raises(RuntimeError):
         deps.get_or_create_search_engine()
@@ -1112,7 +1237,9 @@ def test_ensure_search_engine_sets_readiness_error_on_failure(monkeypatch: pytes
     assert get_readiness().snapshot().components["search_engine"] == "error"
 
 
-def test_ensure_indexer_sets_readiness_error_on_failure(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+def test_ensure_indexer_sets_readiness_error_on_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
     import searchat.api.dependencies as deps
     from searchat.api.readiness import get_readiness
     import searchat.core.unified_indexer as indexer_mod

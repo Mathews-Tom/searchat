@@ -5,6 +5,7 @@ that owns conversations, messages, exchanges, embeddings, file state,
 and code blocks. Thread safety: one shared connection, fresh cursors
 per read, thread-local cursors for writes.
 """
+
 from __future__ import annotations
 
 import logging
@@ -18,7 +19,6 @@ import duckdb
 
 from searchat.storage.schema import (
     EMBEDDING_DIM,
-    create_fts_indexes,
     create_hnsw_indexes,
     ensure_tables,
     install_fts,
@@ -80,9 +80,7 @@ class UnifiedStorage:
         if self._vss_available and not read_only:
             # Enable HNSW persistence for on-disk databases
             try:
-                self._conn.execute(
-                    "SET hnsw_enable_experimental_persistence = true"
-                )
+                self._conn.execute("SET hnsw_enable_experimental_persistence = true")
             except duckdb.Error:
                 pass
             create_hnsw_indexes(
@@ -90,8 +88,6 @@ class UnifiedStorage:
                 ef_construction=hnsw_ef_construction,
                 m=hnsw_m,
             )
-        if self._fts_available and not read_only:
-            create_fts_indexes(self._conn)
 
     @property
     def connection(self) -> duckdb.DuckDBPyConnection:
@@ -158,7 +154,9 @@ class UnifiedStorage:
                     "project_id": pid,
                     "conversation_count": int(cc),
                     "message_count": int(mc),
-                    "updated_at": ua.isoformat() if isinstance(ua, datetime) else str(ua),
+                    "updated_at": ua.isoformat()
+                    if isinstance(ua, datetime)
+                    else str(ua),
                 }
                 for pid, cc, mc, ua in rows
             ]
@@ -213,8 +211,14 @@ class UnifiedStorage:
         try:
             rows = cur.execute(query, params).fetchall()
             columns = [
-                "conversation_id", "project_id", "title", "created_at",
-                "updated_at", "message_count", "file_path", "full_text",
+                "conversation_id",
+                "project_id",
+                "title",
+                "created_at",
+                "updated_at",
+                "message_count",
+                "file_path",
+                "full_text",
             ]
             return [dict(zip(columns, row)) for row in rows]
         finally:
@@ -275,8 +279,13 @@ class UnifiedStorage:
             if row is None:
                 return None
             columns = [
-                "conversation_id", "project_id", "title", "created_at",
-                "updated_at", "message_count", "file_path",
+                "conversation_id",
+                "project_id",
+                "title",
+                "created_at",
+                "updated_at",
+                "message_count",
+                "file_path",
             ]
             return dict(zip(columns, row))
         finally:
@@ -372,9 +381,16 @@ class UnifiedStorage:
             "files_mentioned, git_branch) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
-                conversation_id, project_id, file_path, title,
-                created_at, updated_at, message_count, full_text,
-                file_hash, indexed_at,
+                conversation_id,
+                project_id,
+                file_path,
+                title,
+                created_at,
+                updated_at,
+                message_count,
+                full_text,
+                file_hash,
+                indexed_at,
                 json.dumps(files_mentioned) if files_mentioned else None,
                 git_branch,
             ],
@@ -434,8 +450,15 @@ class UnifiedStorage:
             "ON CONFLICT (exchange_id) DO UPDATE SET "
             "exchange_text = EXCLUDED.exchange_text, "
             "created_at = EXCLUDED.created_at",
-            [exchange_id, conversation_id, project_id, ply_start,
-             ply_end, exchange_text, created_at],
+            [
+                exchange_id,
+                conversation_id,
+                project_id,
+                ply_start,
+                ply_end,
+                exchange_text,
+                created_at,
+            ],
         )
 
     def upsert_embedding(
@@ -474,8 +497,13 @@ class UnifiedStorage:
             "status, file_size, file_hash, updated_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             [
-                file_path, conversation_id, project_id, connector_name,
-                status, file_size, file_hash,
+                file_path,
+                conversation_id,
+                project_id,
+                connector_name,
+                status,
+                file_size,
+                file_hash,
                 updated_at or datetime.now(),
             ],
         )
@@ -516,14 +544,26 @@ class UnifiedStorage:
             "functions, classes, imports, code, code_hash, lines) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
-                conversation_id, project_id, connector, file_path, title,
-                conversation_created_at, conversation_updated_at,
-                message_index, block_index, role, message_timestamp,
-                fence_language, language, language_source,
+                conversation_id,
+                project_id,
+                connector,
+                file_path,
+                title,
+                conversation_created_at,
+                conversation_updated_at,
+                message_index,
+                block_index,
+                role,
+                message_timestamp,
+                fence_language,
+                language,
+                language_source,
                 json.dumps(functions) if functions else None,
                 json.dumps(classes) if classes else None,
                 json.dumps(imports) if imports else None,
-                code, code_hash, lines,
+                code,
+                code_hash,
+                lines,
             ],
         )
 
@@ -545,9 +585,7 @@ class UnifiedStorage:
     def get_embedding_count(self) -> int:
         cur = self._read_cursor()
         try:
-            row = cur.execute(
-                "SELECT COUNT(*) FROM verbatim_embeddings"
-            ).fetchone()
+            row = cur.execute("SELECT COUNT(*) FROM verbatim_embeddings").fetchone()
             return int(row[0]) if row else 0
         finally:
             cur.close()

@@ -77,7 +77,11 @@ def initialize_services():
         from searchat.services.analytics import SearchAnalyticsService
         from searchat.services.storage_service import build_storage_service
 
-        _duckdb_store = build_storage_service(_search_dir, config=_config)
+        _duckdb_store = build_storage_service(
+            _search_dir,
+            config=_config,
+            read_only=False,
+        )
 
         if _config.expertise.enabled:
             from searchat.expertise.store import ExpertiseStore
@@ -433,7 +437,11 @@ def _ensure_indexer():
         try:
             from searchat.core.unified_indexer import UnifiedIndexer
 
-            _indexer = UnifiedIndexer(_search_dir, _config)
+            _indexer = UnifiedIndexer(
+                _search_dir,
+                _config,
+                storage=get_duckdb_store(),
+            )
             readiness.set_component("indexer", "ready")
         except Exception as e:
             readiness.set_component("indexer", "error", error=str(e))
