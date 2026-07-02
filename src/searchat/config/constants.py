@@ -336,6 +336,17 @@ ENV_RERANKING_TOP_K = "SEARCHAT_RERANKING_TOP_K"
 ENV_CORS_ORIGINS = "SEARCHAT_CORS_ORIGINS"
 
 # ============================================================================
+# Compaction Defaults (M3 -- searchat compact)
+# ============================================================================
+
+DEFAULT_COMPACTION_AUTO_TRIGGER_RATIO = 3.0
+DEFAULT_COMPACTION_MIN_INTERVAL_DAYS = 7
+
+# Environment variable names for compaction
+ENV_COMPACTION_AUTO_TRIGGER_RATIO = "SEARCHAT_COMPACTION_AUTO_TRIGGER_RATIO"
+ENV_COMPACTION_MIN_INTERVAL_DAYS = "SEARCHAT_COMPACTION_MIN_INTERVAL_DAYS"
+
+# ============================================================================
 # Query Expansion / Synonyms
 # ============================================================================
 

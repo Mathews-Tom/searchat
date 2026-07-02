@@ -157,6 +157,11 @@ from .constants import (
     ENV_DISTILLATION_MAX_PLY_LENGTH,
     ENV_DISTILLATION_MIN_EXCHANGE_CHARS,
     ENV_PALACE_ENABLED,
+    # Compaction
+    DEFAULT_COMPACTION_AUTO_TRIGGER_RATIO,
+    DEFAULT_COMPACTION_MIN_INTERVAL_DAYS,
+    ENV_COMPACTION_AUTO_TRIGGER_RATIO,
+    ENV_COMPACTION_MIN_INTERVAL_DAYS,
 )
 
 if TYPE_CHECKING:
@@ -692,6 +697,26 @@ class RerankingConfig:
 
 
 @dataclass
+class CompactionConfig:
+    """Auto-trigger thresholds for `searchat compact` (M3)."""
+    auto_trigger_ratio: float
+    min_interval_days: int
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "CompactionConfig":
+        return cls(
+            auto_trigger_ratio=_get_env_float(
+                ENV_COMPACTION_AUTO_TRIGGER_RATIO,
+                float(data.get("auto_trigger_ratio", DEFAULT_COMPACTION_AUTO_TRIGGER_RATIO)),
+            ),
+            min_interval_days=_get_env_int(
+                ENV_COMPACTION_MIN_INTERVAL_DAYS,
+                int(data.get("min_interval_days", DEFAULT_COMPACTION_MIN_INTERVAL_DAYS)),
+            ),
+        )
+
+
+@dataclass
 class ExpertiseConfig:
     enabled: bool
     auto_extract: bool
@@ -912,6 +937,7 @@ class Config:
     snapshots: SnapshotsConfig
     daemon: DaemonConfig
     reranking: RerankingConfig
+    compaction: CompactionConfig
     storage: StorageConfig
     server: ServerConfig
     expertise: ExpertiseConfig
@@ -996,6 +1022,7 @@ class Config:
             snapshots=SnapshotsConfig.from_dict(data.get("snapshots", {})),
             daemon=DaemonConfig.from_dict(data.get("daemon", {})),
             reranking=RerankingConfig.from_dict(data.get("reranking", {})),
+            compaction=CompactionConfig.from_dict(data.get("compaction", {})),
             storage=StorageConfig.from_dict(data.get("storage", {})),
             server=ServerConfig.from_dict(data.get("server", {})),
             expertise=ExpertiseConfig.from_dict(data.get("expertise", {})),
