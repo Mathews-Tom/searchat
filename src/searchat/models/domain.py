@@ -98,6 +98,15 @@ class UpdateStats:
 
 
 @dataclass
+class RebuildStats:
+    """Statistics about a rebuild_derived run (exchanges/embeddings/FTS/HNSW)."""
+    conversations_processed: int
+    exchanges_rebuilt: int
+    embeddings_rebuilt: int
+    rebuild_time_seconds: float
+    forced: bool
+
+@dataclass
 class DateFilter:
     """Date range filter for search queries."""
     from_date: datetime | None

@@ -589,3 +589,43 @@ class UnifiedStorage:
             return int(row[0]) if row else 0
         finally:
             cur.close()
+
+    def list_conversation_ids(self) -> list[str]:
+        """Return every conversation_id in the store, ordered deterministically."""
+        cur = self._read_cursor()
+        try:
+            rows = cur.execute(
+                "SELECT conversation_id FROM conversations ORDER BY conversation_id"
+            ).fetchall()
+            return [r[0] for r in rows]
+        finally:
+            cur.close()
+
+    def list_conversation_ids_without_exchanges(self) -> list[str]:
+        """Return conversation_ids that currently have zero exchange rows."""
+        cur = self._read_cursor()
+        try:
+            rows = cur.execute(
+                "SELECT c.conversation_id FROM conversations c "
+                "WHERE NOT EXISTS ("
+                "  SELECT 1 FROM exchanges e WHERE e.conversation_id = c.conversation_id"
+                ") ORDER BY c.conversation_id"
+            ).fetchall()
+            return [r[0] for r in rows]
+        finally:
+            cur.close()
+
+    def clear_exchanges(self) -> None:
+        """Delete every row from exchanges. Used only for a forced full rebuild."""
+        cur = self._write_cursor()
+        cur.execute("DELETE FROM exchanges")
+
+    def clear_embeddings(self) -> None:
+        """Delete every row from verbatim_embeddings. Used only for a forced full rebuild."""
+        cur = self._write_cursor()
+        cur.execute("DELETE FROM verbatim_embeddings")
+
+    def drop_hnsw_index(self) -> None:
+        """Drop the verbatim_hnsw index so a forced rebuild recreates it from scratch."""
+        cur = self._write_cursor()
+        cur.execute("DROP INDEX IF EXISTS verbatim_hnsw")
