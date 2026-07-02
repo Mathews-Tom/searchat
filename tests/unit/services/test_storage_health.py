@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import shutil
+from datetime import datetime, timedelta
 from pathlib import Path
+from unittest.mock import Mock
 
 import duckdb
 import pytest
@@ -10,8 +12,12 @@ import pytest
 from searchat.services.backup import BackupManager
 from searchat.services.storage_contracts import BACKUP_MANIFEST_FILE
 from searchat.services.storage_health import (
+    HarnessSourceSize,
     audit_backup_redundancy,
+    build_storage_doctor_report,
     compute_bloat_ratio,
+    estimate_harness_source_sizes,
+    estimate_last_backup_age,
     estimate_live_data_size,
     inspect_database_size,
     inspect_storage_health,
@@ -335,3 +341,104 @@ def test_audit_backup_redundancy_flags_modified_live_file_as_not_redundant(temp_
 
 def test_audit_backup_redundancy_missing_backup_dir_returns_empty(tmp_path: Path) -> None:
     assert audit_backup_redundancy(tmp_path / "no_backups", tmp_path) == []
+
+
+# ---------------------------------------------------------------------------
+# Storage doctor diagnostics: harness sizes, backup age, and full report
+# ---------------------------------------------------------------------------
+
+
+def test_estimate_harness_source_sizes_sums_discovered_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    file_a = tmp_path / "a.jsonl"
+    file_a.write_bytes(b"x" * 100)
+    file_b = tmp_path / "b.jsonl"
+    file_b.write_bytes(b"y" * 250)
+
+    fake_connector = Mock()
+    fake_connector.name = "fake_harness"
+    fake_connector.discover_files.return_value = [file_a, file_b]
+
+    monkeypatch.setattr(
+        "searchat.services.storage_health.get_connectors", lambda: (fake_connector,)
+    )
+
+    sizes = estimate_harness_source_sizes(Mock())
+
+    assert sizes == [HarnessSourceSize(connector="fake_harness", file_count=2, total_size_bytes=350)]
+
+
+def test_estimate_harness_source_sizes_skips_failing_connector(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    broken_connector = Mock()
+    broken_connector.name = "broken"
+    broken_connector.discover_files.side_effect = RuntimeError("harness unavailable")
+
+    monkeypatch.setattr(
+        "searchat.services.storage_health.get_connectors", lambda: (broken_connector,)
+    )
+
+    assert estimate_harness_source_sizes(Mock()) == []
+
+
+def test_estimate_last_backup_age_returns_none_when_no_backups(temp_search_dir: Path) -> None:
+    assert estimate_last_backup_age(temp_search_dir) == (None, None)
+
+
+def test_estimate_last_backup_age_computes_seconds_since_latest(temp_search_dir: Path) -> None:
+    manager = BackupManager(temp_search_dir)
+    live_file = temp_search_dir / "data" / "conversations" / "conv.parquet"
+    live_file.parent.mkdir(parents=True, exist_ok=True)
+    live_file.write_bytes(b"PAR1")
+    manager.create_backup(backup_name="snap1")
+
+    backed_at = datetime.strptime(manager.list_backups()[0].timestamp, "%Y%m%d_%H%M%S")
+
+    last_at, age_seconds = estimate_last_backup_age(temp_search_dir, now=backed_at + timedelta(hours=2))
+
+    assert last_at == backed_at.isoformat()
+    assert age_seconds == pytest.approx(7200, abs=1)
+
+
+def test_build_storage_doctor_report_assembles_all_sections(
+    temp_search_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    data_root = temp_search_dir / "data"
+    (data_root / "conversations").mkdir(parents=True, exist_ok=True)
+    (data_root / "conversations" / "conv.parquet").write_bytes(b"PAR1conv")
+
+    db_path = data_root / "searchat.duckdb"
+    con = duckdb.connect(str(db_path))
+    con.execute("CREATE TABLE conversations(id INTEGER)")
+    con.execute("INSERT INTO conversations SELECT * FROM range(10)")
+    con.execute("CHECKPOINT")
+    con.close()
+
+    manager = BackupManager(temp_search_dir)
+    manager.create_backup(backup_name="snap1")
+
+    monkeypatch.setattr("searchat.services.storage_health.get_connectors", lambda: ())
+
+    config = Mock()
+    config.storage.resolve_duckdb_path.return_value = db_path
+
+    report = build_storage_doctor_report(temp_search_dir, config)
+
+    assert report.db_path == db_path
+    assert report.db_exists is True
+    assert report.total_bytes > 0
+    assert report.live_bytes > 0
+    assert report.bloat_ratio >= 1.0
+    assert len(report.backups) == 1
+    assert report.backups[0].redundant is True
+    assert report.harness_sources == ()
+    assert report.last_backup_at is not None
+    assert report.last_backup_age_seconds is not None
+    assert report.last_backup_age_seconds >= 0
+
+    payload = report.to_dict()
+    assert payload["db_exists"] is True
+    assert isinstance(payload["backups"], list)
+    assert isinstance(payload["harness_sources"], list)

@@ -4,10 +4,14 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import duckdb
 
+from searchat.config import Config
+from searchat.core.connectors.registry import get_connectors
 from searchat.services.backup import BackupManager, _sha256_file
 from searchat.services.storage_contracts import (
     BACKUP_MANIFEST_FILE,
@@ -478,3 +482,129 @@ def audit_backup_redundancy(backup_dir: Path, data_dir: Path) -> list[BackupAudi
         )
 
     return audits
+
+
+@dataclass(frozen=True)
+class HarnessSourceSize:
+    """On-disk size of a registered connector's discovered conversation files."""
+
+    connector: str
+    file_count: int
+    total_size_bytes: int
+
+
+def estimate_harness_source_sizes(config: Config) -> list[HarnessSourceSize]:
+    """Sum discovered source-file sizes per registered connector.
+
+    A harness whose connector is not yet registered (e.g. omp before M5)
+    simply does not appear in the result; a connector whose discovery raises
+    is skipped so one bad harness never fails the whole report.
+    """
+    results: list[HarnessSourceSize] = []
+    for connector in get_connectors():
+        try:
+            files = connector.discover_files(config)
+        except Exception:
+            continue
+        total_size = 0
+        file_count = 0
+        for file_path in files:
+            try:
+                total_size += file_path.stat().st_size
+            except OSError:
+                continue
+            file_count += 1
+        results.append(
+            HarnessSourceSize(connector=connector.name, file_count=file_count, total_size_bytes=total_size)
+        )
+    return results
+
+
+def estimate_last_backup_age(
+    search_dir: Path,
+    *,
+    now: datetime | None = None,
+) -> tuple[str | None, float | None]:
+    """Return (ISO timestamp, age in seconds) of the most recent backup, or (None, None)."""
+    backups = BackupManager(search_dir).list_backups()
+    if not backups:
+        return None, None
+    try:
+        backed_at = datetime.strptime(backups[0].timestamp, "%Y%m%d_%H%M%S")
+    except ValueError:
+        return None, None
+    current = now or datetime.now()
+    return backed_at.isoformat(), (current - backed_at).total_seconds()
+
+
+@dataclass(frozen=True)
+class StorageDoctorReport:
+    """Unified, read-only storage diagnostics consumed by `searchat doctor` and
+    the `/api/health` storage section."""
+
+    search_dir: Path
+    db_path: Path
+    db_exists: bool
+    total_bytes: int
+    live_bytes: int
+    wal_bytes: int
+    bloat_ratio: float
+    backups: tuple[BackupAudit, ...]
+    harness_sources: tuple[HarnessSourceSize, ...]
+    last_backup_at: str | None
+    last_backup_age_seconds: float | None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "search_dir": str(self.search_dir),
+            "db_path": str(self.db_path),
+            "db_exists": self.db_exists,
+            "total_bytes": self.total_bytes,
+            "live_bytes": self.live_bytes,
+            "wal_bytes": self.wal_bytes,
+            "bloat_ratio": self.bloat_ratio,
+            "backups": [
+                {
+                    "backup_name": backup.backup_name,
+                    "backup_path": str(backup.backup_path),
+                    "file_count": backup.file_count,
+                    "total_size_bytes": backup.total_size_bytes,
+                    "redundant": backup.redundant,
+                    "unique_files": list(backup.unique_files),
+                }
+                for backup in self.backups
+            ],
+            "harness_sources": [
+                {
+                    "connector": harness.connector,
+                    "file_count": harness.file_count,
+                    "total_size_bytes": harness.total_size_bytes,
+                }
+                for harness in self.harness_sources
+            ],
+            "last_backup_at": self.last_backup_at,
+            "last_backup_age_seconds": self.last_backup_age_seconds,
+        }
+
+
+def build_storage_doctor_report(search_dir: Path, config: Config) -> StorageDoctorReport:
+    """Assemble the full read-only storage doctor report for `search_dir`."""
+    db_path = config.storage.resolve_duckdb_path(search_dir)
+    size_info = inspect_database_size(db_path)
+    live_bytes = estimate_live_data_size(db_path)
+    backups = audit_backup_redundancy(search_dir / "backups", search_dir)
+    harness_sources = estimate_harness_source_sizes(config)
+    last_backup_at, last_backup_age_seconds = estimate_last_backup_age(search_dir)
+    return StorageDoctorReport(
+        search_dir=search_dir,
+        db_path=db_path,
+        db_exists=db_path.exists(),
+        total_bytes=size_info.total_bytes,
+        live_bytes=live_bytes,
+        wal_bytes=size_info.wal_bytes,
+        bloat_ratio=compute_bloat_ratio(size_info.total_bytes, live_bytes),
+        backups=tuple(backups),
+        harness_sources=tuple(harness_sources),
+        last_backup_at=last_backup_at,
+        last_backup_age_seconds=last_backup_age_seconds,
+    )
