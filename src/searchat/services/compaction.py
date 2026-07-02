@@ -28,6 +28,7 @@ zero-row symmetric diff on `conversations`.
 """
 from __future__ import annotations
 
+import json
 import logging
 import multiprocessing
 import multiprocessing.synchronize
@@ -615,3 +616,125 @@ def compact_database(
         ),
         duration_seconds=time.perf_counter() - start,
     )
+
+
+# ---------------------------------------------------------------------------
+# Auto-trigger: bloat-ratio + interval gated compaction, wired into
+# graceful shutdown (M3 acceptance: fires only above ratio 3).
+# ---------------------------------------------------------------------------
+
+_COMPACTION_STATE_FILE = "compaction_state.json"
+
+
+@dataclass(frozen=True)
+class CompactionState:
+    """Persisted record of the most recent successful compaction."""
+
+    last_compaction_at: datetime | None
+
+
+def _compaction_state_path(search_dir: Path) -> Path:
+    return Path(search_dir) / "data" / _COMPACTION_STATE_FILE
+
+
+def read_compaction_state(search_dir: Path) -> CompactionState:
+    """Read the last-successful-compaction timestamp sidecar.
+
+    Missing, unreadable, or malformed state is treated as "never
+    compacted" -- the conservative choice that lets the auto-trigger
+    evaluate the ratio rather than silently never firing.
+    """
+    path = _compaction_state_path(search_dir)
+    if not path.exists():
+        return CompactionState(last_compaction_at=None)
+    try:
+        raw = json.loads(path.read_text())
+        stamp = raw.get("last_compaction_at")
+        if not stamp:
+            return CompactionState(last_compaction_at=None)
+        return CompactionState(last_compaction_at=datetime.fromisoformat(stamp))
+    except (OSError, ValueError) as exc:
+        log.warning("Failed to read compaction state at %s: %s", path, exc)
+        return CompactionState(last_compaction_at=None)
+
+
+def record_compaction_completed(search_dir: Path, *, at: datetime | None = None) -> None:
+    """Record a successful compaction's completion time.
+
+    Called after every successful `compact_database` run, whether
+    triggered manually (`searchat compact`) or automatically on shutdown,
+    so either resets the auto-trigger's `min_interval_days` clock.
+    """
+    path = _compaction_state_path(search_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    stamp = (at or datetime.now(timezone.utc)).isoformat()
+    path.write_text(json.dumps({"last_compaction_at": stamp}))
+
+
+def should_auto_compact(
+    *,
+    bloat_ratio: float,
+    last_compaction_at: datetime | None,
+    auto_trigger_ratio: float,
+    min_interval_days: int,
+    now: datetime | None = None,
+) -> bool:
+    """Pure decision function: fire only when the file is bloated beyond
+    `auto_trigger_ratio` AND the last compaction (if any) was more than
+    `min_interval_days` ago."""
+    if bloat_ratio <= auto_trigger_ratio:
+        return False
+    if last_compaction_at is None:
+        return True
+    elapsed_days = ((now or datetime.now(timezone.utc)) - last_compaction_at).total_seconds() / 86400
+    return elapsed_days >= min_interval_days
+
+
+def run_auto_compact_if_needed(
+    db_path: Path,
+    search_dir: Path,
+    *,
+    auto_trigger_ratio: float,
+    min_interval_days: int,
+) -> CompactionResult | None:
+    """Consult M1's bloat ratio and the compaction-state sidecar; compact
+    only when both thresholds are exceeded.
+
+    Returns `None` when the auto-trigger does not fire, including when
+    `db_path` does not exist yet. Never raises: intended for a shutdown
+    path where a compaction check must never prevent shutdown.
+    """
+    from searchat.services.storage_health import (
+        compute_bloat_ratio,
+        estimate_live_data_size,
+        inspect_database_size,
+    )
+
+    db_path = Path(db_path)
+    if not db_path.exists():
+        return None
+
+    try:
+        size_info = inspect_database_size(db_path)
+        live_bytes = estimate_live_data_size(db_path)
+        ratio = compute_bloat_ratio(size_info.total_bytes, live_bytes)
+        state = read_compaction_state(search_dir)
+        if not should_auto_compact(
+            bloat_ratio=ratio,
+            last_compaction_at=state.last_compaction_at,
+            auto_trigger_ratio=auto_trigger_ratio,
+            min_interval_days=min_interval_days,
+        ):
+            return None
+
+        log.info(
+            "Auto-compact triggered for %s: bloat ratio %.2f > %.2f (last compaction: %s)",
+            db_path, ratio, auto_trigger_ratio, state.last_compaction_at or "never",
+        )
+        result = compact_database(db_path)
+        if result.success:
+            record_compaction_completed(search_dir)
+        return result
+    except Exception:  # noqa: BLE001 - a shutdown-path check must never raise
+        log.exception("Auto-compact check failed for %s; leaving database untouched", db_path)
+        return None
