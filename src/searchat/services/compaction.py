@@ -14,10 +14,11 @@ this can make CHECKPOINT / COPY FROM DATABASE fail with FATAL "unknown
 index type 'HNSW'" when the on-disk catalog references an index whose
 extension has not been loaded in this connection yet -- the failure
 observed during the Tier 0 recovery. A FATAL error aborts the DuckDB
-process outright and no Python `except` clause can catch it -- callers
-that must survive that failure mode isolate `compact_database` in a
-subprocess so a FATAL there can never take down the parent process or
-leave the original file half-written.
+process outright and no Python `except` clause can catch it, which is
+why `compact_database` runs the whole sequence in an isolated child
+process by default (`subprocess_isolated=True`): a FATAL there kills
+only the child, never the caller, and `db_path` is left exactly as it
+was.
 
 `compact_database` never mutates `db_path` until `verify_compaction` has
 proven the compacted copy is query-identical: same row counts across
@@ -28,6 +29,8 @@ zero-row symmetric diff on `conversations`.
 from __future__ import annotations
 
 import logging
+import multiprocessing
+import multiprocessing.synchronize
 import re
 import time
 from dataclasses import dataclass
@@ -370,8 +373,12 @@ def _post_swap_smoke_test(db_path: Path) -> bool:
         return False
 
 
-def compact_database(db_path: Path) -> CompactionResult:
-    """Reclaim dead blocks in `db_path` via verified copy-compaction.
+def _compact_database_in_process(
+    db_path: Path,
+    *,
+    _ready_event: multiprocessing.synchronize.Event | None = None,
+) -> CompactionResult:
+    """Run the full copy-compaction sequence in the CURRENT process.
 
     `db_path` is never mutated until `verify_compaction` proves the
     compacted copy is query-identical, and the pre-compaction original is
@@ -379,6 +386,13 @@ def compact_database(db_path: Path) -> CompactionResult:
     smoke test on the new file also passes -- only then is it removed. Any
     failure at any stage leaves `db_path` exactly as it was before the
     call.
+
+    `_ready_event`, when given, is set once copy-compaction finishes and
+    verification is about to begin -- the synchronization point the
+    fault-injection test uses to kill the subprocess running this
+    function deterministically mid-run, proving the swap that follows
+    never executes. `compact_database` never passes it; production
+    callers only reach this function through `compact_database`.
     """
     start = time.perf_counter()
     db_path = Path(db_path)
@@ -431,6 +445,9 @@ def compact_database(db_path: Path) -> CompactionResult:
             error=f"Copy-compaction failed: {exc}",
             duration_seconds=time.perf_counter() - start,
         )
+
+    if _ready_event is not None:
+        _ready_event.set()
 
     verification = verify_compaction(db_path, dst_path)
     if not verification.passed:
@@ -492,5 +509,109 @@ def compact_database(db_path: Path) -> CompactionResult:
         quarantined_path=None,
         verification=verification,
         error=None,
+        duration_seconds=time.perf_counter() - start,
+    )
+
+
+def _compact_worker(
+    db_path: str,
+    result_queue: multiprocessing.Queue,
+    ready_event: multiprocessing.synchronize.Event | None = None,
+) -> None:
+    """Subprocess entry point.
+
+    Runs the full compact-verify-swap sequence in this (isolated) process
+    and posts the `CompactionResult` back to the parent via
+    `result_queue`. If this process is killed or aborts -- including a
+    DuckDB FATAL, a hard process abort no Python `except` clause can catch
+    -- before reaching the `result_queue.put` below, nothing is posted;
+    `compact_database` treats an empty queue as a failed run. `db_path` is
+    guaranteed untouched either way, since every mutation inside
+    `_compact_database_in_process` happens only after verification
+    passes.
+    """
+    result = _compact_database_in_process(Path(db_path), _ready_event=ready_event)
+    result_queue.put(result)
+
+
+def compact_database(
+    db_path: Path, *, subprocess_isolated: bool = True, timeout_seconds: float | None = None
+) -> CompactionResult:
+    """Reclaim dead blocks in `db_path` via verified copy-compaction.
+
+    By default, runs the checkpoint -> attach -> COPY FROM DATABASE ->
+    verify -> atomic-rename sequence (`_compact_database_in_process`)
+    inside an isolated child process, so a DuckDB FATAL -- observed during
+    the Tier 0 recovery when an index's extension had not been loaded yet
+    -- kills only the child. `db_path` is left exactly as it was in every
+    case: every mutation the sequence performs happens only after
+    verification passes, so a process that dies before then has made
+    none.
+
+    `subprocess_isolated=False` runs the sequence directly in the
+    caller's process instead -- for tests exercising the compaction logic
+    itself rather than its process isolation.
+
+    `timeout_seconds`, when given, bounds how long the isolated child may
+    run: a hung (not crashed) child is terminated -- then killed if it
+    doesn't exit -- rather than blocking the caller forever. `None` (the
+    default) waits indefinitely, matching the original behavior.
+    """
+    start = time.perf_counter()
+    db_path = Path(db_path)
+    if not subprocess_isolated:
+        return _compact_database_in_process(db_path)
+
+    ctx = multiprocessing.get_context("spawn")
+    result_queue: multiprocessing.Queue = ctx.Queue()
+    process = ctx.Process(target=_compact_worker, args=(str(db_path), result_queue))
+    process.start()
+    process.join(timeout=timeout_seconds)
+
+    if process.is_alive():
+        # Hung, not crashed -- terminate/kill rather than block forever.
+        # Reached from the shutdown path (via run_auto_compact_if_needed),
+        # where blocking here would also block SIGTERM from ever firing.
+        process.terminate()
+        process.join(timeout=5)
+        if process.is_alive():
+            process.kill()
+            process.join()
+        return CompactionResult(
+            success=False,
+            original_path=db_path,
+            original_size_bytes=db_path.stat().st_size if db_path.exists() else 0,
+            compacted_size_bytes=0,
+            bytes_reclaimed=0,
+            preserved_original_path=None,
+            quarantined_path=None,
+            verification=None,
+            error=(
+                f"Compaction subprocess timed out after {timeout_seconds}s and was "
+                "terminated; original database untouched."
+            ),
+            duration_seconds=time.perf_counter() - start,
+        )
+
+    if not result_queue.empty():
+        return result_queue.get()
+
+    # The worker died before it could report a result (crash, FATAL abort,
+    # or an external kill). db_path was never touched: every mutation in
+    # _compact_database_in_process happens only after verification passes.
+    return CompactionResult(
+        success=False,
+        original_path=db_path,
+        original_size_bytes=db_path.stat().st_size if db_path.exists() else 0,
+        compacted_size_bytes=0,
+        bytes_reclaimed=0,
+        preserved_original_path=None,
+        quarantined_path=None,
+        verification=None,
+        error=(
+            "Compaction subprocess exited abnormally "
+            f"(exit code {process.exitcode}) before reporting a result; "
+            "original database untouched."
+        ),
         duration_seconds=time.perf_counter() - start,
     )

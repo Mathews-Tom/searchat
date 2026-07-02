@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import hashlib
+import multiprocessing
+import queue
 import subprocess
 import sys
 import time
@@ -14,6 +16,7 @@ import numpy as np
 
 from searchat.config import Config
 from searchat.core.unified_indexer import UnifiedIndexer
+from searchat.services import compaction as comp
 from searchat.services.compaction import (
     VerificationResult,
     _prepare_connection,
@@ -289,6 +292,10 @@ def _build_indexed_bloated_db(db_path: Path) -> None:
 
 
 class TestCompactDatabase:
+    """subprocess_isolated=False throughout: these tests exercise the
+    compact-verify-swap engine directly. Process isolation itself
+    (subprocess_isolated=True, the default) is covered separately."""
+
     def test_compacts_bloated_fixture_to_query_identical_file(self, tmp_path: Path) -> None:
         db_path = tmp_path / "data" / "searchat.duckdb"
         db_path.parent.mkdir(parents=True)
@@ -309,7 +316,7 @@ class TestCompactDatabase:
         ).fetchall()
         con.close()
 
-        result = compact_database(db_path)
+        result = compact_database(db_path, subprocess_isolated=False)
 
         assert result.success is True
         assert result.error is None
@@ -345,7 +352,7 @@ class TestCompactDatabase:
         assert ratio_after < ratio_before
 
     def test_missing_database_returns_clear_failure(self, tmp_path: Path) -> None:
-        result = compact_database(tmp_path / "does-not-exist.duckdb")
+        result = compact_database(tmp_path / "does-not-exist.duckdb", subprocess_isolated=False)
 
         assert result.success is False
         assert result.original_size_bytes == 0
@@ -376,7 +383,7 @@ class TestCompactDatabase:
             ready_line = holder.stdout.readline()
             assert ready_line.strip() == "locked"
 
-            result = compact_database(db_path)
+            result = compact_database(db_path, subprocess_isolated=False)
         finally:
             holder.kill()
             holder.wait(timeout=5)
@@ -406,7 +413,7 @@ class TestCompactDatabase:
             mismatches=("forced failure for test",),
         )
         with patch("searchat.services.compaction.verify_compaction", return_value=failing):
-            result = compact_database(db_path)
+            result = compact_database(db_path, subprocess_isolated=False)
 
         assert result.success is False
         assert result.verification is failing
@@ -429,7 +436,7 @@ class TestCompactDatabase:
         checksum_before = _sha256(db_path)
 
         with patch("searchat.services.compaction._post_swap_smoke_test", return_value=False):
-            result = compact_database(db_path)
+            result = compact_database(db_path, subprocess_isolated=False)
 
         assert result.success is False
         assert "Post-swap smoke test failed" in result.error
@@ -462,3 +469,165 @@ class TestCompactDatabase:
         assert result.success is True
         assert result.verification is not None
         assert result.verification.passed is True
+
+
+class TestSubprocessIsolation:
+    """subprocess_isolated=True (the default): compaction runs in a real,
+    isolated child process."""
+
+    def test_default_runs_in_subprocess_and_produces_identical_result(
+        self, tmp_path: Path
+    ) -> None:
+        db_path = tmp_path / "data" / "searchat.duckdb"
+        db_path.parent.mkdir(parents=True)
+        _build_indexed_bloated_db(db_path)
+
+        result = compact_database(db_path)
+
+        assert result.success is True
+        assert result.verification is not None
+        assert result.verification.passed is True
+        assert result.bytes_reclaimed > 0
+
+        con = duckdb.connect(str(db_path), read_only=True)
+        _prepare_connection(con)
+        row = con.execute("SELECT COUNT(*) FROM exchanges").fetchone()
+        con.close()
+        assert row == (4,)
+
+    def test_hung_subprocess_is_terminated_after_timeout(self, tmp_path: Path) -> None:
+        """A subprocess that neither crashes nor completes within
+        timeout_seconds is terminated rather than blocking the caller
+        forever -- this branch is what keeps a hung compaction from also
+        blocking graceful shutdown (SIGTERM never fires while
+        compact_database blocks). Uses a fake process double rather than
+        racing a real hang, matching the fault-injection style already
+        used for the crash case above."""
+        db_path = tmp_path / "data" / "searchat.duckdb"
+        db_path.parent.mkdir(parents=True)
+        _build_indexed_bloated_db(db_path)
+        checksum_before = _sha256(db_path)
+
+        class _HungProcess:
+            exitcode = None
+            terminate_called = False
+            kill_called = False
+
+            def __init__(self, target=None, args=()) -> None:
+                del target, args
+                self._alive = True
+
+            def start(self) -> None:
+                pass
+
+            def join(self, timeout=None) -> None:
+                del timeout  # never finishes on its own
+
+            def is_alive(self) -> bool:
+                return self._alive
+
+            def terminate(self) -> None:
+                type(self).terminate_called = True
+                self._alive = False
+
+            def kill(self) -> None:
+                type(self).kill_called = True
+                self._alive = False
+
+        class _FakeContext:
+            def Queue(self):
+                return queue.Queue()
+
+            def Process(self, target=None, args=()):
+                return _HungProcess(target=target, args=args)
+
+        with patch.object(comp.multiprocessing, "get_context", return_value=_FakeContext()):
+            result = compact_database(db_path, timeout_seconds=0.01)
+
+        assert result.success is False
+        assert "timed out" in result.error
+        assert _HungProcess.terminate_called is True
+        assert _HungProcess.kill_called is False
+        assert _sha256(db_path) == checksum_before
+
+    def test_kill_subprocess_mid_compaction_leaves_original_untouched(
+        self, tmp_path: Path
+    ) -> None:
+        """The fault-injection case: kill the compaction subprocess right
+        after it finishes copying but before it verifies/swaps -- the
+        window where a real DuckDB FATAL was observed during Tier 0
+        (Appendix A). The original file must be untouched: no swap, no
+        preserved-original rename, unchanged checksum and mtime."""
+        db_path = tmp_path / "data" / "searchat.duckdb"
+        db_path.parent.mkdir(parents=True)
+        _build_indexed_bloated_db(db_path)
+        checksum_before = _sha256(db_path)
+        mtime_before = db_path.stat().st_mtime_ns
+
+        ctx = multiprocessing.get_context("spawn")
+        ready_event = ctx.Event()
+        result_queue: multiprocessing.Queue = ctx.Queue()
+        process = ctx.Process(
+            target=comp._compact_worker,
+            args=(str(db_path), result_queue, ready_event),
+        )
+        process.start()
+        try:
+            signaled = ready_event.wait(timeout=15)
+            assert signaled, "worker never reached the pre-verify checkpoint"
+            process.kill()
+            process.join(timeout=5)
+        finally:
+            if process.is_alive():
+                process.terminate()
+                process.join(timeout=5)
+
+        assert process.exitcode != 0
+        assert result_queue.empty()
+        assert _sha256(db_path) == checksum_before
+        assert db_path.stat().st_mtime_ns == mtime_before
+        assert list(db_path.parent.glob(f"{db_path.name}.pre-compact-*")) == []
+
+    def test_worker_death_without_result_reported_as_clean_failure(self, tmp_path: Path) -> None:
+        """compact_database()'s own orchestration: when its child process
+        exits without posting a result to the queue (crash, FATAL abort,
+        external kill -- all indistinguishable from here), the failure is
+        surfaced as a plain CompactionResult, never an exception, and
+        db_path is never touched. Exercised via a fake multiprocessing
+        context targeting this branch directly, rather than racing a real
+        crash (already covered by the kill test above, which proves the
+        file-safety property against a genuine subprocess)."""
+        db_path = tmp_path / "data" / "searchat.duckdb"
+        db_path.parent.mkdir(parents=True)
+        _build_indexed_bloated_db(db_path)
+        checksum_before = _sha256(db_path)
+
+        class _DeadProcess:
+            exitcode = -9
+
+            def __init__(self, target=None, args=()) -> None:
+                del target, args
+
+            def start(self) -> None:
+                pass
+
+            def join(self, timeout=None) -> None:
+                del timeout
+
+            def is_alive(self) -> bool:
+                return False
+
+        class _FakeContext:
+            def Queue(self):
+                return queue.Queue()  # always empty: the "worker" never posted
+
+            def Process(self, target=None, args=()):
+                return _DeadProcess(target=target, args=args)
+
+        with patch.object(comp.multiprocessing, "get_context", return_value=_FakeContext()):
+            result = compact_database(db_path)
+
+        assert result.success is False
+        assert "subprocess exited abnormally" in result.error
+        assert "-9" in result.error
+        assert _sha256(db_path) == checksum_before
