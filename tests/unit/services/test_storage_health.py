@@ -10,6 +10,7 @@ import pytest
 from searchat.services.backup import BackupManager
 from searchat.services.storage_contracts import BACKUP_MANIFEST_FILE
 from searchat.services.storage_health import (
+    audit_backup_redundancy,
     compute_bloat_ratio,
     estimate_live_data_size,
     inspect_database_size,
@@ -288,3 +289,49 @@ def test_estimate_live_data_size_and_bloat_ratio_detect_synthetic_bloat(tmp_path
     # The churn pattern must actually have produced measurable bloat for this fixture
     # to be meaningful (used blocks left behind beyond the live table's footprint).
     assert ratio > 1.0
+
+
+# ---------------------------------------------------------------------------
+# Storage doctor diagnostics: backup redundancy audit
+# ---------------------------------------------------------------------------
+
+
+def test_audit_backup_redundancy_flags_strict_subset_as_redundant(temp_search_dir: Path) -> None:
+    data_root = temp_search_dir / "data" / "conversations"
+    data_root.mkdir(parents=True, exist_ok=True)
+    (data_root / "conv1.parquet").write_bytes(b"PAR1conv1data")
+    (data_root / "conv2.parquet").write_bytes(b"PAR1conv2data")
+
+    manager = BackupManager(temp_search_dir)
+    manager.create_backup(backup_name="snap1")
+
+    # Live data grows after the backup — the backup's files remain a strict subset.
+    (data_root / "conv3.parquet").write_bytes(b"PAR1conv3newdata")
+
+    audits = audit_backup_redundancy(temp_search_dir / "backups", temp_search_dir)
+
+    assert len(audits) == 1
+    assert audits[0].file_count == 2
+    assert audits[0].redundant is True
+    assert audits[0].unique_files == ()
+
+
+def test_audit_backup_redundancy_flags_modified_live_file_as_not_redundant(temp_search_dir: Path) -> None:
+    data_root = temp_search_dir / "data" / "conversations"
+    data_root.mkdir(parents=True, exist_ok=True)
+    (data_root / "conv1.parquet").write_bytes(b"PAR1conv1data")
+
+    manager = BackupManager(temp_search_dir)
+    manager.create_backup(backup_name="snap1")
+
+    (data_root / "conv1.parquet").write_bytes(b"MODIFIED-CONTENT")
+
+    audits = audit_backup_redundancy(temp_search_dir / "backups", temp_search_dir)
+
+    assert len(audits) == 1
+    assert audits[0].redundant is False
+    assert audits[0].unique_files == ("data/conversations/conv1.parquet",)
+
+
+def test_audit_backup_redundancy_missing_backup_dir_returns_empty(tmp_path: Path) -> None:
+    assert audit_backup_redundancy(tmp_path / "no_backups", tmp_path) == []

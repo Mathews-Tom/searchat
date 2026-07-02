@@ -8,7 +8,7 @@ from pathlib import Path
 
 import duckdb
 
-from searchat.services.backup import BackupManager
+from searchat.services.backup import BackupManager, _sha256_file
 from searchat.services.storage_contracts import (
     BACKUP_MANIFEST_FILE,
     BACKUP_METADATA_FILE,
@@ -411,3 +411,70 @@ def compute_bloat_ratio(total_bytes: int, live_bytes: int) -> float:
     if total_bytes <= 0 or live_bytes <= 0:
         return 1.0
     return total_bytes / live_bytes
+
+
+@dataclass(frozen=True)
+class BackupAudit:
+    """Redundancy verdict for a single backup directory."""
+
+    backup_name: str
+    backup_path: Path
+    file_count: int
+    total_size_bytes: int
+    redundant: bool
+    unique_files: tuple[str, ...]
+
+
+def audit_backup_redundancy(backup_dir: Path, data_dir: Path) -> list[BackupAudit]:
+    """Flag backups under `backup_dir` whose files are a strict subset of `data_dir`.
+
+    A backup is `redundant` when every file it captured (compared by
+    `content_sha256`, which is the pre-encryption hash even for encrypted
+    backups) still exists, byte-identical, in the current live dataset at
+    `data_dir` — meaning the backup adds nothing recoverable that isn't
+    already live and is safe to delete. Backups with malformed or missing
+    manifests are skipped (read-only diagnostics degrade, never error).
+    """
+    if not backup_dir.exists():
+        return []
+
+    live_sha_cache: dict[str, str | None] = {}
+
+    def live_sha(rel_path: str) -> str | None:
+        if rel_path not in live_sha_cache:
+            candidate = data_dir / rel_path
+            live_sha_cache[rel_path] = _sha256_file(candidate) if candidate.is_file() else None
+        return live_sha_cache[rel_path]
+
+    audits: list[BackupAudit] = []
+    for backup_path in sorted(path for path in backup_dir.iterdir() if path.is_dir()):
+        manifest_path = backup_path / BACKUP_MANIFEST_FILE
+        if not manifest_path.exists():
+            continue
+        try:
+            manifest = BackupManifest.from_dict(json.loads(manifest_path.read_text(encoding="utf-8")))
+        except (StorageCompatibilityError, json.JSONDecodeError, OSError):
+            continue
+
+        total_size = 0
+        unique_files: list[str] = []
+        for rel_path, meta in manifest.files.items():
+            size_bytes = meta.get("size_bytes")
+            if isinstance(size_bytes, (int, float)):
+                total_size += int(size_bytes)
+            content_sha = meta.get("content_sha256")
+            if not isinstance(content_sha, str) or live_sha(rel_path) != content_sha:
+                unique_files.append(rel_path)
+
+        audits.append(
+            BackupAudit(
+                backup_name=backup_path.name,
+                backup_path=backup_path,
+                file_count=len(manifest.files),
+                total_size_bytes=total_size,
+                redundant=bool(manifest.files) and not unique_files,
+                unique_files=tuple(sorted(unique_files)),
+            )
+        )
+
+    return audits
