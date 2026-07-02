@@ -58,7 +58,7 @@ async def health_deep() -> JSONResponse:
     checks["disk_space"] = _timed_check("disk_space", _check_disk_space)
 
     healthy = all(c["status"] == "ok" for c in checks.values())
-    payload = serialize_health_deep_payload(healthy=healthy, checks=checks)
+    payload = serialize_health_deep_payload(healthy=healthy, checks=checks, storage=_build_storage_report())
     status_code = 200 if healthy else 503
     return JSONResponse(content=payload, status_code=status_code)
 
@@ -143,3 +143,18 @@ def _check_disk_space() -> dict[str, Any]:
     if free_gb < 1.0:
         return {"status": "warning", "free_gb": round(free_gb, 2)}
     return {"status": "ok", "free_gb": round(free_gb, 2)}
+
+
+def _build_storage_report() -> dict[str, Any]:
+    """Read-only storage doctor report for the deep health payload.
+
+    Degrades to an error dict rather than failing the whole /health request —
+    this section is diagnostic, not a pass/fail readiness gate.
+    """
+    from searchat.services.storage_health import build_storage_doctor_report
+
+    try:
+        report = build_storage_doctor_report(deps.get_search_dir(), deps.get_config())
+    except Exception as exc:
+        return {"status": "error", "error": str(exc)}
+    return report.to_dict()

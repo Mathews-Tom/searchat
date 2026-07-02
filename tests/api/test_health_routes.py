@@ -289,3 +289,117 @@ def test_health_deep_disk_space_warning(
     body = resp.json()
     assert body["checks"]["disk_space"]["status"] == "warning"
     assert body["healthy"] is False
+
+
+# ---------------------------------------------------------------------------
+# /api/health (deep) — storage section
+# ---------------------------------------------------------------------------
+
+
+def test_health_deep_includes_storage_section_with_real_data(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import duckdb
+
+    import searchat.api.dependencies as deps
+
+    search_dir = tmp_path / ".searchat"
+    data_dir = search_dir / "data"
+    data_dir.mkdir(parents=True)
+    (data_dir / "conversations.parquet").touch()
+
+    backup_dir = search_dir / "backups"
+    backup_dir.mkdir()
+
+    db_path = data_dir / "searchat.duckdb"
+    con = duckdb.connect(str(db_path))
+    con.execute("CREATE TABLE conversations(id INTEGER)")
+    con.execute("INSERT INTO conversations SELECT * FROM range(5)")
+    con.execute("CHECKPOINT")
+    con.close()
+
+    monkeypatch.setattr(
+        "searchat.services.storage_health.get_connectors", lambda: ()
+    )
+
+    store = MagicMock()
+    store.validate_parquet_scan.return_value = None
+    store.count_conversations.return_value = 42
+
+    faiss_index = MagicMock()
+    faiss_index.ntotal = 100
+    engine = MagicMock()
+    engine.faiss_index = faiss_index
+    engine.embedder = MagicMock()
+
+    backup_manager = MagicMock()
+    backup_manager.backup_dir = backup_dir
+
+    config = MagicMock()
+    config.storage.resolve_duckdb_path.return_value = db_path
+
+    monkeypatch.setattr(deps, "_duckdb_store", store)
+    monkeypatch.setattr(deps, "_search_dir", search_dir)
+    monkeypatch.setattr(deps, "_search_engine", engine)
+    monkeypatch.setattr(deps, "_backup_manager", backup_manager)
+    monkeypatch.setattr(deps, "_config", config)
+
+    mod = _api_app_module()
+    client = TestClient(mod.app, raise_server_exceptions=False)
+    resp = client.get("/api/health")
+    assert resp.status_code == 200
+    body = resp.json()
+
+    storage = body["storage"]
+    assert storage["db_exists"] is True
+    assert storage["total_bytes"] > 0
+    assert storage["live_bytes"] > 0
+    assert storage["bloat_ratio"] >= 1.0
+    assert storage["harness_sources"] == []
+    assert isinstance(storage["backups"], list)
+
+
+def test_health_deep_storage_section_degrades_gracefully_on_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import searchat.api.dependencies as deps
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    (data_dir / "conversations.parquet").touch()
+
+    backup_dir = tmp_path / "backups"
+    backup_dir.mkdir()
+
+    store = MagicMock()
+    store.validate_parquet_scan.return_value = None
+    store.count_conversations.return_value = 42
+
+    faiss_index = MagicMock()
+    faiss_index.ntotal = 100
+    engine = MagicMock()
+    engine.faiss_index = faiss_index
+    engine.embedder = MagicMock()
+
+    backup_manager = MagicMock()
+    backup_manager.backup_dir = backup_dir
+
+    config = MagicMock()
+    config.storage.resolve_duckdb_path.side_effect = RuntimeError("storage unavailable")
+
+    monkeypatch.setattr(deps, "_duckdb_store", store)
+    monkeypatch.setattr(deps, "_search_dir", tmp_path)
+    monkeypatch.setattr(deps, "_search_engine", engine)
+    monkeypatch.setattr(deps, "_backup_manager", backup_manager)
+    monkeypatch.setattr(deps, "_config", config)
+
+    mod = _api_app_module()
+    client = TestClient(mod.app, raise_server_exceptions=False)
+    resp = client.get("/api/health")
+    # The storage diagnostics section failing must never affect the overall
+    # readiness-critical checks or status code.
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["healthy"] is True
+    assert body["storage"]["status"] == "error"
+    assert "storage unavailable" in body["storage"]["error"]

@@ -606,8 +606,10 @@ def serialize_health_deep_payload(
     *,
     healthy: bool,
     checks: dict[str, Any],
+    storage: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "healthy": healthy,
         "checks": checks,
+        "storage": storage,
     }
