@@ -398,3 +398,16 @@ def estimate_live_data_size(db_path: Path) -> int:
         return len(live_blocks) * block_size
     finally:
         con.close()
+
+
+def compute_bloat_ratio(total_bytes: int, live_bytes: int) -> float:
+    """Ratio of on-disk size to estimated live-data footprint.
+
+    1.0 means no measurable bloat (including the degenerate case where either
+    side cannot be measured). Values above 1.0 indicate the file holds more
+    bytes than its live tables need — the amount `searchat compact` (M3) can
+    reclaim via copy-compaction.
+    """
+    if total_bytes <= 0 or live_bytes <= 0:
+        return 1.0
+    return total_bytes / live_bytes
