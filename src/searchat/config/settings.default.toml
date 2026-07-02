@@ -108,3 +108,15 @@ notifications_enabled = true
 notifications_backend = "auto"
 max_suggestions = 3
 min_query_length = 8
+
+[compaction]
+# searchat compact -- verified copy-compaction of the DuckDB store.
+# Auto-triggers on graceful shutdown when file_size / live_data exceeds
+# auto_trigger_ratio AND the last compaction was more than
+# min_interval_days ago.
+auto_trigger_ratio = 3.0
+min_interval_days = 7
+# Safety bound on the isolated compaction subprocess: terminated (then
+# killed) if it runs longer than this, rather than blocking the CLI or
+# graceful shutdown forever.
+max_duration_seconds = 1800.0

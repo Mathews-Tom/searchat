@@ -7,7 +7,7 @@ import queue
 import subprocess
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -631,3 +631,159 @@ class TestSubprocessIsolation:
         assert "subprocess exited abnormally" in result.error
         assert "-9" in result.error
         assert _sha256(db_path) == checksum_before
+
+
+# ---------------------------------------------------------------------------
+# Auto-trigger: should_auto_compact (pure), compaction-state sidecar, and
+# run_auto_compact_if_needed (integration)
+# ---------------------------------------------------------------------------
+
+
+class TestShouldAutoCompact:
+    def test_ratio_at_or_below_threshold_never_fires(self) -> None:
+        assert comp.should_auto_compact(
+            bloat_ratio=3.0, last_compaction_at=None, auto_trigger_ratio=3.0, min_interval_days=7
+        ) is False
+        assert comp.should_auto_compact(
+            bloat_ratio=2.9, last_compaction_at=None, auto_trigger_ratio=3.0, min_interval_days=7
+        ) is False
+
+    def test_ratio_above_threshold_fires_when_never_compacted(self) -> None:
+        assert comp.should_auto_compact(
+            bloat_ratio=3.1, last_compaction_at=None, auto_trigger_ratio=3.0, min_interval_days=7
+        ) is True
+
+    def test_ratio_above_threshold_blocked_by_recent_compaction(self) -> None:
+        now = datetime(2026, 7, 2, tzinfo=timezone.utc)
+        recent = now - timedelta(days=1)
+        assert comp.should_auto_compact(
+            bloat_ratio=10.0,
+            last_compaction_at=recent,
+            auto_trigger_ratio=3.0,
+            min_interval_days=7,
+            now=now,
+        ) is False
+
+    def test_ratio_above_threshold_fires_after_interval_elapses(self) -> None:
+        now = datetime(2026, 7, 2, tzinfo=timezone.utc)
+        old = now - timedelta(days=8)
+        assert comp.should_auto_compact(
+            bloat_ratio=10.0,
+            last_compaction_at=old,
+            auto_trigger_ratio=3.0,
+            min_interval_days=7,
+            now=now,
+        ) is True
+
+    def test_exact_interval_boundary_fires(self) -> None:
+        now = datetime(2026, 7, 2, tzinfo=timezone.utc)
+        exactly_seven_days_ago = now - timedelta(days=7)
+        assert comp.should_auto_compact(
+            bloat_ratio=10.0,
+            last_compaction_at=exactly_seven_days_ago,
+            auto_trigger_ratio=3.0,
+            min_interval_days=7,
+            now=now,
+        ) is True
+
+
+class TestCompactionState:
+    def test_missing_state_returns_none(self, tmp_path: Path) -> None:
+        state = comp.read_compaction_state(tmp_path)
+        assert state.last_compaction_at is None
+
+    def test_record_then_read_round_trips(self, tmp_path: Path) -> None:
+        at = datetime(2026, 7, 1, 12, 0, 0, tzinfo=timezone.utc)
+        comp.record_compaction_completed(tmp_path, at=at)
+
+        state = comp.read_compaction_state(tmp_path)
+
+        assert state.last_compaction_at == at
+
+    def test_malformed_state_file_degrades_to_none(self, tmp_path: Path) -> None:
+        path = tmp_path / "data" / "compaction_state.json"
+        path.parent.mkdir(parents=True)
+        path.write_text("not json")
+
+        state = comp.read_compaction_state(tmp_path)
+
+        assert state.last_compaction_at is None
+
+
+class TestRunAutoCompactIfNeeded:
+    """Bloat ratio is controlled by patching compute_bloat_ratio's return
+    value rather than depending on a fixture's exact (variable) real
+    bloat, so ratio-threshold behavior is tested deterministically while
+    inspect_database_size/estimate_live_data_size still run for real
+    against a real fixture, exercising the actual integration wiring."""
+
+    def test_missing_database_returns_none(self, tmp_path: Path) -> None:
+        result = comp.run_auto_compact_if_needed(
+            tmp_path / "missing.duckdb", tmp_path, auto_trigger_ratio=3.0, min_interval_days=7
+        )
+        assert result is None
+
+    def test_fires_and_records_state_above_threshold_never_compacted(self, tmp_path: Path) -> None:
+        search_dir = tmp_path
+        db_path = search_dir / "data" / "searchat.duckdb"
+        db_path.parent.mkdir(parents=True)
+        _build_indexed_bloated_db(db_path)
+
+        with patch("searchat.services.storage_health.compute_bloat_ratio", return_value=3.5):
+            result = comp.run_auto_compact_if_needed(
+                db_path, search_dir, auto_trigger_ratio=3.0, min_interval_days=7
+            )
+
+        assert result is not None
+        assert result.success is True
+        state = comp.read_compaction_state(search_dir)
+        assert state.last_compaction_at is not None
+
+    def test_does_not_fire_at_or_below_threshold(self, tmp_path: Path) -> None:
+        search_dir = tmp_path
+        db_path = search_dir / "data" / "searchat.duckdb"
+        db_path.parent.mkdir(parents=True)
+        _build_indexed_bloated_db(db_path)
+        checksum_before = _sha256(db_path)
+
+        for ratio in (3.0, 2.5):
+            with patch("searchat.services.storage_health.compute_bloat_ratio", return_value=ratio):
+                result = comp.run_auto_compact_if_needed(
+                    db_path, search_dir, auto_trigger_ratio=3.0, min_interval_days=7
+                )
+            assert result is None, f"must not fire at ratio={ratio}"
+
+        assert _sha256(db_path) == checksum_before
+        assert comp.read_compaction_state(search_dir).last_compaction_at is None
+
+    def test_does_not_fire_when_recently_compacted_even_if_bloated(self, tmp_path: Path) -> None:
+        search_dir = tmp_path
+        db_path = search_dir / "data" / "searchat.duckdb"
+        db_path.parent.mkdir(parents=True)
+        _build_indexed_bloated_db(db_path)
+        comp.record_compaction_completed(search_dir, at=datetime.now(timezone.utc))
+        checksum_before = _sha256(db_path)
+
+        with patch("searchat.services.storage_health.compute_bloat_ratio", return_value=10.0):
+            result = comp.run_auto_compact_if_needed(
+                db_path, search_dir, auto_trigger_ratio=3.0, min_interval_days=7
+            )
+
+        assert result is None
+        assert _sha256(db_path) == checksum_before
+
+    def test_never_raises_on_internal_error(self, tmp_path: Path) -> None:
+        search_dir = tmp_path
+        db_path = search_dir / "data" / "searchat.duckdb"
+        db_path.parent.mkdir(parents=True)
+        _build_indexed_bloated_db(db_path)
+
+        with patch(
+            "searchat.services.storage_health.inspect_database_size",
+            side_effect=RuntimeError("boom"),
+        ):
+            result = comp.run_auto_compact_if_needed(
+                db_path, search_dir, auto_trigger_ratio=3.0, min_interval_days=7
+            )
+
+        assert result is None

@@ -336,6 +336,22 @@ ENV_RERANKING_TOP_K = "SEARCHAT_RERANKING_TOP_K"
 ENV_CORS_ORIGINS = "SEARCHAT_CORS_ORIGINS"
 
 # ============================================================================
+# Compaction Defaults (M3 -- searchat compact)
+# ============================================================================
+
+DEFAULT_COMPACTION_AUTO_TRIGGER_RATIO = 3.0
+DEFAULT_COMPACTION_MIN_INTERVAL_DAYS = 7
+# Generous safety bound, not a normal-operation limit: large enough to never
+# trip during legitimate use on typical local stores, but bounds a genuinely
+# hung compaction subprocess so it cannot block graceful shutdown forever.
+DEFAULT_COMPACTION_MAX_DURATION_SECONDS = 1800.0
+
+# Environment variable names for compaction
+ENV_COMPACTION_AUTO_TRIGGER_RATIO = "SEARCHAT_COMPACTION_AUTO_TRIGGER_RATIO"
+ENV_COMPACTION_MIN_INTERVAL_DAYS = "SEARCHAT_COMPACTION_MIN_INTERVAL_DAYS"
+ENV_COMPACTION_MAX_DURATION_SECONDS = "SEARCHAT_COMPACTION_MAX_DURATION_SECONDS"
+
+# ============================================================================
 # Query Expansion / Synonyms
 # ============================================================================
 

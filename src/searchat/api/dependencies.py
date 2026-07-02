@@ -393,6 +393,42 @@ def set_watcher(watcher):
     _watcher = watcher
 
 
+def maybe_auto_compact_on_shutdown() -> None:
+    """Bloat-ratio + interval gated compaction check for graceful shutdown.
+
+    Never raises, and the compaction subprocess it may spawn is bounded
+    by `compaction.max_duration_seconds` so it cannot hang forever -- but
+    this function is itself a **blocking, synchronous call** for as long
+    as that: on an asyncio event loop, run it off-thread (e.g.
+    `await asyncio.to_thread(maybe_auto_compact_on_shutdown)`) or it will
+    stall every other in-flight request for the duration of compaction.
+    Shared by every shutdown endpoint (api/routers/admin.py,
+    api/routers/fragments.py) so the auto-trigger logic and this
+    constraint live in exactly one place.
+    """
+    if _config is None or _search_dir is None:
+        return
+    try:
+        from searchat.services.compaction import run_auto_compact_if_needed
+
+        db_path = _config.storage.resolve_duckdb_path(_search_dir)
+        result = run_auto_compact_if_needed(
+            db_path,
+            _search_dir,
+            auto_trigger_ratio=_config.compaction.auto_trigger_ratio,
+            min_interval_days=_config.compaction.min_interval_days,
+            timeout_seconds=_config.compaction.max_duration_seconds,
+        )
+        if result is None:
+            return
+        if result.success:
+            logger.info("Auto-compact reclaimed %d bytes on shutdown", result.bytes_reclaimed)
+        else:
+            logger.warning("Auto-compact failed on shutdown: %s", result.error)
+    except Exception:
+        logger.exception("Auto-compact check failed during shutdown")
+
+
 def _ensure_search_engine():
     """Create and initialize search engine (blocking)."""
     global _search_engine

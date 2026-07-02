@@ -455,6 +455,11 @@ def main():
 
             raise SystemExit(run_reingest_sources(argv[1:]))
 
+        if argv and argv[0] == "compact":
+            from searchat.cli.compact_cmd import run_compact
+
+            raise SystemExit(run_compact(argv[1:]))
+
         if argv and argv[0] == "ci-check":
             from searchat.cli.ci_check_cmd import run_ci_check
 
@@ -493,6 +498,7 @@ def main():
             print("  searchat doctor [--json]")
             print("  searchat rebuild-derived [--force] [--json]")
             print("  searchat reingest-sources [--force]")
+            print("  searchat compact [--json] [--in-process]")
             print("  searchat ci-check [--fail-on-contradictions] [--fail-on-staleness-threshold FLOAT]")
             print()
             return
