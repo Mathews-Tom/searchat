@@ -396,9 +396,15 @@ def set_watcher(watcher):
 def maybe_auto_compact_on_shutdown() -> None:
     """Bloat-ratio + interval gated compaction check for graceful shutdown.
 
-    Best-effort: never raises and never blocks shutdown. Shared by every
-    shutdown endpoint (api/routers/admin.py, api/routers/fragments.py) so
-    the auto-trigger logic lives in exactly one place.
+    Never raises, and the compaction subprocess it may spawn is bounded
+    by `compaction.max_duration_seconds` so it cannot hang forever -- but
+    this function is itself a **blocking, synchronous call** for as long
+    as that: on an asyncio event loop, run it off-thread (e.g.
+    `await asyncio.to_thread(maybe_auto_compact_on_shutdown)`) or it will
+    stall every other in-flight request for the duration of compaction.
+    Shared by every shutdown endpoint (api/routers/admin.py,
+    api/routers/fragments.py) so the auto-trigger logic and this
+    constraint live in exactly one place.
     """
     if _config is None or _search_dir is None:
         return
@@ -411,6 +417,7 @@ def maybe_auto_compact_on_shutdown() -> None:
             _search_dir,
             auto_trigger_ratio=_config.compaction.auto_trigger_ratio,
             min_interval_days=_config.compaction.min_interval_days,
+            timeout_seconds=_config.compaction.max_duration_seconds,
         )
         if result is None:
             return
