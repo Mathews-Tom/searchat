@@ -11,13 +11,12 @@ Configuration precedence (highest to lowest):
 from __future__ import annotations
 
 import os
-from typing import overload
+from typing import TYPE_CHECKING, overload
 from dataclasses import dataclass
 from pathlib import Path
 import tomli
 from dotenv import load_dotenv
 
-from ..core.logging_config import LogConfig
 from .constants import (
     DEFAULT_DATA_DIR,
     DEFAULT_CONFIG_SUBDIR,
@@ -159,6 +158,9 @@ from .constants import (
     ENV_DISTILLATION_MIN_EXCHANGE_CHARS,
     ENV_PALACE_ENABLED,
 )
+
+if TYPE_CHECKING:
+    from ..core.logging_config import LogConfig
 
 
 # Load .env file at module import time
@@ -975,6 +977,8 @@ class Config:
                 )
             # Otherwise, use empty dict and rely on constants.py
             data = {}
+
+        from ..core.logging_config import LogConfig
 
         # Build config objects with environment variable overrides
         return cls(
