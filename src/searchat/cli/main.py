@@ -440,6 +440,11 @@ def main():
 
             raise SystemExit(run_health(argv[1:]))
 
+        if argv and argv[0] == "doctor":
+            from searchat.cli.doctor_cmd import run_doctor
+
+            raise SystemExit(run_doctor(argv[1:]))
+
         if argv and argv[0] == "ci-check":
             from searchat.cli.ci_check_cmd import run_ci_check
 
@@ -475,6 +480,7 @@ def main():
             print("  searchat distill [--project PROJECT] [--retry-errors] [--dry-run]")
             print("  searchat migrate-storage [--dry-run] [--verify] [--rollback]")
             print("  searchat health [--url URL] [--json]")
+            print("  searchat doctor [--json]")
             print("  searchat ci-check [--fail-on-contradictions] [--fail-on-staleness-threshold FLOAT]")
             print()
             return
