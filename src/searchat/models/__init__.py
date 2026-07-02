@@ -8,6 +8,7 @@ from searchat.models.domain import (
     SearchResults,
     IndexStats,
     UpdateStats,
+    RebuildStats,
     DateFilter,
     ParsedQuery,
     FileTouched,
@@ -40,6 +41,7 @@ __all__ = [
     "SearchResults",
     "IndexStats",
     "UpdateStats",
+    "RebuildStats",
     "DateFilter",
     "ParsedQuery",
     # Palace / Distillation

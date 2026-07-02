@@ -17,7 +17,8 @@ from searchat.config import Config
 from searchat.core.connectors import detect_connector, discover_all_files
 from searchat.core.logging_config import get_logger
 from searchat.core.progress import NullProgressAdapter, ProgressCallback
-from searchat.models import ConversationRecord, IndexStats, UpdateStats
+from searchat.models import ConversationRecord, IndexStats, RebuildStats, UpdateStats
+from searchat.storage.schema import create_fts_indexes, create_hnsw_indexes
 from searchat.storage.unified_storage import UnifiedStorage
 
 logger = get_logger(__name__)
@@ -159,6 +160,93 @@ class UnifiedIndexer:
             "  2. Call index_all(force=True) if you have complete source files\n"
             "  3. Delete index manually: rm -rf <search_dir>/data/\n\n"
             f"Index location: {self.search_dir / 'data'}"
+        )
+
+    def rebuild_derived(
+        self,
+        force: bool = False,
+        progress: ProgressCallback | None = None,
+    ) -> RebuildStats:
+        """Deterministically rebuild exchanges, embeddings, FTS, and HNSW.
+
+        Safety: reads exclusively from UnifiedStorage's already-persisted
+        ``conversations``/``messages`` tables. Never calls a connector, never
+        discovers or opens a source JSONL/session file, and never touches
+        ``source_file_state``. This is the safe counterpart to index_all(),
+        which stays guarded exactly as before — rebuild_derived is a
+        completely separate code path that does not call it.
+
+        force=False (default): only (re)segments exchanges/embeddings for
+        conversations that currently have zero exchange rows — a cheap,
+        idempotent completion pass safe to run at any time.
+        force=True: wipes and regenerates exchanges/embeddings for every
+        conversation from their persisted messages, then drops and recreates
+        the FTS and HNSW indexes from scratch. Deterministic: the same
+        messages always segment into the same exchanges and embeddings, so
+        this reproduces exactly what the original ingestion path produced.
+        """
+        if progress is None:
+            progress = NullProgressAdapter()
+
+        progress.update_phase("Rebuilding derived data from persisted conversations")
+        start_time = time.time()
+
+        if force:
+            conversation_ids = self._storage.list_conversation_ids()
+            self._storage.clear_exchanges()
+            self._storage.clear_embeddings()
+            self._storage.drop_hnsw_index()
+        else:
+            conversation_ids = self._storage.list_conversation_ids_without_exchanges()
+
+        total_exchanges = 0
+        total_embeddings = 0
+        processed = 0
+
+        for idx, conversation_id in enumerate(conversation_ids, 1):
+            record = self._storage.get_conversation_record(conversation_id)
+            if record is None or not record["messages"]:
+                continue
+
+            progress.update_file_progress(
+                idx, len(conversation_ids), record.get("title") or conversation_id
+            )
+
+            exchanges = _segment_exchanges(
+                conversation_id,
+                record["project_id"],
+                record["messages"],
+                record["created_at"],
+            )
+            for exc in exchanges:
+                self._storage.upsert_exchange(**exc)
+            total_exchanges += len(exchanges)
+
+            if exchanges:
+                total_embeddings += self._embed_exchanges(exchanges, progress)
+
+            processed += 1
+
+        create_fts_indexes(self._storage.connection)
+        create_hnsw_indexes(
+            self._storage.connection,
+            ef_construction=self.config.storage.hnsw_ef_construction,
+            m=self.config.storage.hnsw_m,
+        )
+
+        progress.update_stats(
+            conversations=processed,
+            chunks=total_exchanges,
+            embeddings=total_embeddings,
+        )
+        progress.finish()
+
+        return RebuildStats(
+            conversations_processed=processed,
+            exchanges_rebuilt=total_exchanges,
+            embeddings_rebuilt=total_embeddings,
+            rebuild_time_seconds=time.time() - start_time,
+            forced=force,
         )
 
     def index_append_only(
