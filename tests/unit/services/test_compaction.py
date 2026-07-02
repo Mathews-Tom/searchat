@@ -148,6 +148,33 @@ class TestVerifyCompaction:
         assert result.fts_probe_match is None
         assert result.vector_probe_match is None
 
+    def test_symmetric_diff_detects_conversations_divergence(self, tmp_path: Path) -> None:
+        """Equal row counts alone must not be mistaken for identical
+        content: dst's conversations table here has the same row count as
+        src but a genuinely different row, which only the symmetric-diff
+        spot-check (not row_counts_match) can catch."""
+        src = tmp_path / "src.duckdb"
+        dst = tmp_path / "dst.duckdb"
+
+        def _seed_conversations(path: Path, conversation_id: str) -> None:
+            _seed_minimal_db(path, rows=())
+            con = duckdb.connect(str(path))
+            _prepare_connection(con)
+            con.execute("CREATE TABLE conversations(id VARCHAR PRIMARY KEY, title VARCHAR)")
+            con.execute("INSERT INTO conversations VALUES (?, 'title')", [conversation_id])
+            con.execute("CHECKPOINT")
+            con.close()
+
+        _seed_conversations(src, "conv-a")
+        _seed_conversations(dst, "conv-b")
+
+        result = verify_compaction(src, dst)
+
+        assert result.row_counts_match is True
+        assert result.symmetric_diff_match is False
+        assert result.passed is False
+        assert any("symmetric diff" in m for m in result.mismatches)
+
 
 # ---------------------------------------------------------------------------
 # Real, indexed conversation DB with synthetic bloat -- end-to-end engine tests
@@ -387,3 +414,51 @@ class TestCompactDatabase:
         assert _sha256(db_path) == checksum_before
         assert not (db_path.parent / f"{db_path.name}.compact-tmp").exists()
         assert list(db_path.parent.glob(f"{db_path.name}.pre-compact-*")) == []
+
+    def test_post_swap_smoke_test_failure_rolls_back_and_quarantines(
+        self, tmp_path: Path
+    ) -> None:
+        """The last line of defense: if the file that just got swapped
+        into db_path fails even a trivial open+query smoke test, roll
+        back -- restore the original content at db_path, quarantine the
+        broken swap-in under a forensic filename, and report failure.
+        Nothing is left half-swapped."""
+        db_path = tmp_path / "data" / "searchat.duckdb"
+        db_path.parent.mkdir(parents=True)
+        _build_indexed_bloated_db(db_path)
+        checksum_before = _sha256(db_path)
+
+        with patch("searchat.services.compaction._post_swap_smoke_test", return_value=False):
+            result = compact_database(db_path)
+
+        assert result.success is False
+        assert "Post-swap smoke test failed" in result.error
+        assert result.preserved_original_path is None
+        assert result.quarantined_path is not None
+        assert result.quarantined_path.exists()
+        assert list(db_path.parent.glob(f"{db_path.name}.post-swap-failed-*")) == [
+            result.quarantined_path
+        ]
+
+        # The original is back in place at db_path -- verified by content,
+        # not just by the field being None.
+        assert _sha256(db_path) == checksum_before
+        assert list(db_path.parent.glob(f"{db_path.name}.pre-compact-*")) == []
+
+    def test_compacts_database_in_directory_with_apostrophe_in_path(
+        self, tmp_path: Path
+    ) -> None:
+        """ATTACH has no bound-parameter form for its path argument, so
+        _sql_literal's manual SQL-literal escaping is what stands between
+        a real filesystem path (e.g. a macOS home directory like
+        /Users/O'Brien/...) and a broken or injectable ATTACH statement."""
+        odd_dir = tmp_path / "O'Brien's Data"
+        db_path = odd_dir / "data" / "searchat.duckdb"
+        db_path.parent.mkdir(parents=True)
+        _build_indexed_bloated_db(db_path)
+
+        result = compact_database(db_path)
+
+        assert result.success is True
+        assert result.verification is not None
+        assert result.verification.passed is True
