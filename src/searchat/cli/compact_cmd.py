@@ -75,6 +75,18 @@ def run_compact(argv: list[str]) -> int:
             "this CLI process and skip the crash-safety guarantee."
         ),
     )
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=None,
+        metavar="SECONDS",
+        help=(
+            "Seconds to wait for the compaction subprocess before "
+            "terminating it as hung. Defaults to "
+            "compaction.max_duration_seconds in config (the same bound "
+            "the shutdown auto-trigger uses). Pass 0 to wait indefinitely."
+        ),
+    )
     args = parser.parse_args(argv)
 
     from searchat.config import Config, PathResolver
@@ -84,8 +96,14 @@ def run_compact(argv: list[str]) -> int:
     search_dir = PathResolver.get_shared_search_dir(config)
     db_path = config.storage.resolve_duckdb_path(search_dir)
 
+    timeout_seconds = args.timeout if args.timeout is not None else config.compaction.max_duration_seconds
+    if timeout_seconds == 0:
+        timeout_seconds = None
+
     try:
-        result = compact_database(db_path, subprocess_isolated=not args.in_process)
+        result = compact_database(
+            db_path, subprocess_isolated=not args.in_process, timeout_seconds=timeout_seconds
+        )
     except Exception as exc:
         print(f"Error: failed to compact database: {exc}", file=sys.stderr)
         return 1
