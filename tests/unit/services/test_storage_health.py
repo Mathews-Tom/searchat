@@ -4,9 +4,16 @@ import json
 import shutil
 from pathlib import Path
 
+import duckdb
+
 from searchat.services.backup import BackupManager
 from searchat.services.storage_contracts import BACKUP_MANIFEST_FILE
-from searchat.services.storage_health import inspect_storage_health, repair_storage_metadata
+from searchat.services.storage_health import (
+    estimate_live_data_size,
+    inspect_database_size,
+    inspect_storage_health,
+    repair_storage_metadata,
+)
 
 
 def test_inspect_storage_health_flags_repairable_legacy_backup_metadata(temp_search_dir: Path) -> None:
@@ -158,3 +165,44 @@ def test_inspect_storage_health_flags_fixture_backup_contract_bundle(temp_search
         and issue.repairable
         for issue in report.issues
     )
+
+
+# ---------------------------------------------------------------------------
+# Storage doctor diagnostics: live-data size estimation
+# ---------------------------------------------------------------------------
+
+
+def test_inspect_database_size_missing_file_returns_zeros(tmp_path: Path) -> None:
+    info = inspect_database_size(tmp_path / "missing.duckdb")
+    assert info.total_bytes == 0
+    assert info.block_size == 0
+    assert info.wal_bytes == 0
+
+
+def test_estimate_live_data_size_missing_file_returns_zero(tmp_path: Path) -> None:
+    assert estimate_live_data_size(tmp_path / "missing.duckdb") == 0
+
+
+def test_estimate_live_data_size_matches_known_block_count(tmp_path: Path) -> None:
+    db_path = tmp_path / "live.duckdb"
+    con = duckdb.connect(str(db_path))
+    con.execute("CREATE TABLE conversations(id INTEGER, payload VARCHAR)")
+    con.execute(
+        "INSERT INTO conversations SELECT i, md5(i::VARCHAR) || md5((i + 1)::VARCHAR) "
+        "FROM range(5000) t(i)"
+    )
+    con.execute("CHECKPOINT")
+
+    known_blocks = {
+        int(row[0])
+        for row in con.execute(
+            "SELECT DISTINCT block_id FROM pragma_storage_info('\"main\".\"conversations\"') "
+            "WHERE block_id IS NOT NULL AND block_id >= 0"
+        ).fetchall()
+    }
+    block_size = int(
+        con.execute("PRAGMA database_size").fetchdf()["block_size"][0]
+    )
+    con.close()
+
+    assert estimate_live_data_size(db_path) == len(known_blocks) * block_size

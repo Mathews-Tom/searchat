@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
+
+import duckdb
 
 from searchat.services.backup import BackupManager
 from searchat.services.storage_contracts import (
@@ -262,3 +265,136 @@ def repair_storage_metadata(
         issues=refreshed.issues,
         repairs_applied=repairs_applied,
     )
+
+
+# ---------------------------------------------------------------------------
+# Storage doctor diagnostics: live-data size estimation (searchat doctor)
+# ---------------------------------------------------------------------------
+
+_DUCKDB_SIZE_UNITS = {
+    "bytes": 1,
+    "kib": 1024,
+    "mib": 1024**2,
+    "gib": 1024**3,
+    "tib": 1024**4,
+    "pib": 1024**5,
+}
+
+
+def _parse_duckdb_size(text: str) -> int:
+    """Parse a DuckDB-formatted size string (e.g. '1.4 GiB', '0 bytes') to bytes."""
+    match = re.match(r"^\s*([\d.]+)\s*([A-Za-z]+)\s*$", text)
+    if not match:
+        return 0
+    multiplier = _DUCKDB_SIZE_UNITS.get(match.group(2).lower())
+    if multiplier is None:
+        return 0
+    return int(float(match.group(1)) * multiplier)
+
+
+@dataclass(frozen=True)
+class DatabaseSizeInfo:
+    """Raw PRAGMA database_size fields for a DuckDB file, read-only."""
+
+    total_bytes: int
+    block_size: int
+    total_blocks: int
+    used_blocks: int
+    free_blocks: int
+    wal_bytes: int
+
+
+_EMPTY_DATABASE_SIZE_INFO = DatabaseSizeInfo(
+    total_bytes=0, block_size=0, total_blocks=0, used_blocks=0, free_blocks=0, wal_bytes=0
+)
+
+
+def inspect_database_size(db_path: Path) -> DatabaseSizeInfo:
+    """Read PRAGMA database_size for `db_path` without mutating it.
+
+    Returns an all-zero report when `db_path` does not exist yet (fresh install).
+    """
+    if not db_path.exists():
+        return _EMPTY_DATABASE_SIZE_INFO
+    con = duckdb.connect(str(db_path), read_only=True)
+    try:
+        cursor = con.execute("PRAGMA database_size")
+        row = cursor.fetchone()
+        if row is None:
+            return _EMPTY_DATABASE_SIZE_INFO
+        columns = {desc[0]: value for desc, value in zip(cursor.description, row)}
+        block_size = int(columns.get("block_size", 0) or 0)
+        total_blocks = int(columns.get("total_blocks", 0) or 0)
+        used_blocks = int(columns.get("used_blocks", 0) or 0)
+        free_blocks = int(columns.get("free_blocks", 0) or 0)
+        wal_bytes = _parse_duckdb_size(str(columns.get("wal_size", "0 bytes")))
+        return DatabaseSizeInfo(
+            total_bytes=block_size * total_blocks,
+            block_size=block_size,
+            total_blocks=total_blocks,
+            used_blocks=used_blocks,
+            free_blocks=free_blocks,
+            wal_bytes=wal_bytes,
+        )
+    finally:
+        con.close()
+
+
+def estimate_live_data_size(db_path: Path) -> int:
+    """Estimate the bytes actually occupied by live tables in `db_path`.
+
+    Sums the distinct storage blocks referenced by `pragma_storage_info` across
+    the `main` schema and every `fts_main_*` schema, deduplicated so segments
+    packed into the same block are not double-counted. This is the "live"
+    footprint that `compute_bloat_ratio` compares against the on-disk file
+    size — blocks that no longer belong to any current table (freed by
+    deletes/updates/rebuilds but not reclaimed by DuckDB's allocator) are
+    invisible to `pragma_storage_info` and therefore excluded here, which is
+    exactly the bloat `searchat compact` (M3) reclaims.
+
+    Returns 0 when `db_path` does not exist yet.
+    """
+    if not db_path.exists():
+        return 0
+    con = duckdb.connect(str(db_path), read_only=True)
+    try:
+        size_row = con.execute("PRAGMA database_size").fetchone()
+        if size_row is None:
+            return 0
+        columns = {desc[0]: value for desc, value in zip(con.description, size_row)}
+        block_size = int(columns.get("block_size", 0) or 0)
+        if block_size <= 0:
+            return 0
+
+        schemas = [
+            row[0]
+            for row in con.execute(
+                "SELECT DISTINCT table_schema FROM information_schema.tables "
+                "WHERE table_schema = 'main' OR table_schema LIKE 'fts_main_%'"
+            ).fetchall()
+        ]
+
+        live_blocks: set[int] = set()
+        for schema in schemas:
+            tables = [
+                row[0]
+                for row in con.execute(
+                    "SELECT table_name FROM information_schema.tables WHERE table_schema = ?",
+                    [schema],
+                ).fetchall()
+            ]
+            for table in tables:
+                qualified = f'"{schema}"."{table}"'
+                try:
+                    block_rows = con.execute(
+                        "SELECT DISTINCT block_id FROM pragma_storage_info(?) "
+                        "WHERE block_id IS NOT NULL AND block_id >= 0",
+                        [qualified],
+                    ).fetchall()
+                except duckdb.Error:
+                    continue
+                live_blocks.update(int(row[0]) for row in block_rows)
+
+        return len(live_blocks) * block_size
+    finally:
+        con.close()
