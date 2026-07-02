@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import subprocess
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -153,8 +154,23 @@ class TestVerifyCompaction:
 # ---------------------------------------------------------------------------
 
 
-def _sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+def _sha256(path: Path, *, retries: int = 20, delay: float = 0.1) -> str:
+    """Read and hash a file's bytes.
+
+    Retries briefly on PermissionError: on Windows, a just-killed
+    process's file handle can take a moment to actually release after
+    Process.wait() returns, and a read attempted in that window raises
+    PermissionError rather than succeeding or raising immediately.
+    """
+    last_error: PermissionError | None = None
+    for _ in range(retries):
+        try:
+            return hashlib.sha256(path.read_bytes()).hexdigest()
+        except PermissionError as exc:
+            last_error = exc
+            time.sleep(delay)
+    assert last_error is not None
+    raise last_error
 
 
 def _deterministic_vector(text: str) -> list[float]:
