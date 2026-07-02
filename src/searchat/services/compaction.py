@@ -86,6 +86,7 @@ class CompactionResult:
     compacted_size_bytes: int
     bytes_reclaimed: int
     preserved_original_path: Path | None
+    quarantined_path: Path | None
     verification: VerificationResult | None
     error: str | None
     duration_seconds: float
@@ -119,12 +120,21 @@ def _prepare_connection(conn: duckdb.DuckDBPyConnection) -> None:
         pass
 
 
+def _scalar(con: duckdb.DuckDBPyConnection, sql: str, params: list | None = None) -> int:
+    """Run a query guaranteed to return exactly one row with one integer
+    column (e.g. `SELECT COUNT(*)`) and return that value.
+    """
+    row = con.execute(sql, params or []).fetchone()
+    assert row is not None, f"expected exactly one row from: {sql}"
+    return int(row[0])
+
+
 def _table_row_counts(con: duckdb.DuckDBPyConnection, catalog: str) -> dict[tuple[str, str], int]:
     tables = con.execute(_BASE_TABLES_SQL, [catalog]).fetchall()
     counts: dict[tuple[str, str], int] = {}
     for schema, table in tables:
         qualified = f"{_quote_ident(catalog)}.{_quote_ident(schema)}.{_quote_ident(table)}"
-        counts[(schema, table)] = con.execute(f"SELECT COUNT(*) FROM {qualified}").fetchone()[0]
+        counts[(schema, table)] = _scalar(con, f"SELECT COUNT(*) FROM {qualified}")
     return counts
 
 
@@ -153,10 +163,11 @@ def _fts_probe(src_path: Path, dst_path: Path, mismatches: list[str]) -> bool | 
     src_con = duckdb.connect(str(src_path), read_only=True)
     try:
         _prepare_connection(src_con)
-        has_fts = src_con.execute(
+        has_fts = _scalar(
+            src_con,
             "SELECT COUNT(*) FROM information_schema.tables "
-            "WHERE table_schema = 'fts_main_exchanges' AND table_name = 'terms'"
-        ).fetchone()[0]
+            "WHERE table_schema = 'fts_main_exchanges' AND table_name = 'terms'",
+        )
         if not has_fts:
             return None
         row = src_con.execute(
@@ -233,18 +244,19 @@ def _vector_probe(con: duckdb.DuckDBPyConnection, mismatches: list[str]) -> bool
 def _symmetric_diff(con: duckdb.DuckDBPyConnection, mismatches: list[str]) -> bool:
     """Spot-check a zero-row symmetric diff on `conversations`, matching
     Appendix A's final verification step."""
-    has_table = con.execute(
+    has_table = _scalar(
+        con,
         "SELECT COUNT(*) FROM information_schema.tables WHERE table_catalog IN ('src', 'dst') "
-        "AND table_schema = 'main' AND table_name = 'conversations'"
-    ).fetchone()[0]
+        "AND table_schema = 'main' AND table_name = 'conversations'",
+    )
     if has_table < 2:
         return True
-    forward = con.execute(
-        "SELECT COUNT(*) FROM (SELECT * FROM src.conversations EXCEPT SELECT * FROM dst.conversations)"
-    ).fetchone()[0]
-    backward = con.execute(
-        "SELECT COUNT(*) FROM (SELECT * FROM dst.conversations EXCEPT SELECT * FROM src.conversations)"
-    ).fetchone()[0]
+    forward = _scalar(
+        con, "SELECT COUNT(*) FROM (SELECT * FROM src.conversations EXCEPT SELECT * FROM dst.conversations)"
+    )
+    backward = _scalar(
+        con, "SELECT COUNT(*) FROM (SELECT * FROM dst.conversations EXCEPT SELECT * FROM src.conversations)"
+    )
     ok = forward == 0 and backward == 0
     if not ok:
         mismatches.append(f"conversations symmetric diff nonzero: forward={forward} backward={backward}")
@@ -379,6 +391,7 @@ def compact_database(db_path: Path) -> CompactionResult:
             compacted_size_bytes=0,
             bytes_reclaimed=0,
             preserved_original_path=None,
+            quarantined_path=None,
             verification=None,
             error=f"No database found at {db_path}",
             duration_seconds=time.perf_counter() - start,
@@ -399,6 +412,7 @@ def compact_database(db_path: Path) -> CompactionResult:
             compacted_size_bytes=0,
             bytes_reclaimed=0,
             preserved_original_path=None,
+            quarantined_path=None,
             verification=None,
             error=f"Database is in use by another process; refusing to compact: {exc}",
             duration_seconds=time.perf_counter() - start,
@@ -412,6 +426,7 @@ def compact_database(db_path: Path) -> CompactionResult:
             compacted_size_bytes=0,
             bytes_reclaimed=0,
             preserved_original_path=None,
+            quarantined_path=None,
             verification=None,
             error=f"Copy-compaction failed: {exc}",
             duration_seconds=time.perf_counter() - start,
@@ -428,6 +443,7 @@ def compact_database(db_path: Path) -> CompactionResult:
             compacted_size_bytes=dst_size,
             bytes_reclaimed=0,
             preserved_original_path=None,
+            quarantined_path=None,
             verification=verification,
             error=f"Verification failed: {'; '.join(verification.mismatches)}",
             duration_seconds=time.perf_counter() - start,
@@ -438,7 +454,11 @@ def compact_database(db_path: Path) -> CompactionResult:
     dst_path.rename(db_path)
 
     if not _post_swap_smoke_test(db_path):
-        # Roll back: quarantine the broken swap-in, restore the preserved original.
+        # Roll back: quarantine the broken swap-in, restore the preserved
+        # original. preserved_path no longer exists once this rename
+        # completes -- the original is back at db_path, not "preserved"
+        # separately -- so preserved_original_path is None here;
+        # quarantined_path points at the broken copy for forensics.
         broken_path = _stamped_sibling(db_path, "post-swap-failed")
         _unlink_with_wal(broken_path)
         broken_size = db_path.stat().st_size
@@ -450,7 +470,8 @@ def compact_database(db_path: Path) -> CompactionResult:
             original_size_bytes=original_size,
             compacted_size_bytes=broken_size,
             bytes_reclaimed=0,
-            preserved_original_path=preserved_path,
+            preserved_original_path=None,
+            quarantined_path=broken_path,
             verification=verification,
             error=(
                 "Post-swap smoke test failed; original restored, broken copy "
@@ -468,6 +489,7 @@ def compact_database(db_path: Path) -> CompactionResult:
         compacted_size_bytes=compacted_size,
         bytes_reclaimed=max(original_size - compacted_size, 0),
         preserved_original_path=None,
+        quarantined_path=None,
         verification=verification,
         error=None,
         duration_seconds=time.perf_counter() - start,
