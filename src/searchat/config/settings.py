@@ -160,8 +160,10 @@ from .constants import (
     # Compaction
     DEFAULT_COMPACTION_AUTO_TRIGGER_RATIO,
     DEFAULT_COMPACTION_MIN_INTERVAL_DAYS,
+    DEFAULT_COMPACTION_MAX_DURATION_SECONDS,
     ENV_COMPACTION_AUTO_TRIGGER_RATIO,
     ENV_COMPACTION_MIN_INTERVAL_DAYS,
+    ENV_COMPACTION_MAX_DURATION_SECONDS,
 )
 
 if TYPE_CHECKING:
@@ -701,17 +703,37 @@ class CompactionConfig:
     """Auto-trigger thresholds for `searchat compact` (M3)."""
     auto_trigger_ratio: float
     min_interval_days: int
+    max_duration_seconds: float
 
     @classmethod
     def from_dict(cls, data: dict) -> "CompactionConfig":
         return cls(
-            auto_trigger_ratio=_get_env_float(
-                ENV_COMPACTION_AUTO_TRIGGER_RATIO,
-                float(data.get("auto_trigger_ratio", DEFAULT_COMPACTION_AUTO_TRIGGER_RATIO)),
+            # Floored, not raised: a misconfigured ratio below 1.0 (no
+            # such thing as "reclaimable" below the live-data floor) or a
+            # negative interval/duration would otherwise silently defeat
+            # the gate it's supposed to enforce rather than fail loudly --
+            # clamping is the safe direction here, and no other section in
+            # this file validates its TOML input either.
+            auto_trigger_ratio=max(
+                _get_env_float(
+                    ENV_COMPACTION_AUTO_TRIGGER_RATIO,
+                    float(data.get("auto_trigger_ratio", DEFAULT_COMPACTION_AUTO_TRIGGER_RATIO)),
+                ),
+                1.0,
             ),
-            min_interval_days=_get_env_int(
-                ENV_COMPACTION_MIN_INTERVAL_DAYS,
-                int(data.get("min_interval_days", DEFAULT_COMPACTION_MIN_INTERVAL_DAYS)),
+            min_interval_days=max(
+                _get_env_int(
+                    ENV_COMPACTION_MIN_INTERVAL_DAYS,
+                    int(data.get("min_interval_days", DEFAULT_COMPACTION_MIN_INTERVAL_DAYS)),
+                ),
+                0,
+            ),
+            max_duration_seconds=max(
+                _get_env_float(
+                    ENV_COMPACTION_MAX_DURATION_SECONDS,
+                    float(data.get("max_duration_seconds", DEFAULT_COMPACTION_MAX_DURATION_SECONDS)),
+                ),
+                1.0,
             ),
         )
 

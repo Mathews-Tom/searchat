@@ -116,3 +116,7 @@ min_query_length = 8
 # min_interval_days ago.
 auto_trigger_ratio = 3.0
 min_interval_days = 7
+# Safety bound on the isolated compaction subprocess: terminated (then
+# killed) if it runs longer than this, rather than blocking the CLI or
+# graceful shutdown forever.
+max_duration_seconds = 1800.0
