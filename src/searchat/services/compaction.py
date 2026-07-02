@@ -534,7 +534,9 @@ def _compact_worker(
     result_queue.put(result)
 
 
-def compact_database(db_path: Path, *, subprocess_isolated: bool = True) -> CompactionResult:
+def compact_database(
+    db_path: Path, *, subprocess_isolated: bool = True, timeout_seconds: float | None = None
+) -> CompactionResult:
     """Reclaim dead blocks in `db_path` via verified copy-compaction.
 
     By default, runs the checkpoint -> attach -> COPY FROM DATABASE ->
@@ -549,7 +551,13 @@ def compact_database(db_path: Path, *, subprocess_isolated: bool = True) -> Comp
     `subprocess_isolated=False` runs the sequence directly in the
     caller's process instead -- for tests exercising the compaction logic
     itself rather than its process isolation.
+
+    `timeout_seconds`, when given, bounds how long the isolated child may
+    run: a hung (not crashed) child is terminated -- then killed if it
+    doesn't exit -- rather than blocking the caller forever. `None` (the
+    default) waits indefinitely, matching the original behavior.
     """
+    start = time.perf_counter()
     db_path = Path(db_path)
     if not subprocess_isolated:
         return _compact_database_in_process(db_path)
@@ -558,7 +566,32 @@ def compact_database(db_path: Path, *, subprocess_isolated: bool = True) -> Comp
     result_queue: multiprocessing.Queue = ctx.Queue()
     process = ctx.Process(target=_compact_worker, args=(str(db_path), result_queue))
     process.start()
-    process.join()
+    process.join(timeout=timeout_seconds)
+
+    if process.is_alive():
+        # Hung, not crashed -- terminate/kill rather than block forever.
+        # Reached from the shutdown path (via run_auto_compact_if_needed),
+        # where blocking here would also block SIGTERM from ever firing.
+        process.terminate()
+        process.join(timeout=5)
+        if process.is_alive():
+            process.kill()
+            process.join()
+        return CompactionResult(
+            success=False,
+            original_path=db_path,
+            original_size_bytes=db_path.stat().st_size if db_path.exists() else 0,
+            compacted_size_bytes=0,
+            bytes_reclaimed=0,
+            preserved_original_path=None,
+            quarantined_path=None,
+            verification=None,
+            error=(
+                f"Compaction subprocess timed out after {timeout_seconds}s and was "
+                "terminated; original database untouched."
+            ),
+            duration_seconds=time.perf_counter() - start,
+        )
 
     if not result_queue.empty():
         return result_queue.get()
@@ -573,11 +606,12 @@ def compact_database(db_path: Path, *, subprocess_isolated: bool = True) -> Comp
         compacted_size_bytes=0,
         bytes_reclaimed=0,
         preserved_original_path=None,
+        quarantined_path=None,
         verification=None,
         error=(
             "Compaction subprocess exited abnormally "
             f"(exit code {process.exitcode}) before reporting a result; "
             "original database untouched."
         ),
-        duration_seconds=0.0,
+        duration_seconds=time.perf_counter() - start,
     )
