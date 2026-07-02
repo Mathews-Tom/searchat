@@ -445,6 +445,16 @@ def main():
 
             raise SystemExit(run_doctor(argv[1:]))
 
+        if argv and argv[0] == "rebuild-derived":
+            from searchat.cli.rebuild_cmd import run_rebuild_derived
+
+            raise SystemExit(run_rebuild_derived(argv[1:]))
+
+        if argv and argv[0] == "reingest-sources":
+            from searchat.cli.rebuild_cmd import run_reingest_sources
+
+            raise SystemExit(run_reingest_sources(argv[1:]))
+
         if argv and argv[0] == "ci-check":
             from searchat.cli.ci_check_cmd import run_ci_check
 
@@ -481,6 +491,8 @@ def main():
             print("  searchat migrate-storage [--dry-run] [--verify] [--rollback]")
             print("  searchat health [--url URL] [--json]")
             print("  searchat doctor [--json]")
+            print("  searchat rebuild-derived [--force] [--json]")
+            print("  searchat reingest-sources [--force]")
             print("  searchat ci-check [--fail-on-contradictions] [--fail-on-staleness-threshold FLOAT]")
             print()
             return
