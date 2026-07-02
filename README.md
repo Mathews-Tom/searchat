@@ -121,7 +121,7 @@ searchat setup-index
 searchat web
 ```
 
-Open http://localhost:8000
+Open http://localhost:8000 (searches ports up to 8010 if 8000 is busy; override with `SEARCHAT_PORT`).
 
 ### Install From Source
 
@@ -137,9 +137,30 @@ python scripts/setup-index
 searchat web
 ```
 
-Open http://localhost:8000
+Open http://localhost:8000 (searches ports up to 8010 if 8000 is busy; override with `SEARCHAT_PORT`).
 
 The setup script indexes all conversations from supported agents. On subsequent runs, the web server automatically indexes new conversations via live file watching.
+
+### Rebuilding The Index
+
+Two different operations can be confused — know which one you need:
+
+- **`searchat rebuild-derived [--force]`** — always safe. Rebuilds the
+  keyword and vector search indexes from conversations already stored in
+  the local database. Never opens a source conversation file, so it's safe
+  to run at any time, including after a compaction or backup restore, or
+  with no source files present at all.
+- **`searchat reingest-sources [--force]`** — guarded and dangerous if
+  source files are incomplete. Re-scans source JSONL/session files and
+  replaces the existing index with what it finds there. If source files are
+  missing or incomplete, indexed conversations absent from those files are
+  permanently lost. Refuses with an error unless an existing index is
+  absent or `--force` is explicitly passed.
+
+For routine maintenance (fixing a corrupted index, restoring after backup,
+recovering from disk compaction) use `rebuild-derived`. Only use
+`reingest-sources --force` if you have personally verified every source
+file is present and complete.
 
 ## MCP Server (Claude Desktop, Cursor, ...)
 
@@ -255,6 +276,8 @@ searchat  # interactive mode
 searchat web
 searchat mcp
 searchat setup-index [--force]
+searchat rebuild-derived [--force]   # rebuild search indexes from already-indexed data — always safe
+searchat reingest-sources [--force]  # re-scan source files and replace the index — guarded, see above
 
 # Download a default embedded GGUF model and update ~/.searchat/config/settings.toml
 searchat download-model --activate
