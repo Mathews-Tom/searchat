@@ -14,7 +14,8 @@ from searchat.services.compaction import CompactionResult, VerificationResult
 def _cfg(search_dir: Path) -> SimpleNamespace:
     """Minimal Config stand-in exposing only what run_compact touches."""
     return SimpleNamespace(
-        storage=SimpleNamespace(resolve_duckdb_path=lambda _search_dir: search_dir / "data" / "searchat.duckdb")
+        storage=SimpleNamespace(resolve_duckdb_path=lambda _search_dir: search_dir / "data" / "searchat.duckdb"),
+        compaction=SimpleNamespace(max_duration_seconds=1800.0),
     )
 
 
@@ -26,6 +27,7 @@ def _success_result(db_path: Path) -> CompactionResult:
         compacted_size_bytes=1_500_000,
         bytes_reclaimed=4_500_000,
         preserved_original_path=None,
+        quarantined_path=None,
         verification=VerificationResult(
             passed=True,
             row_counts_match=True,
@@ -48,6 +50,7 @@ def _failure_result(db_path: Path) -> CompactionResult:
         compacted_size_bytes=0,
         bytes_reclaimed=0,
         preserved_original_path=None,
+        quarantined_path=None,
         verification=None,
         error="Database is in use by another process; refusing to compact",
         duration_seconds=0.05,
@@ -65,6 +68,7 @@ def test_compact_help_text(capsys) -> None:
     assert "compact" in captured.out.lower()
     assert "--json" in captured.out
     assert "--in-process" in captured.out
+    assert "--timeout" in captured.out
 
 
 def test_compact_success_summary_output(temp_search_dir: Path, capsys) -> None:
@@ -85,7 +89,7 @@ def test_compact_success_summary_output(temp_search_dir: Path, capsys) -> None:
     assert result == 0
     assert "Compaction complete" in captured.out
     assert "Bytes reclaimed" in captured.out
-    mock_compact.assert_called_once_with(db_path, subprocess_isolated=True)
+    mock_compact.assert_called_once_with(db_path, subprocess_isolated=True, timeout_seconds=1800.0)
     mock_record.assert_called_once_with(temp_search_dir)
 
 
@@ -186,4 +190,40 @@ def test_compact_in_process_flag_disables_subprocess_isolation(
     ):
         run_compact(["--in-process"])
 
-    mock_compact.assert_called_once_with(db_path, subprocess_isolated=False)
+    mock_compact.assert_called_once_with(db_path, subprocess_isolated=False, timeout_seconds=1800.0)
+
+
+def test_compact_timeout_flag_overrides_config_default(
+    temp_search_dir: Path, capsys
+) -> None:
+    from searchat.cli.compact_cmd import run_compact
+
+    db_path = temp_search_dir / "data" / "searchat.duckdb"
+    with (
+        patch("searchat.config.Config.load", return_value=_cfg(temp_search_dir)),
+        patch("searchat.config.PathResolver.get_shared_search_dir", return_value=temp_search_dir),
+        patch(
+            "searchat.services.compaction.compact_database", return_value=_success_result(db_path)
+        ) as mock_compact,
+        patch("searchat.services.compaction.record_compaction_completed"),
+    ):
+        run_compact(["--timeout", "45"])
+
+    mock_compact.assert_called_once_with(db_path, subprocess_isolated=True, timeout_seconds=45.0)
+
+
+def test_compact_timeout_zero_means_unbounded(temp_search_dir: Path, capsys) -> None:
+    from searchat.cli.compact_cmd import run_compact
+
+    db_path = temp_search_dir / "data" / "searchat.duckdb"
+    with (
+        patch("searchat.config.Config.load", return_value=_cfg(temp_search_dir)),
+        patch("searchat.config.PathResolver.get_shared_search_dir", return_value=temp_search_dir),
+        patch(
+            "searchat.services.compaction.compact_database", return_value=_success_result(db_path)
+        ) as mock_compact,
+        patch("searchat.services.compaction.record_compaction_completed"),
+    ):
+        run_compact(["--timeout", "0"])
+
+    mock_compact.assert_called_once_with(db_path, subprocess_isolated=True, timeout_seconds=None)
