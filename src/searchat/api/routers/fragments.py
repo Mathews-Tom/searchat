@@ -720,8 +720,11 @@ async def shutdown_server(request: Request) -> HTMLResponse:
     import signal
     import asyncio
 
+    from searchat.api.dependencies import maybe_auto_compact_on_shutdown
+
     async def _delayed_shutdown() -> None:
         await asyncio.sleep(0.5)
+        maybe_auto_compact_on_shutdown()
         os.kill(os.getpid(), signal.SIGTERM)
 
     asyncio.get_event_loop().create_task(_delayed_shutdown())

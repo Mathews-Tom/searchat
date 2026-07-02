@@ -13,7 +13,7 @@ from searchat.api.contracts import (
     serialize_shutdown_payload,
     serialize_watcher_status_payload,
 )
-from searchat.api.dependencies import get_watcher
+from searchat.api.dependencies import get_watcher, maybe_auto_compact_on_shutdown
 from searchat.api import state as api_state
 
 
@@ -69,6 +69,8 @@ async def shutdown_server(background_tasks: BackgroundTasks, force: bool = False
         if watcher and watcher.is_running:
             logger.info("Stopping file watcher...")
             watcher.stop()
+
+        maybe_auto_compact_on_shutdown()
 
         logger.info("Shutting down server...")
         os.kill(os.getpid(), signal.SIGTERM)
