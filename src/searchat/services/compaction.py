@@ -696,6 +696,7 @@ def run_auto_compact_if_needed(
     *,
     auto_trigger_ratio: float,
     min_interval_days: int,
+    timeout_seconds: float | None = None,
 ) -> CompactionResult | None:
     """Consult M1's bloat ratio and the compaction-state sidecar; compact
     only when both thresholds are exceeded.
@@ -703,6 +704,10 @@ def run_auto_compact_if_needed(
     Returns `None` when the auto-trigger does not fire, including when
     `db_path` does not exist yet. Never raises: intended for a shutdown
     path where a compaction check must never prevent shutdown.
+
+    `timeout_seconds` is forwarded to `compact_database` -- bounding a
+    hung child here matters even more than usual, since this function is
+    called from the graceful-shutdown path.
     """
     from searchat.services.storage_health import (
         compute_bloat_ratio,
@@ -731,7 +736,7 @@ def run_auto_compact_if_needed(
             "Auto-compact triggered for %s: bloat ratio %.2f > %.2f (last compaction: %s)",
             db_path, ratio, auto_trigger_ratio, state.last_compaction_at or "never",
         )
-        result = compact_database(db_path)
+        result = compact_database(db_path, timeout_seconds=timeout_seconds)
         if result.success:
             record_compaction_completed(search_dir)
         return result
