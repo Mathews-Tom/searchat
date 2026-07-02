@@ -436,7 +436,7 @@ class TestCompactDatabase:
         checksum_before = _sha256(db_path)
 
         with patch("searchat.services.compaction._post_swap_smoke_test", return_value=False):
-            result = compact_database(db_path)
+            result = compact_database(db_path, subprocess_isolated=False)
 
         assert result.success is False
         assert "Post-swap smoke test failed" in result.error
@@ -494,6 +494,61 @@ class TestSubprocessIsolation:
         row = con.execute("SELECT COUNT(*) FROM exchanges").fetchone()
         con.close()
         assert row == (4,)
+
+    def test_hung_subprocess_is_terminated_after_timeout(self, tmp_path: Path) -> None:
+        """A subprocess that neither crashes nor completes within
+        timeout_seconds is terminated rather than blocking the caller
+        forever -- this branch is what keeps a hung compaction from also
+        blocking graceful shutdown (SIGTERM never fires while
+        compact_database blocks). Uses a fake process double rather than
+        racing a real hang, matching the fault-injection style already
+        used for the crash case above."""
+        db_path = tmp_path / "data" / "searchat.duckdb"
+        db_path.parent.mkdir(parents=True)
+        _build_indexed_bloated_db(db_path)
+        checksum_before = _sha256(db_path)
+
+        class _HungProcess:
+            exitcode = None
+            terminate_called = False
+            kill_called = False
+
+            def __init__(self, target=None, args=()) -> None:
+                del target, args
+                self._alive = True
+
+            def start(self) -> None:
+                pass
+
+            def join(self, timeout=None) -> None:
+                del timeout  # never finishes on its own
+
+            def is_alive(self) -> bool:
+                return self._alive
+
+            def terminate(self) -> None:
+                type(self).terminate_called = True
+                self._alive = False
+
+            def kill(self) -> None:
+                type(self).kill_called = True
+                self._alive = False
+
+        class _FakeContext:
+            def Queue(self):
+                return queue.Queue()
+
+            def Process(self, target=None, args=()):
+                return _HungProcess(target=target, args=args)
+
+        with patch.object(comp.multiprocessing, "get_context", return_value=_FakeContext()):
+            result = compact_database(db_path, timeout_seconds=0.01)
+
+        assert result.success is False
+        assert "timed out" in result.error
+        assert _HungProcess.terminate_called is True
+        assert _HungProcess.kill_called is False
+        assert _sha256(db_path) == checksum_before
 
     def test_kill_subprocess_mid_compaction_leaves_original_untouched(
         self, tmp_path: Path
@@ -556,8 +611,11 @@ class TestSubprocessIsolation:
             def start(self) -> None:
                 pass
 
-            def join(self) -> None:
-                pass
+            def join(self, timeout=None) -> None:
+                del timeout
+
+            def is_alive(self) -> bool:
+                return False
 
         class _FakeContext:
             def Queue(self):
