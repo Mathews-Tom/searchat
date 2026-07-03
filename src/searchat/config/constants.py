@@ -203,6 +203,11 @@ CONTINUE_SESSIONS_DIR_CANDIDATES = [
     Path.home() / ".continue" / "sessions",
 ]
 
+# oh-my-pi (omp) session directory locations
+OMP_DIR_CANDIDATES = [
+    Path.home() / ".omp" / "agent" / "sessions",
+]
+
 # WSL mount point patterns
 WSL_MOUNT_PREFIX = "/mnt/"
 WSL_UNC_PREFIX = "\\\\wsl$\\"
@@ -221,6 +226,7 @@ ENV_GEMINI_DATA_DIR = "SEARCHAT_GEMINI_DATA_DIR"
 ENV_CONTINUE_DATA_DIR = "SEARCHAT_CONTINUE_DATA_DIR"
 ENV_CURSOR_DATA_DIR = "SEARCHAT_CURSOR_DATA_DIR"
 ENV_AIDER_PROJECT_DIRS = "SEARCHAT_AIDER_PROJECT_DIRS"
+ENV_OMP_DATA_DIR = "SEARCHAT_OMP_DATA_DIR"
 
 ENV_PORT = "SEARCHAT_PORT"
 ENV_HOST = "SEARCHAT_HOST"

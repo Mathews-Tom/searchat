@@ -32,6 +32,8 @@ from .constants import (
     CONTINUE_SESSIONS_DIR_CANDIDATES,
     ENV_CURSOR_DATA_DIR,
     ENV_AIDER_PROJECT_DIRS,
+    ENV_OMP_DATA_DIR,
+    OMP_DIR_CANDIDATES,
 )
 
 
@@ -405,6 +407,16 @@ class PathResolver:
         return PathResolver._deduplicate_paths(paths)
 
     @staticmethod
+    def resolve_omp_dirs(_config=None) -> list[Path]:
+        """Resolve oh-my-pi (omp) session directories.
+
+        omp stores conversation transcripts under `~/.omp/agent/sessions/<cwd-slug>/`.
+        """
+        return PathResolver._resolve_from_env_or_candidates(
+            ENV_OMP_DATA_DIR, OMP_DIR_CANDIDATES,
+        )
+
+    @staticmethod
     def resolve_all_agent_dirs(config=None) -> dict:
         """
         Resolve all supported AI coding agent directories.
@@ -425,4 +437,5 @@ class PathResolver:
             'continue': PathResolver.resolve_continue_dirs(config),
             'cursor': PathResolver.resolve_cursor_dirs(config),
             'aider': PathResolver.resolve_aider_dirs(config),
+            'omp': PathResolver.resolve_omp_dirs(config),
         }
