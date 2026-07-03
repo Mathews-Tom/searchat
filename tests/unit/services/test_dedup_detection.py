@@ -466,3 +466,77 @@ def test_duplicate_suggestion_to_dict_roundtrips_all_fields() -> None:
         "title_b": "Title B",
         "similarity": 0.97,
     }
+
+
+# ---------------------------------------------------------------------------
+# M11 acceptance: mutation guard. Same structural pattern as M7's
+# `test_detect_cruft_and_build_disk_accounting_report_never_call_os_remove_or_shutil_rmtree`
+# -- proves no code path in this module can ever merge or delete a
+# conversation, not just "nothing does today by convention".
+# ---------------------------------------------------------------------------
+
+
+class _SelectOnlyConnectionGuard:
+    """Wraps a real DuckDB connection and asserts every statement executed
+    through `.execute()` is a SELECT.
+
+    This matters specifically for the live-connection path: unlike the
+    standalone path (opened `read_only=True` by `find_near_duplicates`
+    itself), a live server connection is read-write, so correctness there
+    depends entirely on this module never issuing an
+    INSERT/UPDATE/DELETE/MERGE/DROP -- not on a DB-level guard. This proxy
+    makes that a hard assertion instead of an implicit convention.
+    """
+
+    def __init__(self, real_connection: duckdb.DuckDBPyConnection) -> None:
+        self._real = real_connection
+        self.executed_statements: list[str] = []
+
+    def execute(self, sql: str, *args: object, **kwargs: object):  # noqa: ANN401
+        stripped = sql.strip().upper()
+        assert stripped.startswith("SELECT"), (
+            f"find_near_duplicates must never execute a non-SELECT statement, got: {sql!r}"
+        )
+        self.executed_statements.append(sql)
+        return self._real.execute(sql, *args, **kwargs)
+
+
+@pytest.mark.unit
+def test_find_near_duplicates_never_executes_a_non_select_statement() -> None:
+    """The milestone's hard acceptance bar, DB-mutation flavor: every
+    statement `find_near_duplicates` issues through its connection is a
+    SELECT, proving no merge/delete/write code path is reachable from it.
+    """
+    real_connection = duckdb.connect(":memory:")
+    _seed_connection(
+        real_connection,
+        conversations=(
+            {
+                "conversation_id": "claude-conv-guard",
+                "title": "Debugging the auth flow",
+                "file_path": "/home/user/.claude/projects/p/guard.jsonl",
+                "connector_name": "claude",
+                "embeddings": [_SAME_CONTENT_VECTOR],
+            },
+            {
+                "conversation_id": "codex-conv-guard",
+                "title": "Debugging the auth flow",
+                "file_path": "/home/user/.codex/sessions/guard.jsonl",
+                "connector_name": "codex",
+                "embeddings": [_SAME_CONTENT_VECTOR],
+            },
+        ),
+        embedding_dim=4,
+    )
+    guard = _SelectOnlyConnectionGuard(real_connection)
+
+    suggestions = find_near_duplicates(
+        Path("unused"), connection=guard, similarity_threshold=0.92
+    )
+
+    # The guard didn't accidentally block a legitimate read (which would be
+    # a false-negative pass): the real near-duplicate pair is still found.
+    assert len(suggestions) == 1
+    assert len(guard.executed_statements) >= 1
+    for statement in guard.executed_statements:
+        assert statement.strip().upper().startswith("SELECT")
