@@ -370,6 +370,16 @@ ENV_BACKUP_KEEP_MONTHLY = "SEARCHAT_BACKUP_KEEP_MONTHLY"
 ENV_BACKUP_COMPRESSION_LEVEL = "SEARCHAT_BACKUP_COMPRESSION_LEVEL"
 
 # ============================================================================
+# Scheduled Backups Defaults (M10 -- interval trigger over M4's engine)
+# ============================================================================
+
+DEFAULT_BACKUP_SCHEDULE_ENABLED = False
+DEFAULT_BACKUP_SCHEDULE_INTERVAL_HOURS = 24.0
+
+ENV_BACKUP_SCHEDULE_ENABLED = "SEARCHAT_BACKUP_SCHEDULE_ENABLED"
+ENV_BACKUP_SCHEDULE_INTERVAL_HOURS = "SEARCHAT_BACKUP_SCHEDULE_INTERVAL_HOURS"
+
+# ============================================================================
 # Source Lifecycle Defaults (M8 -- verified archive-then-prune)
 # ============================================================================
 
