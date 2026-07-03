@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import duckdb
@@ -24,7 +24,15 @@ import pytest
 
 from searchat.core.connectors.claude import ClaudeConnector
 from searchat.services.backup_compression import decompress_file
-from searchat.services.source_lifecycle import VerificationResult, archive_source, verify_ingested
+from searchat.services.source_lifecycle import (
+    TombstoneEntry,
+    VerificationResult,
+    archive_source,
+    prune_source,
+    tombstone_log_path,
+    verify_ingested,
+    write_tombstone,
+)
 from searchat.storage.schema import ensure_tables
 
 # ---------------------------------------------------------------------------
@@ -450,3 +458,206 @@ def test_archive_source_roundtrips_empty_file(tmp_path: Path) -> None:
     decompress_file(result, decompressed)
     assert decompressed.exists()
     assert decompressed.read_bytes() == b""
+
+
+# ---------------------------------------------------------------------------
+# prune_source: unconditional delete (M8).
+#
+# `prune_source` performs no gating of its own -- it only deletes the file
+# it is given. These tests exercise the real filesystem delete, no mocking.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_prune_source_deletes_file(tmp_path: Path) -> None:
+    source_file = tmp_path / "conv-prune.jsonl"
+    source_file.write_text('{"type": "human", "text": "hi"}\n', encoding="utf-8")
+    assert source_file.exists()
+
+    prune_source(source_file)
+
+    assert not source_file.exists()
+
+
+@pytest.mark.unit
+def test_prune_source_raises_file_not_found_for_missing_file(tmp_path: Path) -> None:
+    missing_file = tmp_path / "never-written.jsonl"
+    assert not missing_file.exists()
+
+    with pytest.raises(FileNotFoundError):
+        prune_source(missing_file)
+
+
+# ---------------------------------------------------------------------------
+# write_tombstone / TombstoneEntry: append-only forensic log (M8).
+#
+# The tombstone log is the only recovery path once a source file has
+# actually been removed (or replaced by its `.zst` archive). These tests
+# prove: (a) the log directory/file are created on first write, (b) every
+# field round-trips exactly through the JSON line, and (c) repeated writes
+# are strictly additive -- no entry is ever dropped, duplicated, or
+# overwritten by a later write to the same log.
+# ---------------------------------------------------------------------------
+
+
+def _make_tombstone_entry(
+    *,
+    action: str = "prune",
+    connector_name: str = "claude",
+    file_path: str = "/fake/path/conv.jsonl",
+    conversation_id: str = "conv-1",
+    project_id: str | None = "proj-1",
+    checksum: str = "deadbeef" * 8,
+    message_count: int = 3,
+    archived_path: str | None = None,
+    timestamp: str | None = None,
+) -> TombstoneEntry:
+    return TombstoneEntry(
+        action=action,
+        connector_name=connector_name,
+        file_path=file_path,
+        conversation_id=conversation_id,
+        project_id=project_id,
+        checksum=checksum,
+        message_count=message_count,
+        archived_path=archived_path,
+        timestamp=timestamp or datetime.now(timezone.utc).isoformat(),
+    )
+
+
+@pytest.mark.unit
+def test_write_tombstone_creates_directory_and_log_file_and_roundtrips_all_fields(
+    tmp_path: Path,
+) -> None:
+    tombstone_dir = tmp_path / "tombstones"
+    assert not tombstone_dir.exists()
+
+    entry = _make_tombstone_entry(
+        action="prune",
+        connector_name="claude",
+        file_path=str(tmp_path / "conv-a.jsonl"),
+        conversation_id="conv-a",
+        project_id="proj-a",
+        checksum=hashlib.sha256(b"hello world").hexdigest(),
+        message_count=7,
+        archived_path=None,
+    )
+
+    log_path = write_tombstone(tombstone_dir, entry)
+
+    assert log_path == tombstone_log_path(tombstone_dir)
+    assert log_path == tombstone_dir / "tombstones.jsonl"
+    assert log_path.exists()
+
+    lines = log_path.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1
+
+    parsed = json.loads(lines[0])
+    assert parsed == entry.to_dict()
+    assert parsed["action"] == "prune"
+    assert parsed["connector_name"] == "claude"
+    assert parsed["file_path"] == entry.file_path
+    assert parsed["conversation_id"] == "conv-a"
+    assert parsed["project_id"] == "proj-a"
+    assert parsed["checksum"] == entry.checksum
+    assert parsed["message_count"] == 7
+    assert parsed["archived_path"] is None
+    assert parsed["timestamp"] == entry.timestamp
+
+
+@pytest.mark.unit
+def test_write_tombstone_is_append_only_with_no_duplicates_or_drops_across_three_writes(
+    tmp_path: Path,
+) -> None:
+    tombstone_dir = tmp_path / "tombstones"
+    entries = [
+        _make_tombstone_entry(
+            action="archive",
+            file_path=str(tmp_path / "conv-1.jsonl"),
+            conversation_id="conv-1",
+            checksum=hashlib.sha256(b"one").hexdigest(),
+            message_count=1,
+            archived_path=str(tmp_path / "conv-1.jsonl.zst"),
+        ),
+        _make_tombstone_entry(
+            action="prune",
+            file_path=str(tmp_path / "conv-2.jsonl"),
+            conversation_id="conv-2",
+            checksum=hashlib.sha256(b"two").hexdigest(),
+            message_count=2,
+            archived_path=None,
+        ),
+        _make_tombstone_entry(
+            action="archive",
+            file_path=str(tmp_path / "conv-3.jsonl"),
+            conversation_id="conv-3",
+            checksum=hashlib.sha256(b"three").hexdigest(),
+            message_count=3,
+            archived_path=str(tmp_path / "conv-3.jsonl.zst"),
+        ),
+    ]
+
+    log_paths = [write_tombstone(tombstone_dir, entry) for entry in entries]
+
+    assert all(p == tombstone_log_path(tombstone_dir) for p in log_paths)
+
+    lines = tombstone_log_path(tombstone_dir).read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 3
+
+    parsed_lines = [json.loads(line) for line in lines]
+    conversation_ids_seen = [p["conversation_id"] for p in parsed_lines]
+
+    # Every entry appears -- and appears exactly once: no drops, no
+    # duplicates, no later write silently overwriting an earlier one.
+    assert sorted(conversation_ids_seen) == ["conv-1", "conv-2", "conv-3"]
+    assert len(set(conversation_ids_seen)) == 3
+
+    by_conversation_id = {p["conversation_id"]: p for p in parsed_lines}
+    for entry in entries:
+        matches = [cid for cid in conversation_ids_seen if cid == entry.conversation_id]
+        assert len(matches) == 1
+        assert by_conversation_id[entry.conversation_id] == entry.to_dict()
+
+
+# ---------------------------------------------------------------------------
+# prune_source + write_tombstone: full wired-together integration (M8).
+#
+# Proves the actual composition a later PR's orchestration will perform:
+# compute the real checksum before deletion, delete the file, then record
+# exactly one tombstone carrying that same real checksum as forensic proof
+# of what was removed.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_prune_source_then_write_tombstone_full_integration(tmp_path: Path) -> None:
+    source_file = tmp_path / "conv-integration.jsonl"
+    source_file.write_text(
+        '{"type": "human", "text": "integration test content"}\n', encoding="utf-8"
+    )
+    real_checksum = hashlib.sha256(source_file.read_bytes()).hexdigest()
+
+    prune_source(source_file)
+    assert not source_file.exists()
+
+    tombstone_dir = tmp_path / "tombstones"
+    entry = _make_tombstone_entry(
+        action="prune",
+        file_path=str(source_file),
+        conversation_id="conv-integration",
+        checksum=real_checksum,
+        message_count=5,
+        archived_path=None,
+    )
+    write_tombstone(tombstone_dir, entry)
+
+    lines = tombstone_log_path(tombstone_dir).read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1
+
+    parsed = json.loads(lines[0])
+    assert parsed["conversation_id"] == "conv-integration"
+    assert parsed["action"] == "prune"
+    assert parsed["checksum"] == real_checksum
+    assert parsed["checksum"] != ""
+    assert parsed["archived_path"] is None
+
