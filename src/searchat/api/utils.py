@@ -31,7 +31,7 @@ def detect_tool_from_path(file_path: str) -> str:
         file_path: Path to conversation file
 
     Returns:
-        Tool name: 'claude', 'vibe', 'opencode', 'codex', 'gemini', 'continue', 'cursor', or 'aider'
+        Tool name: 'claude', 'vibe', 'opencode', 'codex', 'gemini', 'continue', 'cursor', 'aider', or 'omp'
     """
     normalized = file_path.lower().replace("\\", "/")
 
@@ -52,6 +52,9 @@ def detect_tool_from_path(file_path: str) -> str:
 
     if normalized.endswith("/.aider.chat.history.md") or normalized.endswith(".aider.chat.history.md"):
         return "aider"
+
+    if "/.omp/agent/sessions/" in normalized:
+        return "omp"
 
     if "/.claude/" in normalized and normalized.endswith(".jsonl"):
         return "claude"

@@ -21,6 +21,10 @@ _TOOL_INCLUDE: dict[str, list[str]] = {
     "continue":  ["project_id LIKE 'continue-%'", "file_path ILIKE '%/.continue/sessions/%'"],
     "cursor":    ["project_id LIKE 'cursor-%'", "file_path ILIKE '%.vscdb.cursor/%'"],
     "aider":     ["project_id LIKE 'aider-%'", "file_path ILIKE '%/.aider.chat.history.md'"],
+    "omp":       [
+        "file_path ILIKE '%/.omp/agent/sessions/%'",
+        "file_path ILIKE '%\\.omp\\agent\\sessions\\%'",
+    ],
 }
 
 # Tools whose project_id patterns must be excluded when filtering for "claude".
@@ -31,6 +35,8 @@ _NON_CLAUDE_LIKE_PATTERNS: list[str] = [
     "project_id NOT LIKE 'continue-%'",
     "project_id NOT LIKE 'cursor-%'",
     "project_id NOT LIKE 'aider-%'",
+    "file_path NOT ILIKE '%/.omp/agent/sessions/%'",
+    "file_path NOT ILIKE '%\\.omp\\agent\\sessions\\%'",
     "project_id != 'gemini'",
     "project_id != 'codex'",
 ]
