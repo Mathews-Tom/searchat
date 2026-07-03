@@ -418,6 +418,35 @@ class TestRehydrateVerbatim:
         finally:
             cur.close()
 
+    def test_round_trip_reproduces_original_rows_exactly(self, storage: UnifiedStorage, config: Config):
+        conversation_id = "conv-1"
+        project_id = "proj-1"
+        messages = _make_messages(3)
+        _insert_conversation(storage, conversation_id=conversation_id, project_id=project_id, updated_at=datetime(2025, 1, 1), messages=messages)
+
+        # Build the original hot index via the exact same machinery
+        # rehydrate_verbatim reuses, so pre/post are directly comparable.
+        exchanges = _segment_exchanges(conversation_id, project_id, messages, messages[0]["timestamp"])
+        for exc in exchanges:
+            storage.upsert_exchange(**exc)
+        indexer = UnifiedIndexer(search_dir=Path("."), config=config, storage=storage)
+        indexer._embed_exchanges(exchanges, NullProgressAdapter())
+
+        original_exchanges = self._snapshot_exchanges(storage, conversation_id)
+        original_embeddings = self._snapshot_embeddings(storage, conversation_id)
+        assert len(original_exchanges) == 3
+
+        eviction = distillation_bridge.evict_hot_rows(storage, conversation_id)
+        assert eviction.exchanges_evicted == 3
+        assert self._snapshot_exchanges(storage, conversation_id) == []
+
+        result = distillation_bridge.rehydrate_verbatim(storage, conversation_id, config=config)
+
+        assert result.exchanges_restored == 3
+        assert result.embeddings_restored == 3
+        assert self._snapshot_exchanges(storage, conversation_id) == original_exchanges
+        assert self._snapshot_embeddings(storage, conversation_id) == original_embeddings
+
     def test_raises_key_error_when_conversation_has_no_messages(self, storage: UnifiedStorage, config: Config):
         with pytest.raises(KeyError):
             distillation_bridge.rehydrate_verbatim(storage, "missing", config=config)
