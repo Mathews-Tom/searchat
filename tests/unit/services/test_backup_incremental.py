@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
 
@@ -110,7 +111,7 @@ def test_validate_backup_artifact_detects_tamper(temp_search_dir: Path):
 
     parquet = live / "data" / "conversations" / "conv.parquet"
     _write_bytes(parquet, b"PAR1\n")
-    meta = mgr.create_backup(backup_name="base")
+    meta = mgr.create_backup(backup_name="base", compressed=False)
     name = meta.backup_path.name
 
     # Tamper with a copied file in the backup.
@@ -130,7 +131,7 @@ def test_validate_backup_artifact_legacy_full_backup_remains_snapshot_browsable(
     parquet = live / "data" / "conversations" / "conv.parquet"
     _write_bytes(parquet, b"PAR1\n")
 
-    meta = mgr.create_backup(backup_name="legacy")
+    meta = mgr.create_backup(backup_name="legacy", compressed=False)
     backup_path = meta.backup_path
     (backup_path / "backup_manifest.json").unlink()
 
@@ -172,7 +173,7 @@ def test_get_backup_summary_legacy_full_backup_reports_valid_and_browsable(temp_
     parquet = live / "data" / "conversations" / "conv.parquet"
     _write_bytes(parquet, b"PAR1\n")
 
-    meta = mgr.create_backup(backup_name="legacy")
+    meta = mgr.create_backup(backup_name="legacy", compressed=False)
     (meta.backup_path / "backup_manifest.json").unlink()
 
     summary = mgr.get_backup_summary(meta.backup_path.name)
@@ -406,7 +407,7 @@ def test_create_backup_excludes_derived_false_keeps_legacy_full_copy(temp_search
     _write_bytes(live / "data" / "indices" / "embeddings.faiss", b"FAISSSTUB")
     _seed_duckdb_conversation(live / "data" / "searchat.duckdb")
 
-    meta = mgr.create_backup(backup_name="snap", excludes_derived=False)
+    meta = mgr.create_backup(backup_name="snap", excludes_derived=False, compressed=False)
 
     assert meta.excludes_derived is False
     assert meta.derived_schema_version == 0
@@ -429,8 +430,238 @@ def test_source_of_truth_backup_is_materially_smaller_than_full_copy(temp_search
     _write_bytes(live / "data" / "indices" / "embeddings.faiss", b"X" * (5 * 500 * 5))
     _write_bytes(live / "data" / "indices" / "embeddings.metadata.parquet", b"Y" * (5 * 500 * 5))
 
-    source_of_truth = mgr.create_backup(backup_name="lean")
-    full_copy = mgr.create_backup(backup_name="full", excludes_derived=False)
+    source_of_truth = mgr.create_backup(backup_name="lean", compressed=False)
+    full_copy = mgr.create_backup(backup_name="full", excludes_derived=False, compressed=False)
 
     assert source_of_truth.total_size_bytes < full_copy.total_size_bytes * 0.3
 
+
+
+@pytest.mark.unit
+def test_create_backup_default_compresses_plaintext_payload(temp_search_dir: Path) -> None:
+    live = temp_search_dir
+    mgr = BackupManager(live)
+
+    _write_bytes(live / "data" / "conversations" / "conv.parquet", b"PAR1\n" * 1000)
+
+    meta = mgr.create_backup(backup_name="snap")
+
+    manifest = mgr._load_manifest(meta.backup_path)
+    assert manifest is not None
+    assert manifest.compressed is True
+
+    file_meta = manifest.files["data/conversations/conv.parquet"]
+    stored_rel = file_meta["stored_rel_path"]
+    assert stored_rel == "data/conversations/conv.parquet.zst"
+    assert (meta.backup_path / stored_rel).exists()
+    assert not (meta.backup_path / "data" / "conversations" / "conv.parquet").exists()
+
+
+@pytest.mark.unit
+def test_create_backup_compressed_full_backup_is_not_snapshot_browsable(temp_search_dir: Path) -> None:
+    live = temp_search_dir
+    mgr = BackupManager(live)
+
+    _write_bytes(live / "data" / "conversations" / "conv.parquet", b"PAR1\n")
+
+    meta = mgr.create_backup(backup_name="snap")
+
+    res = mgr.validate_backup_artifact(meta.backup_path.name, verify_hashes=False)
+    assert res["valid"] is True
+    assert res["snapshot_browsable"] is False
+
+
+@pytest.mark.unit
+def test_create_backup_compressed_false_stores_plaintext(temp_search_dir: Path) -> None:
+    live = temp_search_dir
+    mgr = BackupManager(live)
+
+    _write_bytes(live / "data" / "conversations" / "conv.parquet", b"PAR1\n")
+
+    meta = mgr.create_backup(backup_name="snap", compressed=False)
+
+    manifest = mgr._load_manifest(meta.backup_path)
+    assert manifest is not None
+    assert manifest.compressed is False
+    assert (meta.backup_path / "data" / "conversations" / "conv.parquet").read_bytes() == b"PAR1\n"
+
+
+@pytest.mark.unit
+def test_create_incremental_backup_compresses_changed_files(temp_search_dir: Path) -> None:
+    live = temp_search_dir
+    mgr = BackupManager(live)
+
+    settings = live / "config" / "settings.toml"
+    _write_bytes(settings, b"a = 1\n")
+    base = mgr.create_backup(backup_name="base")
+
+    _write_bytes(settings, b"a = 2\n" * 500)
+    inc = mgr.create_incremental_backup(parent_name=base.backup_path.name, backup_name="inc")
+
+    manifest = mgr._load_manifest(inc.backup_path)
+    assert manifest is not None
+    assert manifest.compressed is True
+    assert manifest.files["config/settings.toml"]["stored_rel_path"] == "config/settings.toml.zst"
+
+
+@pytest.mark.unit
+def test_encrypted_backup_ignores_compressed_flag(temp_search_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import base64
+    import os as _os
+
+    monkeypatch.setenv("SEARCHAT_BACKUP_KEY_B64", base64.b64encode(_os.urandom(32)).decode("ascii"))
+
+    live = temp_search_dir
+    mgr = BackupManager(live)
+    _write_bytes(live / "data" / "conversations" / "conv.parquet", b"PAR1\n")
+
+    meta = mgr.create_backup(backup_name="enc", encrypted=True, compressed=True)
+
+    manifest = mgr._load_manifest(meta.backup_path)
+    assert manifest is not None
+    assert manifest.encrypted is True
+    assert manifest.compressed is False
+    assert manifest.files["data/conversations/conv.parquet"]["stored_rel_path"] == "data/conversations/conv.parquet.enc"
+
+
+def _write_backup_dir(
+    backup_dir: Path,
+    name: str,
+    *,
+    timestamp: str,
+    pinned: bool = False,
+    parent_name: str | None = None,
+) -> None:
+    """Build a minimal on-disk backup directory with controlled timestamp/pinned/parent."""
+    from searchat.services.storage_contracts import BackupManifest, BackupMetadata
+
+    path = backup_dir / name
+    path.mkdir(parents=True, exist_ok=True)
+    metadata = BackupMetadata(
+        timestamp=timestamp,
+        backup_path=path,
+        source_path=backup_dir.parent,
+        file_count=0,
+        total_size_bytes=0,
+        backup_type="manual",
+        pinned=pinned,
+    )
+    (path / "backup_metadata.json").write_text(
+        json.dumps(metadata.to_dict(), indent=2), encoding="utf-8"
+    )
+    manifest = BackupManifest(
+        manifest_version=1,
+        backup_mode="full" if parent_name is None else "incremental",
+        encrypted=False,
+        created_at=f"{timestamp}",
+        parent_name=parent_name,
+        files={},
+        deleted_files=[],
+    )
+    (path / "backup_manifest.json").write_text(
+        json.dumps(manifest.to_dict(), indent=2), encoding="utf-8"
+    )
+
+
+@pytest.mark.unit
+def test_apply_retention_policy_keeps_last_n_and_prunes_rest(temp_search_dir: Path) -> None:
+    mgr = BackupManager(temp_search_dir)
+    for i in range(5):
+        _write_backup_dir(mgr.backup_dir, f"snap{i}", timestamp=f"2026010{i + 1}_000000")
+
+    result = mgr.apply_retention_policy(keep_last=2, keep_monthly=0)
+
+    assert set(result.kept) == {"snap3", "snap4"}
+    assert set(result.pruned) == {"snap0", "snap1", "snap2"}
+    for name in result.pruned:
+        assert not (mgr.backup_dir / name).exists()
+    for name in result.kept:
+        assert (mgr.backup_dir / name).exists()
+
+
+@pytest.mark.unit
+def test_apply_retention_policy_exempts_pinned_backups(temp_search_dir: Path) -> None:
+    mgr = BackupManager(temp_search_dir)
+    _write_backup_dir(mgr.backup_dir, "old_pinned", timestamp="20260101_000000", pinned=True)
+    for i in range(3):
+        _write_backup_dir(mgr.backup_dir, f"snap{i}", timestamp=f"2026020{i + 1}_000000")
+
+    result = mgr.apply_retention_policy(keep_last=1, keep_monthly=0)
+
+    assert "old_pinned" in result.kept
+    assert (mgr.backup_dir / "old_pinned").exists()
+    assert "snap2" in result.kept
+    assert set(result.pruned) == {"snap0", "snap1"}
+
+
+@pytest.mark.unit
+def test_apply_retention_policy_keeps_one_per_month_beyond_keep_last(temp_search_dir: Path) -> None:
+    mgr = BackupManager(temp_search_dir)
+    _write_backup_dir(mgr.backup_dir, "jan_old", timestamp="20260105_000000")
+    _write_backup_dir(mgr.backup_dir, "jan_new", timestamp="20260120_000000")
+    _write_backup_dir(mgr.backup_dir, "feb", timestamp="20260210_000000")
+    _write_backup_dir(mgr.backup_dir, "mar", timestamp="20260310_000000")
+
+    result = mgr.apply_retention_policy(keep_last=1, keep_monthly=3)
+
+    # keep_last=1 keeps "mar". Independently, keep_monthly=3 keeps the
+    # newest backup in each of the 3 most recent distinct months: mar
+    # (already kept), feb, and jan_new (the newest within January) --
+    # the two rules' kept sets are unioned, not stacked.
+    assert set(result.kept) == {"mar", "feb", "jan_new"}
+    assert result.pruned == ("jan_old",)
+
+
+@pytest.mark.unit
+def test_apply_retention_policy_protects_chain_ancestors_of_kept_backups(temp_search_dir: Path) -> None:
+    mgr = BackupManager(temp_search_dir)
+    _write_backup_dir(mgr.backup_dir, "base", timestamp="20260101_000000")
+    _write_backup_dir(mgr.backup_dir, "inc1", timestamp="20260102_000000", parent_name="base")
+    _write_backup_dir(mgr.backup_dir, "inc2", timestamp="20260103_000000", parent_name="inc1")
+
+    result = mgr.apply_retention_policy(keep_last=1, keep_monthly=0)
+
+    # keep_last=1 keeps only inc2, but inc2's chain depends on inc1 and base.
+    assert set(result.kept) == {"base", "inc1", "inc2"}
+    assert result.pruned == ()
+
+
+@pytest.mark.unit
+def test_apply_retention_policy_dry_run_does_not_delete(temp_search_dir: Path) -> None:
+    mgr = BackupManager(temp_search_dir)
+    for i in range(3):
+        _write_backup_dir(mgr.backup_dir, f"snap{i}", timestamp=f"2026010{i + 1}_000000")
+
+    result = mgr.apply_retention_policy(keep_last=1, keep_monthly=0, dry_run=True)
+
+    assert result.dry_run is True
+    assert set(result.pruned) == {"snap0", "snap1"}
+    for i in range(3):
+        assert (mgr.backup_dir / f"snap{i}").exists()
+
+
+@pytest.mark.unit
+def test_set_pinned_toggles_flag_and_persists(temp_search_dir: Path) -> None:
+    live = temp_search_dir
+    mgr = BackupManager(live)
+    _write_bytes(live / "data" / "conversations" / "conv.parquet", b"PAR1\n")
+    meta = mgr.create_backup(backup_name="snap")
+    name = meta.backup_path.name
+
+    assert meta.pinned is False
+
+    updated = mgr.set_pinned(name, True)
+    assert updated.pinned is True
+
+    reloaded = {b.backup_path.name: b for b in mgr.list_backups()}[name]
+    assert reloaded.pinned is True
+
+    unpinned = mgr.set_pinned(name, False)
+    assert unpinned.pinned is False
+
+
+@pytest.mark.unit
+def test_set_pinned_missing_backup_raises(temp_search_dir: Path) -> None:
+    mgr = BackupManager(temp_search_dir)
+    with pytest.raises(FileNotFoundError):
+        mgr.set_pinned("does_not_exist", True)

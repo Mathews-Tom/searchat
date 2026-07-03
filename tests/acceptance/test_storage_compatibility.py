@@ -173,7 +173,7 @@ def test_storage_compatibility_legacy_full_backup_without_manifest_remains_brows
     live_file.parent.mkdir(parents=True, exist_ok=True)
     live_file.write_bytes(b"PAR1\n")
 
-    backup = manager.create_backup(backup_name="legacy-full")
+    backup = manager.create_backup(backup_name="legacy-full", compressed=False)
     (backup.backup_path / BACKUP_MANIFEST_FILE).unlink()
 
     result = manager.validate_backup_artifact(backup.backup_path.name, verify_hashes=False)
