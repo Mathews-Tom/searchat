@@ -11,7 +11,7 @@ import logging
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from searchat.api.dependencies import get_config, get_search_dir
+from searchat.api.dependencies import get_config, get_duckdb_store, get_search_dir
 from searchat.contracts.errors import internal_server_error_message
 from searchat.services.disk_accounting import build_disk_accounting_report
 
@@ -65,9 +65,21 @@ class DiskAccountingResponse(BaseModel):
 
 @router.get("/disk", response_model=DiskAccountingResponse)
 async def get_disk_accounting() -> DiskAccountingResponse:
-    """Read-only per-agent and Searchat self disk-usage report."""
+    """Read-only per-agent and Searchat self disk-usage report.
+
+    Reuses the server's own live DuckDB connection when available (see
+    `services.disk_accounting.build_disk_accounting_report`'s `connection`
+    parameter) -- a fresh `duckdb.connect(db_path, read_only=True)` from
+    this same process conflicts with `UnifiedStorage`'s already-open
+    connection and would otherwise 500 on every request.
+    """
+    connection = None
     try:
-        report = build_disk_accounting_report(get_search_dir(), get_config())
+        connection = get_duckdb_store().connection
+    except Exception:
+        connection = None
+    try:
+        report = build_disk_accounting_report(get_search_dir(), get_config(), connection=connection)
     except Exception:
         logger.exception("Failed to build disk accounting report")
         raise HTTPException(status_code=500, detail=internal_server_error_message())
