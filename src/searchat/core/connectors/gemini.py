@@ -175,3 +175,25 @@ class GeminiCLIConnector(AgentProviderBase):
             return None
         return None
 
+
+    # -- V3: source lifecycle (M8) --
+
+    def export_original(self, record: ConversationRecord) -> bytes:
+        """Re-serialize as a Gemini CLI chat JSON (`history` array). Both
+        `conversation_id` (the file stem) and `project_id` (derived from
+        the grandparent directory name when the parent is named `chats`)
+        are recovered from the on-disk path `verify_roundtrip` writes this
+        export to -- which mirrors `record.file_path`'s directory
+        structure -- not from this payload.
+        """
+        payload = {
+            "history": [
+                {
+                    "role": message.role,
+                    "content": message.content,
+                    "timestamp": message.timestamp.isoformat(),
+                }
+                for message in record.messages
+            ]
+        }
+        return json.dumps(payload).encode("utf-8")

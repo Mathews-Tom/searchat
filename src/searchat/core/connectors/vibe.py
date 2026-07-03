@@ -148,3 +148,28 @@ class VibeConnector(AgentProviderBase):
         if isinstance(session_id, str) and session_id.strip():
             return f"vibe --session {session_id.strip()}"
         return None
+
+    # -- V3: source lifecycle (M8) --
+
+    def export_original(self, record: ConversationRecord) -> bytes:
+        """Re-serialize as a Vibe session JSON. `working_directory` is
+        reconstructed as the bare basename Vibe's `project_id` retains
+        (`project_id = f"vibe-{Path(working_dir).name}"`) -- the original
+        working directory's full path is not recoverable from `record`
+        alone, but `Path(basename).name == basename` reproduces the same
+        `project_id` on re-parse, which is all `verify_roundtrip` checks.
+        """
+        stripped = record.project_id.removeprefix("vibe-")
+        working_directory = "" if stripped == "vibe-session" else stripped
+        payload = {
+            "metadata": {
+                "session_id": record.conversation_id,
+                "environment": {"working_directory": working_directory},
+                "start_time": record.created_at.isoformat(),
+                "end_time": record.updated_at.isoformat(),
+            },
+            "messages": [
+                {"role": message.role, "content": message.content} for message in record.messages
+            ],
+        }
+        return json.dumps(payload).encode("utf-8")
