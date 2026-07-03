@@ -352,6 +352,18 @@ ENV_COMPACTION_MIN_INTERVAL_DAYS = "SEARCHAT_COMPACTION_MIN_INTERVAL_DAYS"
 ENV_COMPACTION_MAX_DURATION_SECONDS = "SEARCHAT_COMPACTION_MAX_DURATION_SECONDS"
 
 # ============================================================================
+# Backup v2 Defaults (M4 -- source-of-truth-only backups with retention)
+# ============================================================================
+
+DEFAULT_BACKUP_KEEP_LAST = 10
+DEFAULT_BACKUP_KEEP_MONTHLY = 12
+DEFAULT_BACKUP_COMPRESSION_LEVEL = 3
+
+ENV_BACKUP_KEEP_LAST = "SEARCHAT_BACKUP_KEEP_LAST"
+ENV_BACKUP_KEEP_MONTHLY = "SEARCHAT_BACKUP_KEEP_MONTHLY"
+ENV_BACKUP_COMPRESSION_LEVEL = "SEARCHAT_BACKUP_COMPRESSION_LEVEL"
+
+# ============================================================================
 # Query Expansion / Synonyms
 # ============================================================================
 

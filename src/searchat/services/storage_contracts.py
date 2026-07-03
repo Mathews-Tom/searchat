@@ -162,6 +162,10 @@ class BackupManifest:
     parent_name: str | None
     files: dict[str, dict[str, object]]
     deleted_files: list[str]
+    # M4: True when plaintext files in this backup are zstd-compressed
+    # (never set alongside encrypted -- compression only applies to the
+    # non-encrypted storage path). False for every pre-M4 manifest.
+    compressed: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -172,6 +176,7 @@ class BackupManifest:
             "parent_name": self.parent_name,
             "files": self.files,
             "deleted_files": self.deleted_files,
+            "compressed": self.compressed,
         }
 
     @classmethod
@@ -192,6 +197,7 @@ class BackupManifest:
             parent_name=parent_name,
             files=cast(dict[str, dict[str, object]], data.get("files", {})),
             deleted_files=list(data.get("deleted_files", [])),
+            compressed=bool(data.get("compressed", False)),
         )
 
 
@@ -213,6 +219,9 @@ class BackupMetadata:
     # when `excludes_derived` is True. 0 means "not applicable" (a
     # full-copy backup already contains its own derived index).
     derived_schema_version: int = 0
+    # M4: exempts this backup from retention pruning. Never set by
+    # create_backup/create_incremental_backup; toggled via set_pinned.
+    pinned: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -226,6 +235,7 @@ class BackupMetadata:
             "backup_type": self.backup_type,
             "excludes_derived": self.excludes_derived,
             "derived_schema_version": self.derived_schema_version,
+            "pinned": self.pinned,
         }
 
     @classmethod
@@ -246,6 +256,7 @@ class BackupMetadata:
             metadata_version=metadata_version,
             excludes_derived=bool(data.get("excludes_derived", False)),
             derived_schema_version=int(data.get("derived_schema_version", 0)),
+            pinned=bool(data.get("pinned", False)),
         )
 
     def normalized(self) -> "BackupMetadata":
@@ -259,4 +270,5 @@ class BackupMetadata:
             metadata_version=BACKUP_METADATA_VERSION,
             excludes_derived=self.excludes_derived,
             derived_schema_version=self.derived_schema_version,
+            pinned=self.pinned,
         )

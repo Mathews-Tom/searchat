@@ -107,3 +107,19 @@ def inspect_backup_chain(
         valid=not errors,
         errors=tuple(errors),
     )
+
+
+@dataclass(frozen=True)
+class RetentionResult:
+    """Outcome of `BackupManager.apply_retention_policy`."""
+
+    kept: tuple[str, ...]
+    pruned: tuple[str, ...]
+    dry_run: bool
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "kept": list(self.kept),
+            "pruned": list(self.pruned),
+            "dry_run": self.dry_run,
+        }

@@ -95,7 +95,14 @@ def test_plan_backup_metadata_migration_marks_missing_version_repairable() -> No
     assert plan.has_changes is True
     assert "metadata_version" in plan.changed_fields
     assert set(plan.changed_fields).issubset(
-        {"metadata_version", "backup_path", "source_path", "excludes_derived", "derived_schema_version"}
+        {
+            "metadata_version",
+            "backup_path",
+            "source_path",
+            "excludes_derived",
+            "derived_schema_version",
+            "pinned",
+        }
     )
     assert plan.migrated_payload["metadata_version"] == 1
 

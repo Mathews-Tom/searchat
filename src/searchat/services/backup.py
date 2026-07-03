@@ -15,13 +15,19 @@ import logging
 import hashlib
 import tempfile
 
-from searchat.config.constants import DEFAULT_DATA_SUBDIR, DEFAULT_DUCKDB_FILENAME
+from searchat.config.constants import (
+    DEFAULT_BACKUP_COMPRESSION_LEVEL,
+    DEFAULT_DATA_SUBDIR,
+    DEFAULT_DUCKDB_FILENAME,
+)
 from searchat.services.backup_crypto import decrypt_file, encrypt_file, get_backup_key
 from searchat.services.backup_contracts import (
+    RetentionResult,
     inspect_backup_chain,
     inspect_legacy_full_backup,
     inspect_manifest_backup,
 )
+from searchat.services.backup_compression import compress_file, decompress_file
 from searchat.services.backup_export import export_source_tables
 from searchat.services.storage_contracts import (
     BACKUP_MANIFEST_FILE,
@@ -246,7 +252,7 @@ class BackupManager:
                         errors.append(f"Hash mismatch for {rel_path} in {name}")
 
         snapshot_browsable = False
-        if manifest.backup_mode == "full" and not manifest.encrypted:
+        if manifest.backup_mode == "full" and not manifest.encrypted and not manifest.compressed:
             snapshot_browsable = self.validate_backup(backup_path)
 
         return inspect_manifest_backup(
@@ -482,6 +488,8 @@ class BackupManager:
         backup_type: str = "manual",
         encrypted: bool = False,
         excludes_derived: bool = True,
+        compressed: bool = True,
+        compression_level: int = DEFAULT_BACKUP_COMPRESSION_LEVEL,
         max_chain_length: int = 10,
     ) -> BackupMetadata:
         """Create an incremental (delta) backup using parent chain manifests.
@@ -493,6 +501,10 @@ class BackupManager:
         -- with `searchat.duckdb`'s source tables freshly exported and
         diffed like any other file. Pass False to keep computing deltas
         against the legacy full-copy file set.
+
+        compressed (M4 default True): zstd-compresses each changed file's
+        stored bytes. Ignored when encrypted=True -- compression only
+        applies to the plaintext storage path (see backup_compression.py).
         """
         parent_chain = self.resolve_backup_chain(parent_name, max_chain_length=max_chain_length)
         if len(parent_chain) + 1 > max_chain_length:
@@ -523,6 +535,8 @@ class BackupManager:
         if encrypted:
             key = get_backup_key()
 
+        effective_compressed = compressed and not encrypted
+
         export_cm: tempfile.TemporaryDirectory[str] | None = None
         try:
             live_files = self._iter_live_backup_files(excludes_derived=excludes_derived)
@@ -551,6 +565,13 @@ class BackupManager:
                     content_sha, stored_sha, stored_size = encrypt_file(src, backup_path / stored_rel, key=cast(bytes, key))
                     if content_sha != sha:
                         raise RuntimeError("Content hash mismatch during encryption")
+                elif effective_compressed:
+                    stored_rel = f"{rel_key}.zst"
+                    content_sha, stored_sha, stored_size = compress_file(
+                        src, backup_path / stored_rel, level=compression_level
+                    )
+                    if content_sha != sha:
+                        raise RuntimeError("Content hash mismatch during compression")
                 else:
                     stored_rel = rel_key
                     dest = backup_path / Path(rel_key)
@@ -596,6 +617,7 @@ class BackupManager:
             parent_name=parent_name,
             files=manifest_files,
             deleted_files=deleted_files,
+            compressed=effective_compressed,
         )
         self._write_manifest(backup_path, manifest)
 
@@ -639,6 +661,10 @@ class BackupManager:
         if any(bool(m.encrypted) != encrypted for _, m in manifests):
             raise ValueError("Mixed encrypted/plaintext backup chains are not supported")
 
+        compressed = bool(manifests[-1][1].compressed)
+        if any(bool(m.compressed) != compressed for _, m in manifests):
+            raise ValueError("Mixed compressed/uncompressed backup chains are not supported")
+
         key: bytes | None = None
         if encrypted:
             key = get_backup_key()
@@ -676,6 +702,12 @@ class BackupManager:
                         content_actual = _sha256_file(dst)
                         if content_actual != content_expected:
                             raise ValueError(f"Content hash mismatch for {rel_path} in {name}")
+                elif compressed:
+                    decompress_file(src, dst)
+                    if verify_hashes:
+                        content_actual = _sha256_file(dst)
+                        if content_actual != content_expected:
+                            raise ValueError(f"Content hash mismatch for {rel_path} in {name}")
                 else:
                     shutil.copy2(src, dst)
                     if verify_hashes:
@@ -700,6 +732,8 @@ class BackupManager:
         *,
         encrypted: bool = False,
         excludes_derived: bool = True,
+        compressed: bool = True,
+        compression_level: int = DEFAULT_BACKUP_COMPRESSION_LEVEL,
     ) -> BackupMetadata:
         """
         Create a backup of the current index and data.
@@ -718,6 +752,11 @@ class BackupManager:
                 derivable exchanges/embeddings/FTS/HNSW data. Pass False
                 for the legacy full-copy behavior (includes the derivable
                 index verbatim, restorable without a rebuild step).
+            compressed: M4 default True -- zstd-compresses each stored
+                file. Ignored when encrypted=True (compression only
+                applies to the plaintext storage path). A compressed
+                backup is never snapshot_browsable -- restore or
+                materialize_backup it first.
 
         Returns:
             BackupMetadata object with backup information
@@ -750,6 +789,8 @@ class BackupManager:
         if encrypted:
             key = get_backup_key()
 
+        effective_compressed = compressed and not encrypted
+
         export_cm: tempfile.TemporaryDirectory[str] | None = None
         try:
             files = self._iter_live_backup_files(excludes_derived=excludes_derived)
@@ -767,6 +808,11 @@ class BackupManager:
                     logger.info(f"  Encrypting file: {rel_key}")
                     stored_rel = f"{rel_key}.enc"
                     content_sha, stored_sha, stored_size = encrypt_file(src, backup_path / stored_rel, key=cast(bytes, key))
+                elif effective_compressed:
+                    stored_rel = f"{rel_key}.zst"
+                    content_sha, stored_sha, stored_size = compress_file(
+                        src, backup_path / stored_rel, level=compression_level
+                    )
                 else:
                     # Copy plaintext.
                     dest = backup_path / Path(rel_key)
@@ -816,6 +862,7 @@ class BackupManager:
             parent_name=None,
             files=manifest_files,
             deleted_files=[],
+            compressed=effective_compressed,
         )
         self._write_manifest(backup_path, manifest)
 
@@ -976,7 +1023,9 @@ class BackupManager:
         temp_dir_cm: tempfile.TemporaryDirectory[str] | None = None
 
         try:
-            if manifest is not None and (manifest.backup_mode != "full" or manifest.encrypted):
+            if manifest is not None and (
+                manifest.backup_mode != "full" or manifest.encrypted or manifest.compressed
+            ):
                 # Materialize into a staging directory, then restore from it.
                 backup_name = backup_path.name
                 temp_dir_cm = tempfile.TemporaryDirectory(prefix="searchat_materialize_", dir=str(self.backup_dir))
@@ -1040,3 +1089,104 @@ class BackupManager:
         logger.info(f"Deleting backup: {backup_path}")
         shutil.rmtree(backup_path)
         logger.info(f"Backup deleted: {backup_path.name}")
+
+    def set_pinned(self, backup_name: str, pinned: bool) -> BackupMetadata:
+        """Toggle a backup's pinned flag, exempting it from retention pruning.
+
+        Raises FileNotFoundError if the backup doesn't exist, ValueError if
+        it has no metadata to update (older backups without a manifest are
+        still listable, but nothing to persist pinning onto).
+        """
+        backup_path = self.backup_dir / backup_name
+        if not backup_path.exists() or not backup_path.is_dir():
+            raise FileNotFoundError(f"Backup not found: {backup_name}")
+
+        metadata_path = backup_path / self.METADATA_FILE
+        if not metadata_path.exists():
+            raise ValueError(f"Backup has no metadata to pin: {backup_name}")
+
+        with open(metadata_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        metadata = BackupMetadata.from_dict(data)
+
+        updated = BackupMetadata(
+            timestamp=metadata.timestamp,
+            backup_path=metadata.backup_path,
+            source_path=metadata.source_path,
+            file_count=metadata.file_count,
+            total_size_bytes=metadata.total_size_bytes,
+            backup_type=metadata.backup_type,
+            metadata_version=metadata.metadata_version,
+            excludes_derived=metadata.excludes_derived,
+            derived_schema_version=metadata.derived_schema_version,
+            pinned=pinned,
+        )
+        with open(metadata_path, "w", encoding="utf-8") as f:
+            json.dump(updated.to_dict(), f, indent=2)
+
+        return updated
+
+    def apply_retention_policy(
+        self,
+        *,
+        keep_last: int,
+        keep_monthly: int,
+        dry_run: bool = False,
+    ) -> RetentionResult:
+        """Prune non-pinned backups beyond the retention policy.
+
+        Two independent rules decide which non-pinned backups are kept
+        (pinned backups are always kept and never count against either
+        quota, and the two rules' kept sets are unioned rather than
+        stacked -- a backup covered by both still costs one quota slot
+        each, matching restic's `keep-last`/`keep-monthly` semantics):
+
+        - the `keep_last` most recent non-pinned backups are kept
+        - the newest non-pinned backup in each of the `keep_monthly` most
+          recent distinct calendar months (by backup timestamp) is kept
+
+        A backup is never pruned while any kept backup's incremental chain
+        depends on it -- chain ancestors of a kept backup are pulled into
+        the kept set transitively before pruning runs.
+        """
+        backups = self.list_backups()  # newest first
+        by_name = {b.backup_path.name: b for b in backups}
+
+        keep_names: set[str] = {name for name, meta in by_name.items() if meta.pinned}
+        eligible = [b for b in backups if not b.pinned]
+
+        for b in eligible[:keep_last]:
+            keep_names.add(b.backup_path.name)
+
+        seen_months: set[str] = set()
+        for b in eligible:
+            month_key = b.timestamp[:6]
+            if month_key in seen_months:
+                continue
+            if len(seen_months) >= keep_monthly:
+                continue
+            seen_months.add(month_key)
+            keep_names.add(b.backup_path.name)
+
+        # Chain safety: never prune a backup that a kept backup's chain depends on.
+        changed = True
+        while changed:
+            changed = False
+            for name in list(keep_names):
+                manifest = self._load_manifest(self.backup_dir / name)
+                parent = manifest.parent_name if manifest is not None else None
+                if parent and parent not in keep_names:
+                    keep_names.add(parent)
+                    changed = True
+
+        pruned = [b for b in backups if b.backup_path.name not in keep_names]
+        if not dry_run:
+            for b in pruned:
+                self.delete_backup(b.backup_path)
+
+        kept = tuple(b.backup_path.name for b in backups if b.backup_path.name in keep_names)
+        return RetentionResult(
+            kept=kept,
+            pruned=tuple(b.backup_path.name for b in pruned),
+            dry_run=dry_run,
+        )

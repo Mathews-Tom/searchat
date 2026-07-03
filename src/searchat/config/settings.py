@@ -164,6 +164,13 @@ from .constants import (
     ENV_COMPACTION_AUTO_TRIGGER_RATIO,
     ENV_COMPACTION_MIN_INTERVAL_DAYS,
     ENV_COMPACTION_MAX_DURATION_SECONDS,
+    # Backup v2 (M4)
+    DEFAULT_BACKUP_KEEP_LAST,
+    DEFAULT_BACKUP_KEEP_MONTHLY,
+    DEFAULT_BACKUP_COMPRESSION_LEVEL,
+    ENV_BACKUP_KEEP_LAST,
+    ENV_BACKUP_KEEP_MONTHLY,
+    ENV_BACKUP_COMPRESSION_LEVEL,
 )
 
 if TYPE_CHECKING:
@@ -699,6 +706,34 @@ class RerankingConfig:
 
 
 @dataclass
+class BackupConfig:
+    """Retention policy for `services/backup.py` (M4). Pinned backups are exempt."""
+    keep_last: int
+    keep_monthly: int
+    compression_level: int
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "BackupConfig":
+        return cls(
+            keep_last=max(
+                _get_env_int(ENV_BACKUP_KEEP_LAST, int(data.get("keep_last", DEFAULT_BACKUP_KEEP_LAST))),
+                0,
+            ),
+            keep_monthly=max(
+                _get_env_int(ENV_BACKUP_KEEP_MONTHLY, int(data.get("keep_monthly", DEFAULT_BACKUP_KEEP_MONTHLY))),
+                0,
+            ),
+            compression_level=max(
+                _get_env_int(
+                    ENV_BACKUP_COMPRESSION_LEVEL,
+                    int(data.get("compression_level", DEFAULT_BACKUP_COMPRESSION_LEVEL)),
+                ),
+                1,
+            ),
+        )
+
+
+@dataclass
 class CompactionConfig:
     """Auto-trigger thresholds for `searchat compact` (M3)."""
     auto_trigger_ratio: float
@@ -960,6 +995,7 @@ class Config:
     daemon: DaemonConfig
     reranking: RerankingConfig
     compaction: CompactionConfig
+    backup: BackupConfig
     storage: StorageConfig
     server: ServerConfig
     expertise: ExpertiseConfig
@@ -1045,6 +1081,7 @@ class Config:
             daemon=DaemonConfig.from_dict(data.get("daemon", {})),
             reranking=RerankingConfig.from_dict(data.get("reranking", {})),
             compaction=CompactionConfig.from_dict(data.get("compaction", {})),
+            backup=BackupConfig.from_dict(data.get("backup", {})),
             storage=StorageConfig.from_dict(data.get("storage", {})),
             server=ServerConfig.from_dict(data.get("server", {})),
             expertise=ExpertiseConfig.from_dict(data.get("expertise", {})),
