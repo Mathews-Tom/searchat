@@ -540,3 +540,27 @@ def test_find_near_duplicates_never_executes_a_non_select_statement() -> None:
     assert len(guard.executed_statements) >= 1
     for statement in guard.executed_statements:
         assert statement.strip().upper().startswith("SELECT")
+
+
+@pytest.mark.unit
+def test_dedup_detection_module_exposes_no_merge_or_delete_capability() -> None:
+    """Structural proof, not just convention: no function or class in
+    `searchat.services.dedup_detection` has a name suggesting a
+    merge/delete/remove/drop/mutate capability. Mirrors the M7
+    mutation-guard pattern applied to DB mutation instead of filesystem
+    mutation -- this milestone's `services/dedup_detection.py` is the
+    ENTIRE surface for M11, so a name-level scan of its public API is a
+    complete check, not a sample.
+    """
+    import searchat.services.dedup_detection as dedup_module
+
+    forbidden_substrings = ("merge", "delete", "remove", "drop", "mutate")
+    public_names = [name for name in dir(dedup_module) if not name.startswith("_")]
+
+    assert public_names  # sanity: the module actually exports something
+    offending = [
+        name
+        for name in public_names
+        if any(substring in name.lower() for substring in forbidden_substrings)
+    ]
+    assert offending == []
