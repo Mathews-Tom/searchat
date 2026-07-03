@@ -36,6 +36,7 @@ in place) or ``prune_source`` (delete) run.
 from __future__ import annotations
 
 import hashlib
+import json
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -358,3 +359,76 @@ def archive_source(file_path: Path, *, compression_level: int = 3) -> Path:
     file_path.unlink()
     return archived_path
 
+
+
+def prune_source(file_path: Path) -> None:
+    """Delete `file_path`.
+
+    Callers (`services.source_lifecycle`'s own orchestration, never a bare
+    CLI flag) are responsible for having already confirmed
+    `verify_ingested` and `verify_roundtrip` both passed, the file is
+    age- and agent-gated, and a tombstone will be written for it -- this
+    function performs no gating or tombstoning of its own; it only
+    deletes the file it is given.
+    """
+    if not file_path.is_file():
+        raise FileNotFoundError(f"cannot prune missing file: {file_path}")
+    file_path.unlink()
+
+
+@dataclass(frozen=True)
+class TombstoneEntry:
+    """Append-only forensic record of one archive/prune action -- the only
+    recovery path once a source file has actually been removed from disk
+    (or replaced in place by its `.zst` archive). Carries enough Parquet
+    provenance (`conversation_id`, `message_count`) and file provenance
+    (`checksum`) to identify exactly what was removed, when, and what the
+    pipeline believed justified it.
+    """
+
+    action: str  # "archive" | "prune"
+    connector_name: str
+    file_path: str
+    conversation_id: str
+    project_id: str | None
+    checksum: str  # sha256 of the original file's bytes, computed before the action
+    message_count: int  # Parquet-side provenance: message_count already indexed
+    archived_path: str | None  # set only when action == "archive"
+    timestamp: str  # ISO 8601 UTC, when the action was recorded
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "action": self.action,
+            "connector_name": self.connector_name,
+            "file_path": self.file_path,
+            "conversation_id": self.conversation_id,
+            "project_id": self.project_id,
+            "checksum": self.checksum,
+            "message_count": self.message_count,
+            "archived_path": self.archived_path,
+            "timestamp": self.timestamp,
+        }
+
+
+_TOMBSTONE_LOG_FILENAME = "tombstones.jsonl"
+
+
+def tombstone_log_path(tombstone_dir: Path) -> Path:
+    """Path to the single append-only tombstone log file under
+    `tombstone_dir` (conventionally `~/.searchat/tombstones/`)."""
+    return Path(tombstone_dir) / _TOMBSTONE_LOG_FILENAME
+
+
+def write_tombstone(tombstone_dir: Path, entry: TombstoneEntry) -> Path:
+    """Append one JSON line recording `entry` to the tombstone log,
+    creating `tombstone_dir` and the log file if either doesn't exist yet.
+
+    Append-only: never truncates, rewrites, or removes existing entries --
+    every prior tombstone remains recoverable for as long as the log file
+    itself is not deleted.
+    """
+    log_path = tombstone_log_path(tombstone_dir)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(log_path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry.to_dict()) + "\n")
+    return log_path
