@@ -148,6 +148,7 @@ from .constants import (
     DEFAULT_DISTILLATION_BATCH_SIZE,
     DEFAULT_DISTILLATION_MAX_PLY_LENGTH,
     DEFAULT_DISTILLATION_MIN_EXCHANGE_CHARS,
+    DEFAULT_DISTILLATION_AGE_THRESHOLD_DAYS,
     DEFAULT_DISTILLATION_PROMPT,
     DEFAULT_PERTURN_PROMPT,
     DEFAULT_PALACE_ENABLED,
@@ -156,6 +157,7 @@ from .constants import (
     ENV_DISTILLATION_BATCH_SIZE,
     ENV_DISTILLATION_MAX_PLY_LENGTH,
     ENV_DISTILLATION_MIN_EXCHANGE_CHARS,
+    ENV_DISTILLATION_AGE_THRESHOLD_DAYS,
     ENV_PALACE_ENABLED,
     # Compaction
     DEFAULT_COMPACTION_AUTO_TRIGGER_RATIO,
@@ -996,6 +998,7 @@ class DistillationConfig:
     batch_size: int
     max_ply_length: int
     min_exchange_chars: int
+    age_threshold_days: int
     prompt: str
     perturn_prompt: str
 
@@ -1026,6 +1029,13 @@ class DistillationConfig:
             min_exchange_chars=_get_env_int(
                 ENV_DISTILLATION_MIN_EXCHANGE_CHARS,
                 data.get("min_exchange_chars", DEFAULT_DISTILLATION_MIN_EXCHANGE_CHARS),
+            ),
+            age_threshold_days=max(
+                _get_env_int(
+                    ENV_DISTILLATION_AGE_THRESHOLD_DAYS,
+                    int(data.get("age_threshold_days", DEFAULT_DISTILLATION_AGE_THRESHOLD_DAYS)),
+                ),
+                0,
             ),
             prompt=data.get("prompt", DEFAULT_DISTILLATION_PROMPT),
             perturn_prompt=data.get("perturn_prompt", DEFAULT_PERTURN_PROMPT),
