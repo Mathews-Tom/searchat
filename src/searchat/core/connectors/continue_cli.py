@@ -208,3 +208,32 @@ class ContinueConnector(AgentProviderBase):
         digest = hashlib.sha1(value.strip().encode("utf-8")).hexdigest()
         return digest[:10]
 
+
+    # -- V3: source lifecycle (M8) --
+
+    def export_original(self, record: ConversationRecord) -> bytes:
+        """Re-serialize as a Continue session JSON. `project_id` is a
+        one-way `sha1(workspaceDirectory)[:10]` hash Continue computes at
+        parse time; when `record.project_id` already carries no workspace
+        hash (`"continue"`), `workspaceDirectory` is correctly omitted so
+        re-parse reproduces `"continue"` again. When a hash IS present, the
+        original `workspaceDirectory` value is not recoverable from
+        `record` alone (the hash cannot be inverted), so
+        `workspaceDirectory` is omitted here too -- re-parse will then
+        compute `project_id="continue"`, a mismatch against the stored
+        `"continue-<hash>"` that `verify_roundtrip` correctly reports as a
+        failed round trip rather than silently guessing a workspace path.
+        """
+        payload = {
+            "sessionId": record.conversation_id,
+            "title": record.title,
+            "history": [
+                {
+                    "role": message.role,
+                    "content": message.content,
+                    "timestamp": message.timestamp.isoformat(),
+                }
+                for message in record.messages
+            ],
+        }
+        return json.dumps(payload).encode("utf-8")

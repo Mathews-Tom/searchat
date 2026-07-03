@@ -43,6 +43,19 @@ _ROLE_MAP = {
     "bashexecution": "tool",
 }
 
+# Reverse of `_ROLE_MAP`, for `export_original`: `_normalize_role` looks up
+# RAW omp role names, not the normalized values this connector stores on
+# `MessageRecord.role` -- exporting a normalized "system"/"tool" role
+# literally would fail that lookup and silently drop the message on
+# re-parse. Picks one canonical raw spelling per normalized value
+# (`toolresult` for "tool", since `bashexecution` also maps there).
+_REVERSE_ROLE_MAP = {
+    "user": "user",
+    "assistant": "assistant",
+    "system": "developer",
+    "tool": "toolresult",
+}
+
 
 class OmpConnector(AgentProviderBase):
     name: str = "omp"
@@ -216,3 +229,32 @@ class OmpConnector(AgentProviderBase):
                 if isinstance(session_id, str) and session_id.strip():
                     return f"omp --resume {session_id.strip()}"
         return None
+
+    # -- V3: source lifecycle (M8) --
+
+    def export_original(self, record: ConversationRecord) -> bytes:
+        """Re-serialize as an omp session JSONL: a `session` line carrying
+        `record.conversation_id`/`record.title`, followed by one `message`
+        line per stored message. Roles are mapped back through
+        `_REVERSE_ROLE_MAP` to a raw spelling `_normalize_role` accepts --
+        the normalized value itself (e.g. `"system"`) is not a key in
+        `_ROLE_MAP` and would otherwise be silently dropped on re-parse.
+        """
+        lines: list[str] = [
+            json.dumps({"type": "session", "id": record.conversation_id, "title": record.title})
+        ]
+        for message in record.messages:
+            raw_role = _REVERSE_ROLE_MAP.get(message.role, message.role)
+            lines.append(
+                json.dumps(
+                    {
+                        "type": "message",
+                        "message": {
+                            "role": raw_role,
+                            "content": [{"type": "text", "text": message.content}],
+                        },
+                        "timestamp": message.timestamp.isoformat(),
+                    }
+                )
+            )
+        return ("\n".join(lines) + "\n").encode("utf-8")

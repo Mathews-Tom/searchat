@@ -289,3 +289,27 @@ class CodexConnector(AgentProviderBase):
                 if session_id:
                     return f"codex --session {session_id}"
         return None
+
+    # -- V3: source lifecycle (M8) --
+
+    def export_original(self, record: ConversationRecord) -> bytes:
+        """Re-serialize as a Codex rollout JSONL: a `session_meta` line
+        carrying `record.conversation_id` (so re-parse's
+        `_extract_session_id` recovers it exactly, regardless of which of
+        Codex's several on-disk shapes the original file used) followed by
+        one bare `{role, content, timestamp}` line per stored message.
+        """
+        lines: list[str] = [
+            json.dumps({"type": "session_meta", "payload": {"id": record.conversation_id}})
+        ]
+        for message in record.messages:
+            lines.append(
+                json.dumps(
+                    {
+                        "role": message.role,
+                        "content": message.content,
+                        "timestamp": message.timestamp.isoformat(),
+                    }
+                )
+            )
+        return ("\n".join(lines) + "\n").encode("utf-8")

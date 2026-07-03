@@ -199,3 +199,30 @@ class ClaudeConnector(AgentProviderBase):
     def build_resume_command(self, path: Path) -> str | None:
         conversation_id = path.stem
         return f"claude --conversation {conversation_id}"
+
+    # -- V3: source lifecycle (M8) --
+
+    def export_original(self, record: ConversationRecord) -> bytes:
+        """Re-serialize as Claude Code JSONL: one `{"type", "timestamp",
+        "message"}` line per stored message. `record.files_mentioned` is
+        re-attached as synthetic `tool_use` blocks on the first line so
+        `_extract_file_paths` recovers it on re-parse -- `MessageRecord`
+        only retains extracted text, not the original tool_use blocks, so
+        without this the round trip would silently lose `files_mentioned`.
+        """
+        lines: list[str] = []
+        file_mentions = record.files_mentioned or []
+        for index, message in enumerate(record.messages):
+            content_blocks: list[dict[str, Any]] = [{"type": "text", "text": message.content}]
+            if index == 0:
+                for file_path in file_mentions:
+                    content_blocks.append(
+                        {"type": "tool_use", "name": "Read", "input": {"file_path": file_path}}
+                    )
+            entry = {
+                "type": message.role,
+                "timestamp": message.timestamp.isoformat(),
+                "message": {"content": content_blocks},
+            }
+            lines.append(json.dumps(entry))
+        return ("\n".join(lines) + ("\n" if lines else "")).encode("utf-8")

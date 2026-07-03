@@ -312,3 +312,33 @@ class OpenCodeConnector(AgentProviderBase):
         if isinstance(session_id, str) and session_id.strip():
             return f"opencode --session {session_id.strip()}"
         return None
+
+    # -- V3: source lifecycle (M8) --
+
+    def export_original(self, record: ConversationRecord) -> bytes:
+        """Re-serialize as a standalone OpenCode session JSON with messages
+        embedded inline (`session["messages"]`). `parse()` only reads
+        sibling `storage/message/<id>/*.json` files when they exist; when
+        they don't (as for a reconstructed export with no sibling
+        directories) it falls back to the inline `messages` array, which
+        this reproduces exactly.
+        """
+        project_id = record.project_id.removeprefix("opencode-")
+        payload = {
+            "id": record.conversation_id,
+            "projectID": project_id,
+            "title": record.title,
+            "time": {
+                "created": round(record.created_at.timestamp() * 1000),
+                "updated": round(record.updated_at.timestamp() * 1000),
+            },
+            "messages": [
+                {
+                    "role": message.role,
+                    "content": message.content,
+                    "time": {"created": round(message.timestamp.timestamp() * 1000)},
+                }
+                for message in record.messages
+            ],
+        }
+        return json.dumps(payload).encode("utf-8")

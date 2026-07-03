@@ -67,3 +67,28 @@ class AgentProviderBase(ABC):
         Default: None (connector does not support resumption).
         """
         return None
+
+    # -- V3: source lifecycle (M8) --
+
+    @abstractmethod
+    def export_original(self, record: ConversationRecord) -> bytes:
+        """Re-serialize a stored `ConversationRecord` into this connector's
+        native on-disk format.
+
+        This is the reversibility proof gating
+        `services.source_lifecycle.archive_source`/`prune_source`: the
+        returned bytes, written to a path that preserves `record.file_path`'s
+        directory structure (some connectors derive identity -- e.g.
+        Claude's `project_id`/`conversation_id` from the parent directory
+        name and file stem, Gemini's project hash from a grandparent
+        directory name -- from that structure, not file content) and
+        re-parsed via `parse()`, must reproduce a `ConversationRecord` equal
+        to `record` in every field `services.source_lifecycle.verify_roundtrip`
+        compares. A connector whose identity scheme cannot be reconstructed
+        from `record` alone (e.g. a value derived from hashing information
+        that is not itself part of the stored record) should still implement
+        this as faithfully as possible; `verify_roundtrip` failing for such
+        conversations is the correct, safe outcome -- it withholds
+        archive/prune rather than silently mis-reporting reversibility.
+        """
+        ...
