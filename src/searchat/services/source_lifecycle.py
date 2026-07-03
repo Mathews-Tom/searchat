@@ -47,7 +47,7 @@ import duckdb
 from searchat.core.connectors.base import AgentProviderBase
 from searchat.core.connectors.registry import get_connector_by_name
 from searchat.core.logging_config import get_logger
-from searchat.config.settings import LifecycleConfig
+from searchat.config.settings import LifecycleConfig, RetentionConfig
 from searchat.models import ConversationRecord
 from searchat.services.backup_compression import compress_file, decompress_file
 
@@ -556,18 +556,29 @@ def evaluate_and_act_on_source(
     tombstone_dir: Path,
     now: datetime | None = None,
     connection: duckdb.DuckDBPyConnection | None = None,
+    retention: RetentionConfig | None = None,
 ) -> LifecycleDecision:
     """Evaluate one candidate through every M8 gate and, only once all of
     them pass AND `dry_run` is `False`, perform `action` ("archive" or
     "prune") and write its tombstone.
 
     Gate order, cheapest and most safety-critical first: per-agent
-    opt-in, age threshold, `verify_ingested` (read-only). `dry_run` is
-    checked immediately after `verify_ingested`, before `verify_roundtrip`
-    ever runs -- `verify_roundtrip` is the only stage in this whole chain
-    that performs a filesystem write (to a throwaway temp directory), so
-    a `dry_run=True` call can never write to disk no matter how many
+    opt-in, per-project retention policy (M12), age threshold,
+    `verify_ingested` (read-only). `dry_run` is checked immediately
+    after `verify_ingested`, before `verify_roundtrip` ever runs --
+    `verify_roundtrip` is the only stage in this whole chain that
+    performs a filesystem write (to a throwaway temp directory), so a
+    `dry_run=True` call can never write to disk no matter how many
     candidates would otherwise be eligible.
+
+    `retention` (M12) is consulted BEFORE the age-threshold gate: a
+    project resolved as `never_touch` short-circuits here regardless of
+    how old the file is, and a project with an `archive_after_days`
+    override replaces `policy.age_threshold_days` for the age check
+    that follows (used for both `action="archive"` and
+    `action="prune"` -- M8 has always used one global threshold for
+    both actions). `retention=None` (the default) reproduces the exact
+    pre-M12 behavior: no project lookup, no override.
     """
     if action not in ("archive", "prune"):
         raise ValueError(f"unknown lifecycle action: {action!r}")
@@ -580,6 +591,21 @@ def evaluate_and_act_on_source(
         return state.freeze()
     state.agent_enabled = True
 
+    effective_age_threshold_days = policy.age_threshold_days
+    if retention is not None:
+        state_row = _read_source_file_state(db_path, file_path, connection=connection)
+        row_project_id = state_row["project_id"] if state_row else None
+        row_project_id = row_project_id if isinstance(row_project_id, str) and row_project_id else None
+        project_policy = retention.resolve(row_project_id)
+        if project_policy is not None:
+            if project_policy.never_touch:
+                state.skip_reason = (
+                    f"project {row_project_id!r} is marked never_touch in retention policy"
+                )
+                return state.freeze()
+            if project_policy.archive_after_days is not None:
+                effective_age_threshold_days = project_policy.archive_after_days
+
     try:
         age_days = (now.timestamp() - file_path.stat().st_mtime) / 86400.0
     except OSError:
@@ -587,8 +613,8 @@ def evaluate_and_act_on_source(
         return state.freeze()
     state.age_days = age_days
 
-    if age_days < policy.age_threshold_days:
-        state.skip_reason = "younger than lifecycle.age_threshold_days"
+    if age_days < effective_age_threshold_days:
+        state.skip_reason = f"younger than the effective age_threshold_days ({effective_age_threshold_days})"
         return state.freeze()
     state.age_gated = True
 
@@ -682,6 +708,7 @@ def run_lifecycle_action(
     tombstone_dir: Path,
     now: datetime | None = None,
     connection: duckdb.DuckDBPyConnection | None = None,
+    retention: RetentionConfig | None = None,
 ) -> list[LifecycleDecision]:
     """Evaluate every currently-indexed source file against the full M8
     gate chain, performing `action` ("archive" or "prune") for each one
@@ -692,6 +719,10 @@ def run_lifecycle_action(
     candidate is refused at the per-agent opt-in gate before
     `verify_ingested` (a read) or `verify_roundtrip`/the action itself
     (the only writing stages) ever run.
+
+    `retention` (M12), when passed, is forwarded unchanged to every
+    per-file `evaluate_and_act_on_source` call -- see that function's
+    docstring for the per-project gate it adds.
     """
     candidates = _iter_indexed_source_files(db_path, connection=connection)
     return [
@@ -705,6 +736,7 @@ def run_lifecycle_action(
             tombstone_dir=tombstone_dir,
             now=now,
             connection=connection,
+            retention=retention,
         )
         for connector_name, file_path in candidates
     ]

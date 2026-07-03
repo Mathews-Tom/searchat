@@ -71,6 +71,7 @@ def _run(argv: list[str], *, action: str) -> int:
             action=action,
             dry_run=args.dry_run,
             tombstone_dir=tombstone_dir,
+            retention=config.retention,
         )
     except Exception as exc:
         print(f"Error: failed to run sources {action}: {exc}", file=sys.stderr)
