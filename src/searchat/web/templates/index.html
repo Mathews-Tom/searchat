@@ -89,6 +89,12 @@
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                     Knowledge Graph
                 </button>
+                <button class="nav-item" :class="{ active: $store.layout.activeNav === 'disk' }"
+                        @click="$store.layout.setActiveNav('disk')"
+                        data-action="showDiskManager">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="12" x2="2" y2="12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" y1="16" x2="6.01" y2="16"/><line x1="10" y1="16" x2="10.01" y2="16"/></svg>
+                    Disk Manager
+                </button>
 
                 <div class="nav-divider"></div>
                 <div class="nav-section-label">TOOLS</div>
@@ -245,6 +251,11 @@
                         @click="$store.layout.setActiveNav('contradictions')"
                         data-action="showContradictions">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> Knowledge Graph
+                </button>
+                <button class="glass-btn" id="diskManagerButton" title="View disk usage per agent and Searchat's own footprint"
+                        @click="$store.layout.setActiveNav('disk')"
+                        data-action="showDiskManager">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="12" x2="2" y2="12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" y1="16" x2="6.01" y2="16"/><line x1="10" y1="16" x2="10.01" y2="16"/></svg> Disk Manager
                 </button>
                 <span class="toolbar-divider"></span>
                 <button class="glass-btn" id="bulkModeToggle" title="Select multiple conversations for bulk export"
