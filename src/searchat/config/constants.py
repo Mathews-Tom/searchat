@@ -48,7 +48,7 @@ PORT_SCAN_RANGE = (8000, 8010)  # Will try ports in this range
 
 VALID_TOOL_NAMES: frozenset[str] = frozenset({
     "claude", "vibe", "opencode", "codex",
-    "gemini", "continue", "cursor", "aider",
+    "gemini", "continue", "cursor", "aider", "omp",
 })
 
 # ============================================================================
