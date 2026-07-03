@@ -7,10 +7,12 @@ Coverage map:
   `Distiller`, adapted onto `UnifiedStorage`.
 - `TestGracefulDegradation` -- the `palace` extra (faiss-cpu) missing
   degrades to a disabled feature, never a crash.
+- `TestEvictHotRows` -- hot-index eviction never touches
+  `conversations`/`messages`.
+- `TestRunTieringCycle` -- the end-to-end orchestrator.
 
-Later commits/PRs in this stack add hot-index eviction, the promotion
-path, the end-to-end orchestrator, and the fixture-benchmark acceptance
-tests.
+Later commits/PRs in this stack add the promotion path and the
+fixture-benchmark acceptance tests.
 """
 from __future__ import annotations
 
@@ -295,3 +297,137 @@ class TestGracefulDegradation:
                 llm=_FakeDistillationLLM(),
                 search_dir=tmp_path,
             )
+
+    def test_run_tiering_cycle_reports_unavailable_when_palace_disabled_in_config(
+        self, storage: UnifiedStorage, config: Config, tmp_path: Path
+    ):
+        now = datetime(2026, 1, 1)
+        messages = _make_messages(1)
+        _insert_conversation(storage, conversation_id="old", updated_at=now - timedelta(days=400), messages=messages)
+        _seed_hot_exchanges(storage, "old", "proj-1", messages)
+        config.palace.enabled = False
+
+        stats = distillation_bridge.run_tiering_cycle(
+            storage, config=config, llm=_FakeDistillationLLM(), search_dir=tmp_path, now=now,
+        )
+
+        assert stats.candidates_considered == 1
+        assert stats.palace_unavailable is True
+        assert stats.conversations_evicted == 0
+        # Verbatim rows must survive untouched when the feature is disabled.
+        assert storage.get_row_counts()["exchanges"] == 1
+
+    def test_run_tiering_cycle_reports_unavailable_when_extra_missing(
+        self, monkeypatch, storage: UnifiedStorage, config: Config, tmp_path: Path
+    ):
+        now = datetime(2026, 1, 1)
+        messages = _make_messages(1)
+        _insert_conversation(storage, conversation_id="old", updated_at=now - timedelta(days=400), messages=messages)
+        _seed_hot_exchanges(storage, "old", "proj-1", messages)
+        config.palace.enabled = True
+        monkeypatch.setattr(distillation_bridge, "palace_available", lambda: False)
+
+        stats = distillation_bridge.run_tiering_cycle(
+            storage, config=config, llm=_FakeDistillationLLM(), search_dir=tmp_path, now=now,
+        )
+
+        assert stats.palace_unavailable is True
+        assert stats.conversations_evicted == 0
+
+
+# ---------------------------------------------------------------------------
+# 4. Hot-index eviction
+# ---------------------------------------------------------------------------
+
+
+class TestEvictHotRows:
+    def test_evicts_exchanges_and_embeddings_for_target_conversation_only(self, storage: UnifiedStorage):
+        messages_a = _make_messages(2)
+        messages_b = _make_messages(1)
+        _insert_conversation(storage, conversation_id="a", updated_at=datetime(2025, 1, 1), messages=messages_a)
+        _insert_conversation(storage, conversation_id="b", updated_at=datetime(2025, 1, 1), messages=messages_b)
+        _seed_hot_exchanges(storage, "a", "proj-1", messages_a)
+        _seed_hot_exchanges(storage, "b", "proj-1", messages_b)
+
+        result = distillation_bridge.evict_hot_rows(storage, "a")
+
+        assert result.exchanges_evicted == 2
+        assert result.embeddings_evicted == 2
+
+        cur = storage.connection.cursor()
+        remaining_a = cur.execute("SELECT count(*) FROM exchanges WHERE conversation_id = 'a'").fetchone()[0]
+        remaining_b = cur.execute("SELECT count(*) FROM exchanges WHERE conversation_id = 'b'").fetchone()[0]
+        cur.close()
+        assert remaining_a == 0
+        assert remaining_b == 1
+
+    def test_eviction_on_conversation_with_no_hot_rows_is_a_safe_no_op(self, storage: UnifiedStorage):
+        result = distillation_bridge.evict_hot_rows(storage, "does-not-exist")
+        assert result.exchanges_evicted == 0
+        assert result.embeddings_evicted == 0
+
+
+# ---------------------------------------------------------------------------
+# 5. End-to-end orchestrator
+# ---------------------------------------------------------------------------
+
+
+class TestRunTieringCycle:
+    def test_distills_and_evicts_old_conversations_leaving_recent_ones_hot(
+        self, storage: UnifiedStorage, config: Config, tmp_path: Path
+    ):
+        now = datetime(2026, 1, 1)
+        old_messages = _make_messages(2)
+        recent_messages = _make_messages(2)
+        _insert_conversation(storage, conversation_id="old", updated_at=now - timedelta(days=400), messages=old_messages)
+        _insert_conversation(storage, conversation_id="recent", updated_at=now - timedelta(days=5), messages=recent_messages)
+        _seed_hot_exchanges(storage, "old", "proj-1", old_messages)
+        _seed_hot_exchanges(storage, "recent", "proj-1", recent_messages)
+        config.palace.enabled = True
+
+        stats = distillation_bridge.run_tiering_cycle(
+            storage,
+            config=config,
+            llm=_FakeDistillationLLM(),
+            search_dir=tmp_path,
+            embedder=_FixedEmbedder(),
+            now=now,
+        )
+
+        assert stats.palace_unavailable is False
+        assert stats.candidates_considered == 1
+        assert stats.conversations_distilled == 1
+        assert stats.conversations_evicted == 1
+        assert stats.exchanges_evicted == 2
+
+        counts = storage.get_row_counts()
+        cur = storage.connection.cursor()
+        old_hot = cur.execute("SELECT count(*) FROM exchanges WHERE conversation_id = 'old'").fetchone()[0]
+        recent_hot = cur.execute("SELECT count(*) FROM exchanges WHERE conversation_id = 'recent'").fetchone()[0]
+        cur.close()
+        assert old_hot == 0
+        assert recent_hot == 2
+        assert counts["conversations"] == 2
+        assert counts["messages"] == len(old_messages) + len(recent_messages)
+
+    def test_skips_eviction_for_conversations_with_no_valid_exchanges(
+        self, storage: UnifiedStorage, config: Config, tmp_path: Path
+    ):
+        now = datetime(2026, 1, 1)
+        tiny_messages = [
+            {"sequence": 0, "role": "user", "content": "hi", "timestamp": now, "has_code": False, "code_blocks": None},
+            {"sequence": 1, "role": "assistant", "content": "hey", "timestamp": now, "has_code": False, "code_blocks": None},
+        ]
+        _insert_conversation(storage, conversation_id="tiny", updated_at=now - timedelta(days=400), messages=tiny_messages)
+        _seed_hot_exchanges(storage, "tiny", "proj-1", tiny_messages)
+        config.palace.enabled = True
+
+        stats = distillation_bridge.run_tiering_cycle(
+            storage, config=config, llm=_NoValidExchangesLLM(), search_dir=tmp_path,
+            embedder=_FixedEmbedder(), now=now,
+        )
+
+        assert stats.candidates_considered == 1
+        assert stats.conversations_distilled == 0
+        assert stats.conversations_evicted == 0
+        assert storage.get_row_counts()["exchanges"] == 1

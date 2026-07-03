@@ -168,3 +168,15 @@ dry_run = true
 # No code path in this milestone merges or deletes anything -- see
 # services/dedup_detection.py.
 similarity_threshold = 0.92
+
+[distillation]
+# Tiered memory (M9) -- conversations older than age_threshold_days become
+# eligible for an LLM-generated distillate via services/distillation_bridge.py;
+# once distilled, their verbatim exchanges leave the hot FTS/HNSW index
+# (conversations/messages retained, always re-promotable via rehydrate_verbatim).
+# palace.enabled below must also be true, and the `palace` extra (faiss-cpu,
+# rank-bm25) must be installed -- otherwise the feature stays disabled, not
+# a crash. Other distillation.* keys (provider, cli_model, batch_size,
+# max_ply_length, min_exchange_chars, prompt, perturn_prompt) default in
+# code (config/constants.py) and are not duplicated here.
+age_threshold_days = 180
