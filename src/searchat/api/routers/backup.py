@@ -183,15 +183,17 @@ async def restore_backup(
 
         logger.info(f"Restoring from backup: {backup_name}")
 
-        pre_restore_metadata = backup_manager.restore_from_backup(
+        result = backup_manager.restore_from_backup(
             backup_path=backup_path,
             create_pre_restore_backup=True
         )
 
         invalidate_search_index()
+        pre_restore_metadata = result.pre_restore_backup
         return serialize_backup_restore_payload(
             restored_from=backup_name,
             pre_restore_backup=None if pre_restore_metadata is None else pre_restore_metadata.to_dict(),
+            rebuild_performed=bool(result.rebuild_performed),
         )
 
     except HTTPException:
