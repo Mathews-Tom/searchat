@@ -361,6 +361,25 @@ class TestEvictHotRows:
         assert remaining_a == 0
         assert remaining_b == 1
 
+    def test_never_touches_conversations_or_messages_tables(self, storage: UnifiedStorage):
+        messages = _make_messages(3)
+        _insert_conversation(storage, conversation_id="a", updated_at=datetime(2025, 1, 1), messages=messages)
+        _seed_hot_exchanges(storage, "a", "proj-1", messages)
+
+        before_conv = storage.get_conversation_meta("a")
+        before_counts = storage.get_row_counts()
+
+        distillation_bridge.evict_hot_rows(storage, "a")
+
+        after_conv = storage.get_conversation_meta("a")
+        after_counts = storage.get_row_counts()
+
+        assert after_conv == before_conv
+        assert after_counts["conversations"] == before_counts["conversations"]
+        assert after_counts["messages"] == before_counts["messages"]
+        assert after_counts["exchanges"] == 0
+        assert after_counts["verbatim_embeddings"] == 0
+
     def test_eviction_on_conversation_with_no_hot_rows_is_a_safe_no_op(self, storage: UnifiedStorage):
         result = distillation_bridge.evict_hot_rows(storage, "does-not-exist")
         assert result.exchanges_evicted == 0
