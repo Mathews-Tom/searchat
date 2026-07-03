@@ -5,13 +5,16 @@ Coverage map:
   palace-independent.
 - `TestGenerateDistillate` -- distillate generation via the palace
   `Distiller`, adapted onto `UnifiedStorage`.
+- `TestGracefulDegradation` -- the `palace` extra (faiss-cpu) missing
+  degrades to a disabled feature, never a crash.
 
 Later commits/PRs in this stack add hot-index eviction, the promotion
-path, the end-to-end orchestrator, graceful-degradation-specific tests,
-and the fixture-benchmark acceptance tests.
+path, the end-to-end orchestrator, and the fixture-benchmark acceptance
+tests.
 """
 from __future__ import annotations
 
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -266,3 +269,29 @@ class TestGenerateDistillate:
             assert second.has_distillate is True
         finally:
             palace_storage.close()
+
+
+
+# ---------------------------------------------------------------------------
+# 3. Graceful degradation
+# ---------------------------------------------------------------------------
+
+
+class TestGracefulDegradation:
+    def test_palace_available_reflects_importability(self):
+        # Whatever the real environment, this must not raise.
+        assert isinstance(distillation_bridge.palace_available(), bool)
+
+    def test_generate_distillate_raises_palace_unavailable_not_import_error(
+        self, monkeypatch, storage: UnifiedStorage, config: Config, tmp_path: Path
+    ):
+        monkeypatch.setitem(sys.modules, "searchat.palace.distiller", None)
+
+        with pytest.raises(distillation_bridge.PalaceUnavailableError):
+            distillation_bridge.generate_distillate(
+                storage,
+                conversation_id="conv-1",
+                config=config,
+                llm=_FakeDistillationLLM(),
+                search_dir=tmp_path,
+            )
