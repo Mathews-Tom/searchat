@@ -419,3 +419,102 @@ def test_agent_disk_usage_to_dict_serializes_all_fields() -> None:
     assert payload["age_histogram"] == {"0-7d": 1, "7-30d": 1, "30-90d": 0, "90-365d": 0, "365d+": 0}
     assert payload["oldest_conversation_age_days"] == 10.0
     assert payload["connector"] == "claude"
+
+
+# ---------------------------------------------------------------------------
+# Bug fix: `connection=` kwarg lets a caller reuse an already-open DuckDB
+# connection (the live `searchat-web` server's `UnifiedStorage.connection`)
+# instead of opening a second file connection, which DuckDB refuses once
+# the first connection has non-default config (e.g. `memory_limit`) --
+# mirroring the pre-existing `/api/health` storage-section failure for the
+# identical reason.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_read_indexed_paths_by_connector_uses_passed_connection_instead_of_opening_new_one(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "state.duckdb"
+    conn = duckdb.connect(str(db_path))
+    ensure_tables(conn)
+    now = datetime.now()
+    conn.execute(
+        "INSERT INTO source_file_state "
+        "(file_path, conversation_id, project_id, connector_name, status, file_size, updated_at) "
+        "VALUES (?, ?, ?, ?, 'indexed', ?, ?)",
+        ["/watch/claude/conv1.jsonl", "c1", "p1", "claude", 10, now],
+    )
+
+    result = _read_indexed_paths_by_connector(db_path, connection=conn)
+    conn.close()
+
+    assert result == {"claude": {"/watch/claude/conv1.jsonl"}}
+
+
+@pytest.mark.unit
+def test_read_indexed_paths_by_connector_reuses_connection_with_mismatched_config_in_same_process(
+    tmp_path: Path,
+) -> None:
+    """Regression test for the reproduced `GET /api/disk` 500.
+
+    A second `duckdb.connect(db_path, read_only=True)` to a file that
+    already has an open, non-default-config connection in the same process
+    raises `duckdb.ConnectionException`. Passing that same connection
+    through `connection=` must route through `connection.cursor()` instead,
+    so no second file connection is ever attempted.
+    """
+    db_path = tmp_path / "state.duckdb"
+    con = duckdb.connect(str(db_path))
+    con.execute("PRAGMA memory_limit='512MB'")  # mirrors UnifiedStorage.__init__
+    ensure_tables(con)
+    now = datetime.now()
+    con.execute(
+        "INSERT INTO source_file_state "
+        "(file_path, conversation_id, project_id, connector_name, status, file_size, updated_at) "
+        "VALUES (?, ?, ?, ?, 'indexed', ?, ?)",
+        ["/watch/vibe/session.json", "c1", "p1", "vibe", 10, now],
+    )
+
+    # The old code path (`duckdb.connect(db_path, read_only=True)` while `con`
+    # is still open with non-default config) is exactly what raised in
+    # production; asserting that here documents the failure this closes.
+    with pytest.raises(duckdb.Error):
+        duckdb.connect(str(db_path), read_only=True)
+
+    result = _read_indexed_paths_by_connector(db_path, connection=con)
+    con.close()
+
+    assert result == {"vibe": {"/watch/vibe/session.json"}}
+
+
+@pytest.mark.unit
+def test_build_disk_accounting_report_threads_connection_kwarg_to_indexed_paths_lookup(
+    temp_search_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    watch_dir = tmp_path / "claude_home"
+    conv = _write(watch_dir / "conv.jsonl", 10)
+    connector = _FakeConnector(name="claude", supported_extensions=(".jsonl",), files=[conv])
+    monkeypatch.setattr("searchat.services.disk_accounting.get_connectors", lambda: (connector,))
+
+    db_path = temp_search_dir / "data" / "searchat.duckdb"
+    config = Mock()
+    config.storage.resolve_duckdb_path.return_value = db_path
+
+    sentinel_connection = Mock(spec=duckdb.DuckDBPyConnection)
+    received: dict[str, object] = {}
+
+    def fake_read_indexed_paths_by_connector(path, *, connection=None):
+        received["db_path"] = path
+        received["connection"] = connection
+        return {}
+
+    monkeypatch.setattr(
+        "searchat.services.disk_accounting._read_indexed_paths_by_connector",
+        fake_read_indexed_paths_by_connector,
+    )
+
+    build_disk_accounting_report(temp_search_dir, config, connection=sentinel_connection)
+
+    assert received["connection"] is sentinel_connection
+    assert received["db_path"] == db_path
