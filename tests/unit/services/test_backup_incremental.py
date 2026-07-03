@@ -20,8 +20,8 @@ def test_incremental_backup_materialize_roundtrip(tmp_path: Path, temp_search_di
 
     parquet = live / "data" / "conversations" / "conv.parquet"
     settings = live / "config" / "settings.toml"
-    removed = live / "data" / "indices" / "removed.bin"
-    added = live / "data" / "indices" / "added.bin"
+    removed = live / "data" / "code" / "removed.bin"
+    added = live / "data" / "code" / "added.bin"
 
     _write_bytes(parquet, b"PAR1\n")
     _write_bytes(settings, b"a = 1\n")
@@ -42,8 +42,8 @@ def test_incremental_backup_materialize_roundtrip(tmp_path: Path, temp_search_di
     mgr.materialize_backup(backup_name=inc_name, dest_dir=out, verify_hashes=True)
 
     assert (out / "config" / "settings.toml").read_bytes() == b"a = 2\n"
-    assert not (out / "data" / "indices" / "removed.bin").exists()
-    assert (out / "data" / "indices" / "added.bin").read_bytes() == b"new\n"
+    assert not (out / "data" / "code" / "removed.bin").exists()
+    assert (out / "data" / "code" / "added.bin").read_bytes() == b"new\n"
     assert (out / "data" / "conversations" / "conv.parquet").read_bytes() == b"PAR1\n"
 
     assert mgr.resolve_backup_chain(inc_name) == [base_name, inc_name]
@@ -80,7 +80,7 @@ def test_restore_from_incremental_backup(temp_search_dir: Path):
 
     _write_bytes(live / "data" / "conversations" / "conv.parquet", b"PAR1\n")
     settings = live / "config" / "settings.toml"
-    removed = live / "data" / "indices" / "removed.bin"
+    removed = live / "data" / "code" / "removed.bin"
     _write_bytes(settings, b"a = 1\n")
     _write_bytes(removed, b"old\n")
 
@@ -325,3 +325,112 @@ def test_restore_from_backup_invalid_manifest_fixture_fails_closed(temp_search_d
             create_pre_restore_backup=False,
             verify_hashes=False,
         )
+
+
+def _seed_duckdb_conversation(db_path: Path) -> None:
+    """Create a minimal, schema-valid unified DuckDB with one conversation."""
+    from searchat.storage.unified_storage import UnifiedStorage
+
+    storage = UnifiedStorage(db_path)
+    try:
+        storage.connection.execute(
+            "INSERT INTO conversations "
+            "(conversation_id, project_id, file_path, title, created_at, updated_at, "
+            "message_count, full_text, file_hash, indexed_at) "
+            "VALUES ('c1', 'p1', '/tmp/c1.jsonl', 'Conv 1', now(), now(), 1, 'hello world', 'h1', now())"
+        )
+    finally:
+        storage.close()
+
+
+@pytest.mark.unit
+def test_create_backup_default_excludes_derivable_index(temp_search_dir: Path) -> None:
+    live = temp_search_dir
+    mgr = BackupManager(live)
+
+    _write_bytes(live / "data" / "conversations" / "conv.parquet", b"PAR1\n")
+    _write_bytes(live / "data" / "indices" / "embeddings.faiss", b"FAISSSTUB")
+    _seed_duckdb_conversation(live / "data" / "searchat.duckdb")
+
+    from searchat.services.storage_contracts import BACKUP_SOURCE_SCHEMA_VERSION
+
+    meta = mgr.create_backup(backup_name="snap")
+
+    assert meta.excludes_derived is True
+    assert meta.derived_schema_version == BACKUP_SOURCE_SCHEMA_VERSION
+
+    manifest = mgr._load_manifest(meta.backup_path)
+    assert manifest is not None
+    assert "data/conversations/conv.parquet" in manifest.files
+    assert "data/duckdb_source/conversations.parquet" in manifest.files
+    assert "data/indices/embeddings.faiss" not in manifest.files
+    assert not any(rel.startswith("data/searchat.duckdb") for rel in manifest.files)
+    assert not (meta.backup_path / "data" / "indices").exists()
+    assert not (meta.backup_path / "data" / "searchat.duckdb").exists()
+
+
+@pytest.mark.unit
+def test_create_backup_backs_up_new_state_directories_when_present(temp_search_dir: Path) -> None:
+    live = temp_search_dir
+    mgr = BackupManager(live)
+
+    _write_bytes(live / "data" / "conversations" / "conv.parquet", b"PAR1\n")
+    _write_bytes(live / "bookmarks.json", b"{}")
+    _write_bytes(live / "saved_queries.json", b"{}")
+    _write_bytes(live / "dashboards.json", b"{}")
+    _write_bytes(live / "expertise" / "expertise.duckdb", b"stub")
+    _write_bytes(live / "knowledge_graph" / "knowledge_graph.duckdb", b"stub")
+    _write_bytes(live / "analytics" / "analytics.duckdb", b"stub")
+
+    meta = mgr.create_backup(backup_name="snap")
+
+    manifest = mgr._load_manifest(meta.backup_path)
+    assert manifest is not None
+    for rel in (
+        "bookmarks.json",
+        "saved_queries.json",
+        "dashboards.json",
+        "expertise/expertise.duckdb",
+        "knowledge_graph/knowledge_graph.duckdb",
+        "analytics/analytics.duckdb",
+    ):
+        assert rel in manifest.files, rel
+
+
+@pytest.mark.unit
+def test_create_backup_excludes_derived_false_keeps_legacy_full_copy(temp_search_dir: Path) -> None:
+    live = temp_search_dir
+    mgr = BackupManager(live)
+
+    _write_bytes(live / "data" / "conversations" / "conv.parquet", b"PAR1\n")
+    _write_bytes(live / "data" / "indices" / "embeddings.faiss", b"FAISSSTUB")
+    _seed_duckdb_conversation(live / "data" / "searchat.duckdb")
+
+    meta = mgr.create_backup(backup_name="snap", excludes_derived=False)
+
+    assert meta.excludes_derived is False
+    assert meta.derived_schema_version == 0
+
+    manifest = mgr._load_manifest(meta.backup_path)
+    assert manifest is not None
+    assert "data/indices/embeddings.faiss" in manifest.files
+    assert "data/searchat.duckdb" in manifest.files
+    assert (meta.backup_path / "data" / "indices" / "embeddings.faiss").read_bytes() == b"FAISSSTUB"
+    assert (meta.backup_path / "data" / "searchat.duckdb").exists()
+
+
+@pytest.mark.unit
+def test_source_of_truth_backup_is_materially_smaller_than_full_copy(temp_search_dir: Path) -> None:
+    live = temp_search_dir
+    mgr = BackupManager(live)
+
+    _write_bytes(live / "data" / "conversations" / "conv.parquet", b"PAR1\n" * 100)
+    # Inflate the derivable legacy index to >= 5x the source-of-truth payload.
+    _write_bytes(live / "data" / "indices" / "embeddings.faiss", b"X" * (5 * 500 * 5))
+    _write_bytes(live / "data" / "indices" / "embeddings.metadata.parquet", b"Y" * (5 * 500 * 5))
+
+    source_of_truth = mgr.create_backup(backup_name="lean")
+    full_copy = mgr.create_backup(backup_name="full", excludes_derived=False)
+
+    assert source_of_truth.total_size_bytes < full_copy.total_size_bytes * 0.3
+

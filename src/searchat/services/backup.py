@@ -15,16 +15,19 @@ import logging
 import hashlib
 import tempfile
 
+from searchat.config.constants import DEFAULT_DATA_SUBDIR, DEFAULT_DUCKDB_FILENAME
 from searchat.services.backup_crypto import decrypt_file, encrypt_file, get_backup_key
 from searchat.services.backup_contracts import (
     inspect_backup_chain,
     inspect_legacy_full_backup,
     inspect_manifest_backup,
 )
+from searchat.services.backup_export import export_source_tables
 from searchat.services.storage_contracts import (
     BACKUP_MANIFEST_FILE,
     BACKUP_MANIFEST_VERSION,
     BACKUP_METADATA_FILE,
+    BACKUP_SOURCE_SCHEMA_VERSION,
     BackupManifest,
     BackupMetadata,
 )
@@ -363,25 +366,81 @@ class BackupManager:
         """Count all files in a directory."""
         return sum(1 for item in path.rglob("*") if item.is_file())
 
-    def _iter_live_backup_files(self) -> list[tuple[str, Path]]:
-        """Return (relative_path, absolute_path) for all files in backup scope."""
+    def _iter_live_backup_files(self, *, excludes_derived: bool = True) -> list[tuple[str, Path]]:
+        """Return (relative_path, absolute_path) for all files in backup scope.
+
+        excludes_derived=True (M4 default): source-of-truth-only. Skips the
+        legacy FAISS/metadata index (`data/indices/`) and the unified
+        engine's combined DuckDB file (`data/searchat.duckdb` + its
+        `.wal`) -- the latter's source-of-truth tables are exported
+        separately by `_iter_source_export_files`, which the caller
+        appends to this method's result. Adds the state that lives
+        outside `data/`: bookmarks, saved queries, dashboards, expertise,
+        knowledge graph, and analytics.
+
+        excludes_derived=False: legacy full-copy behavior -- every file
+        under `data/` and `config/` is backed up, including the
+        derivable index.
+        """
         items_to_backup: list[tuple[str, Path]] = [
             ("data", self.data_dir / "data"),
             ("config", self.data_dir / "config"),
         ]
+        if excludes_derived:
+            items_to_backup += [
+                ("bookmarks.json", self.data_dir / "bookmarks.json"),
+                ("saved_queries.json", self.data_dir / "saved_queries.json"),
+                ("dashboards.json", self.data_dir / "dashboards.json"),
+                ("expertise", self.data_dir / "expertise"),
+                ("knowledge_graph", self.data_dir / "knowledge_graph"),
+                ("analytics", self.data_dir / "analytics"),
+            ]
+
+        skip_dirs: list[Path] = []
+        skip_files: set[Path] = set()
+        if excludes_derived:
+            data_root = self.data_dir / "data"
+            skip_dirs.append((data_root / "indices").resolve())
+            skip_files.add((data_root / DEFAULT_DUCKDB_FILENAME).resolve())
+            skip_files.add((data_root / f"{DEFAULT_DUCKDB_FILENAME}.wal").resolve())
+
         files: list[tuple[str, Path]] = []
         for prefix, root in items_to_backup:
             if not root.exists():
                 continue
             if root.is_file():
+                if root.resolve() in skip_files:
+                    continue
                 files.append((prefix, root))
                 continue
             for src in root.rglob("*"):
                 if not src.is_file():
                     continue
+                resolved = src.resolve()
+                if resolved in skip_files:
+                    continue
+                if any(skip_dir in resolved.parents for skip_dir in skip_dirs):
+                    continue
                 rel_key = str(Path(prefix) / src.relative_to(root)).replace("\\", "/")
                 files.append((rel_key, src))
         return files
+
+    def _iter_source_export_files(self, export_dir: Path) -> list[tuple[str, Path]]:
+        """Export `searchat.duckdb`'s source-of-truth tables into `export_dir`.
+
+        Returns (relative_path, absolute_path) pairs rooted at
+        `data/duckdb_source/`, pointing at files freshly written under
+        `export_dir` -- never under the live data directory, so a backup
+        never leaves derived-export artifacts behind in `self.data_dir`.
+        Returns `[]` when no unified-engine database exists yet (a
+        legacy-engine dataset, or no index built at all).
+        """
+        db_path = self.data_dir / DEFAULT_DATA_SUBDIR / DEFAULT_DUCKDB_FILENAME
+        exported = export_source_tables(db_path, export_dir)
+        return [
+            (f"data/duckdb_source/{table}.parquet", export_dir / f"{table}.parquet")
+            for table in exported
+        ]
 
     def _effective_state_from_chain(self, chain: list[str]) -> dict[str, str]:
         """Compute effective file sha map for a chain.
@@ -422,11 +481,18 @@ class BackupManager:
         backup_name: str | None = None,
         backup_type: str = "manual",
         encrypted: bool = False,
+        excludes_derived: bool = True,
         max_chain_length: int = 10,
     ) -> BackupMetadata:
         """Create an incremental (delta) backup using parent chain manifests.
 
         Chain length counts total entries including the base full backup.
+
+        excludes_derived (M4 default True): the delta is computed against
+        the source-of-truth-only file set -- see `_iter_live_backup_files`
+        -- with `searchat.duckdb`'s source tables freshly exported and
+        diffed like any other file. Pass False to keep computing deltas
+        against the legacy full-copy file set.
         """
         parent_chain = self.resolve_backup_chain(parent_name, max_chain_length=max_chain_length)
         if len(parent_chain) + 1 > max_chain_length:
@@ -457,47 +523,55 @@ class BackupManager:
         if encrypted:
             key = get_backup_key()
 
-        live_files = self._iter_live_backup_files()
+        export_cm: tempfile.TemporaryDirectory[str] | None = None
+        try:
+            live_files = self._iter_live_backup_files(excludes_derived=excludes_derived)
+            if excludes_derived:
+                export_cm = tempfile.TemporaryDirectory(prefix="searchat_export_")
+                live_files = live_files + self._iter_source_export_files(Path(export_cm.name))
 
-        live_state: dict[str, str] = {}
-        changed_files: list[tuple[str, Path, str]] = []
-        for rel_key, src in live_files:
-            sha = _sha256_file(src)
-            live_state[rel_key] = sha
-            if parent_state.get(rel_key) != sha:
-                changed_files.append((rel_key, src, sha))
+            live_state: dict[str, str] = {}
+            changed_files: list[tuple[str, Path, str]] = []
+            for rel_key, src in live_files:
+                sha = _sha256_file(src)
+                live_state[rel_key] = sha
+                if parent_state.get(rel_key) != sha:
+                    changed_files.append((rel_key, src, sha))
 
-        deleted_files = sorted(set(parent_state.keys()) - set(live_state.keys()))
+            deleted_files = sorted(set(parent_state.keys()) - set(live_state.keys()))
 
-        file_count = 0
-        total_size = 0
-        manifest_files: dict[str, dict[str, object]] = {}
+            file_count = 0
+            total_size = 0
+            manifest_files: dict[str, dict[str, object]] = {}
 
-        for rel_key, src, sha in changed_files:
-            st = src.stat()
-            if encrypted:
-                stored_rel = f"{rel_key}.enc"
-                content_sha, stored_sha, stored_size = encrypt_file(src, backup_path / stored_rel, key=cast(bytes, key))
-                if content_sha != sha:
-                    raise RuntimeError("Content hash mismatch during encryption")
-            else:
-                stored_rel = rel_key
-                dest = backup_path / Path(rel_key)
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(src, dest)
-                stored_size = int(dest.stat().st_size)
-                stored_sha = sha
-                content_sha = sha
+            for rel_key, src, sha in changed_files:
+                st = src.stat()
+                if encrypted:
+                    stored_rel = f"{rel_key}.enc"
+                    content_sha, stored_sha, stored_size = encrypt_file(src, backup_path / stored_rel, key=cast(bytes, key))
+                    if content_sha != sha:
+                        raise RuntimeError("Content hash mismatch during encryption")
+                else:
+                    stored_rel = rel_key
+                    dest = backup_path / Path(rel_key)
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(src, dest)
+                    stored_size = int(dest.stat().st_size)
+                    stored_sha = sha
+                    content_sha = sha
 
-            file_count += 1
-            total_size += int(stored_size)
-            manifest_files[rel_key] = {
-                "content_sha256": content_sha,
-                "stored_sha256": stored_sha,
-                "stored_rel_path": stored_rel,
-                "size_bytes": int(stored_size),
-                "mtime_epoch": float(st.st_mtime),
-            }
+                file_count += 1
+                total_size += int(stored_size)
+                manifest_files[rel_key] = {
+                    "content_sha256": content_sha,
+                    "stored_sha256": stored_sha,
+                    "stored_rel_path": stored_rel,
+                    "size_bytes": int(stored_size),
+                    "mtime_epoch": float(st.st_mtime),
+                }
+        finally:
+            if export_cm is not None:
+                export_cm.cleanup()
 
         metadata = BackupMetadata(
             timestamp=timestamp,
@@ -506,6 +580,8 @@ class BackupManager:
             file_count=file_count,
             total_size_bytes=total_size,
             backup_type=backup_type,
+            excludes_derived=excludes_derived,
+            derived_schema_version=BACKUP_SOURCE_SCHEMA_VERSION if excludes_derived else 0,
         )
 
         metadata_path = backup_path / self.METADATA_FILE
@@ -623,6 +699,7 @@ class BackupManager:
         backup_type: str = "manual",
         *,
         encrypted: bool = False,
+        excludes_derived: bool = True,
     ) -> BackupMetadata:
         """
         Create a backup of the current index and data.
@@ -630,6 +707,17 @@ class BackupManager:
         Args:
             backup_name: Optional custom backup name. If not provided, uses timestamp.
             backup_type: Type of backup (manual, pre_restore, scheduled)
+            excludes_derived: M4 default True -- source-of-truth-only.
+                Backs up Parquet conversations/code, config, bookmarks,
+                saved queries, dashboards, expertise, knowledge graph, and
+                analytics state; excludes the legacy FAISS/metadata index
+                (data/indices/) and does not copy searchat.duckdb -- its
+                source-of-truth tables (conversations, messages,
+                source_file_state, code_blocks) are exported to Parquet
+                under data/duckdb_source/ instead, leaving out the
+                derivable exchanges/embeddings/FTS/HNSW data. Pass False
+                for the legacy full-copy behavior (includes the derivable
+                index verbatim, restorable without a rebuild step).
 
         Returns:
             BackupMetadata object with backup information
@@ -662,37 +750,45 @@ class BackupManager:
         if encrypted:
             key = get_backup_key()
 
-        files = self._iter_live_backup_files()
+        export_cm: tempfile.TemporaryDirectory[str] | None = None
+        try:
+            files = self._iter_live_backup_files(excludes_derived=excludes_derived)
+            if excludes_derived:
+                export_cm = tempfile.TemporaryDirectory(prefix="searchat_export_")
+                files = files + self._iter_source_export_files(Path(export_cm.name))
 
-        file_count = 0
-        total_size = 0
-        manifest_files: dict[str, dict[str, object]] = {}
+            file_count = 0
+            total_size = 0
+            manifest_files: dict[str, dict[str, object]] = {}
 
-        for rel_key, src in files:
-            st = src.stat()
-            if encrypted:
-                logger.info(f"  Encrypting file: {rel_key}")
-                stored_rel = f"{rel_key}.enc"
-                content_sha, stored_sha, stored_size = encrypt_file(src, backup_path / stored_rel, key=cast(bytes, key))
-            else:
-                # Copy plaintext.
-                dest = backup_path / Path(rel_key)
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(src, dest)
-                stored_rel = rel_key
-                stored_size = int(dest.stat().st_size)
-                content_sha = _sha256_file(dest)
-                stored_sha = content_sha
+            for rel_key, src in files:
+                st = src.stat()
+                if encrypted:
+                    logger.info(f"  Encrypting file: {rel_key}")
+                    stored_rel = f"{rel_key}.enc"
+                    content_sha, stored_sha, stored_size = encrypt_file(src, backup_path / stored_rel, key=cast(bytes, key))
+                else:
+                    # Copy plaintext.
+                    dest = backup_path / Path(rel_key)
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(src, dest)
+                    stored_rel = rel_key
+                    stored_size = int(dest.stat().st_size)
+                    content_sha = _sha256_file(dest)
+                    stored_sha = content_sha
 
-            file_count += 1
-            total_size += int(stored_size)
-            manifest_files[rel_key] = {
-                "content_sha256": content_sha,
-                "stored_sha256": stored_sha,
-                "stored_rel_path": stored_rel,
-                "size_bytes": int(stored_size),
-                "mtime_epoch": float(st.st_mtime),
-            }
+                file_count += 1
+                total_size += int(stored_size)
+                manifest_files[rel_key] = {
+                    "content_sha256": content_sha,
+                    "stored_sha256": stored_sha,
+                    "stored_rel_path": stored_rel,
+                    "size_bytes": int(stored_size),
+                    "mtime_epoch": float(st.st_mtime),
+                }
+        finally:
+            if export_cm is not None:
+                export_cm.cleanup()
 
         # Create metadata
         metadata = BackupMetadata(
@@ -702,6 +798,8 @@ class BackupManager:
             file_count=file_count,
             total_size_bytes=total_size,
             backup_type=backup_type,
+            excludes_derived=excludes_derived,
+            derived_schema_version=BACKUP_SOURCE_SCHEMA_VERSION if excludes_derived else 0,
         )
 
         # Save metadata to backup directory
