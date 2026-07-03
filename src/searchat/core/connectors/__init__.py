@@ -11,6 +11,7 @@ from .registry import (
     has_v2_support,
 )
 from .codex import CodexConnector
+from .omp import OmpConnector
 from .claude import ClaudeConnector
 from .vibe import VibeConnector
 from .opencode import OpenCodeConnector
@@ -20,6 +21,7 @@ from .cursor import CursorConnector
 from .aider import AiderConnector
 
 register_connector(CodexConnector())
+register_connector(OmpConnector())
 register_connector(ClaudeConnector())
 register_connector(VibeConnector())
 register_connector(OpenCodeConnector())

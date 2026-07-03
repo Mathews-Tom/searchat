@@ -139,6 +139,7 @@ gemini = "searchat.core.connectors.gemini:GeminiCLIConnector"
 continue = "searchat.core.connectors.continue_cli:ContinueConnector"
 cursor = "searchat.core.connectors.cursor:CursorConnector"
 aider = "searchat.core.connectors.aider:AiderConnector"
+omp = "searchat.core.connectors.omp:OmpConnector"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/searchat"]
