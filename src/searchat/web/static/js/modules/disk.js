@@ -1,5 +1,6 @@
 // Disk Manager Module
-// Read-only per-agent and Searchat self disk-usage dashboard.
+// Read-only per-agent, Searchat self, cruft-advisor, and M11
+// cross-connector duplicate-suggestion disk-usage dashboard.
 
 export async function showDiskManager() {
     const resultsDiv = document.getElementById('results');
@@ -51,10 +52,17 @@ async function renderDiskManager(resultsDiv) {
                 </div>
 
                 <!-- Cruft advisor -->
-                <div class="glass">
+                <div class="glass" style="margin-bottom: 24px;">
                     <div class="card-title">Cruft &amp; Non-Conversation Artifacts</div>
                     <p style="color: hsl(var(--text-secondary)); margin: 0 0 16px 0; font-size: 14px;">Known non-conversation heavyweight artifacts (tool logs, plugin dirs, caches) found on this machine. Report-only &mdash; searchat never deletes or modifies these.</p>
                     ${renderCruftFindings(report.cruft_findings)}
+                </div>
+
+                <!-- Cross-agent duplicate suggestions -->
+                <div class="glass">
+                    <div class="card-title">Duplicate Suggestions (Cross-Connector)</div>
+                    <p style="color: hsl(var(--text-secondary)); margin: 0 0 16px 0; font-size: 14px;">Near-duplicate conversations ingested by two different connectors. Report-only &mdash; review and merge/ignore manually; searchat never merges or deletes these.</p>
+                    ${renderDuplicateSuggestions(report.duplicate_suggestions)}
                 </div>
             </div>
         `;
@@ -145,6 +153,30 @@ function renderCruftFindings(findings) {
                     </div>
                     <div style="font-size: 14px; font-weight: 700; color: hsl(var(--text-primary)); white-space: nowrap;">
                         ${formatBytes(finding.total_size_bytes)}
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+function renderDuplicateSuggestions(suggestions) {
+    if (!suggestions || suggestions.length === 0) {
+        return '<div style="color: hsl(var(--text-tertiary)); font-style: italic;">No cross-connector near-duplicate conversations found.</div>';
+    }
+
+    return `
+        <div style="display: grid; gap: 8px;">
+            ${suggestions.map(suggestion => `
+                <div class="glass" style="display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 14px;">
+                    <div style="min-width: 0;">
+                        <div style="font-weight: 600; color: hsl(var(--text-primary));">${escapeHtml(suggestion.title_a)}</div>
+                        <div style="font-size: 12px; color: hsl(var(--text-tertiary));">
+                            ${escapeHtml(suggestion.connector_a)} &harr; ${escapeHtml(suggestion.connector_b)}
+                        </div>
+                    </div>
+                    <div style="font-size: 14px; font-weight: 700; color: hsl(var(--text-primary)); white-space: nowrap;">
+                        ${(suggestion.similarity * 100).toFixed(0)}% similar
                     </div>
                 </div>
             `).join('')}

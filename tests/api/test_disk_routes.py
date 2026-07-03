@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from searchat.api.app import app
+from searchat.services.dedup_detection import DuplicateSuggestion
 from searchat.services.disk_accounting import (
     AgentDiskUsage,
     CruftFinding,
@@ -115,6 +116,7 @@ class TestDiskAccountingEndpoint:
             "searchat_self",
             "generated_at",
             "cruft_findings",
+            "duplicate_suggestions",
         ]
         assert data["generated_at"] == "2026-07-03T12:00:00"
 
@@ -292,6 +294,61 @@ class TestDiskAccountingEndpoint:
                 "cleanup_hint": expected.cleanup_hint,
                 "total_size_bytes": expected.total_size_bytes,
                 "file_count": expected.file_count,
+            }
+
+    def test_get_disk_accounting_includes_duplicate_suggestions(
+        self, client, mock_agent_usage, mock_subdirectories
+    ):
+        """M11 duplicate suggestions round-trip through
+        `DuplicateSuggestionResponse` with all seven fields intact -- proves
+        the response model doesn't silently drop/rename anything."""
+        duplicate_suggestions = (
+            DuplicateSuggestion(
+                conversation_id_a="claude-conv-1",
+                connector_a="claude",
+                title_a="Debugging the auth flow",
+                conversation_id_b="codex-conv-1",
+                connector_b="codex",
+                title_b="Debugging the auth flow",
+                similarity=0.98,
+            ),
+        )
+        report = DiskAccountingReport(
+            agents=(mock_agent_usage,),
+            searchat_self=SearchatSelfUsage(
+                search_dir="/home/user/.searchat",
+                subdirectories=mock_subdirectories,
+                total_size_bytes=52428800,
+                total_file_count=8,
+            ),
+            generated_at="2026-07-03T12:00:00",
+            duplicate_suggestions=duplicate_suggestions,
+        )
+
+        with patch(
+            "searchat.api.routers.disk.get_search_dir",
+            return_value=Path("/home/user/.searchat"),
+        ):
+            with patch("searchat.api.routers.disk.get_config", return_value=Mock()):
+                with patch(
+                    "searchat.api.routers.disk.build_disk_accounting_report",
+                    return_value=report,
+                ):
+                    response = client.get("/api/disk")
+
+        assert response.status_code == 200
+        data = response.json()
+
+        assert len(data["duplicate_suggestions"]) == 1
+        for expected, actual in zip(duplicate_suggestions, data["duplicate_suggestions"]):
+            assert actual == {
+                "conversation_id_a": expected.conversation_id_a,
+                "connector_a": expected.connector_a,
+                "title_a": expected.title_a,
+                "conversation_id_b": expected.conversation_id_b,
+                "connector_b": expected.connector_b,
+                "title_b": expected.title_b,
+                "similarity": expected.similarity,
             }
 
     def test_get_disk_accounting_null_ages_when_no_conversations(self, client, mock_subdirectories):
