@@ -520,3 +520,79 @@ KNOWN_CRUFT_PATTERNS: tuple[CruftPattern, ...] = (
         explanation="npm dependencies installed for opencode's local config/plugins.",
     ),
 )
+
+
+@dataclass(frozen=True)
+class CruftFinding:
+    """One matched cruft artifact on disk -- reported, never a delete target."""
+
+    label: str
+    path: str
+    path_glob: str
+    explanation: str
+    cleanup_hint: str | None
+    total_size_bytes: int
+    file_count: int
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "label": self.label,
+            "path": self.path,
+            "path_glob": self.path_glob,
+            "explanation": self.explanation,
+            "cleanup_hint": self.cleanup_hint,
+            "total_size_bytes": self.total_size_bytes,
+            "file_count": self.file_count,
+        }
+
+
+def detect_cruft(
+    home: Path | None = None,
+    patterns: tuple[CruftPattern, ...] = KNOWN_CRUFT_PATTERNS,
+) -> tuple[CruftFinding, ...]:
+    """Pure read-only scan for known non-conversation heavyweight artifacts.
+
+    Matches each pattern in `patterns` against `home` (`Path.home()` by
+    default; pass a fixture directory in tests) via `Path.glob()`, sizing
+    every match with the same `du`-equivalent walk `compute_agent_disk_usage`
+    uses for a directory match, or a single `stat()` for a file match. A
+    pattern that matches nothing (the artifact is absent on this machine)
+    contributes no finding -- this is a report of what exists, not a
+    checklist of what should. Results are sorted largest-first so the
+    heaviest artifacts surface at the top of the dashboard/CLI output.
+
+    Symlinked matches are skipped (mirrors `_walk_directory`'s handling and
+    keeps this scan from following a link outside the intended harness
+    directory) and unreadable matches are skipped rather than raised, so one
+    permission error never fails the whole scan.
+    """
+    base = home if home is not None else Path.home()
+    findings: list[CruftFinding] = []
+    for pattern in patterns:
+        try:
+            matches = sorted(base.glob(pattern.path_glob))
+        except OSError:
+            continue
+        for match in matches:
+            try:
+                if match.is_symlink():
+                    continue
+                if match.is_dir():
+                    usage = _walk_directory(match)
+                    size, count = usage.total_size_bytes, usage.file_count
+                else:
+                    size, count = match.stat().st_size, 1
+            except OSError:
+                continue
+            findings.append(
+                CruftFinding(
+                    label=pattern.label,
+                    path=str(match),
+                    path_glob=pattern.path_glob,
+                    explanation=pattern.explanation,
+                    cleanup_hint=pattern.cleanup_hint,
+                    total_size_bytes=size,
+                    file_count=count,
+                )
+            )
+    return tuple(sorted(findings, key=lambda f: f.total_size_bytes, reverse=True))
