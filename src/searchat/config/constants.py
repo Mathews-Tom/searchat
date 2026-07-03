@@ -370,6 +370,24 @@ ENV_BACKUP_KEEP_MONTHLY = "SEARCHAT_BACKUP_KEEP_MONTHLY"
 ENV_BACKUP_COMPRESSION_LEVEL = "SEARCHAT_BACKUP_COMPRESSION_LEVEL"
 
 # ============================================================================
+# Source Lifecycle Defaults (M8 -- verified archive-then-prune)
+# ============================================================================
+
+# 60 days: conservative default so nothing is archive/prune-eligible by
+# mere age alone shortly after this ships.
+DEFAULT_LIFECYCLE_AGE_THRESHOLD_DAYS = 60
+# Empty by default: no connector's source files are archive/prune-eligible
+# until an operator explicitly opts it in, independent of dry_run.
+DEFAULT_LIFECYCLE_ENABLED_AGENTS: tuple[str, ...] = ()
+# True by default: `searchat sources archive|prune` reports what WOULD
+# happen without touching disk until run with --dry-run=false.
+DEFAULT_LIFECYCLE_DRY_RUN = True
+
+ENV_LIFECYCLE_AGE_THRESHOLD_DAYS = "SEARCHAT_LIFECYCLE_AGE_THRESHOLD_DAYS"
+ENV_LIFECYCLE_ENABLED_AGENTS = "SEARCHAT_LIFECYCLE_ENABLED_AGENTS"
+ENV_LIFECYCLE_DRY_RUN = "SEARCHAT_LIFECYCLE_DRY_RUN"
+
+# ============================================================================
 # Query Expansion / Synonyms
 # ============================================================================
 

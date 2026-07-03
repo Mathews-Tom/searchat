@@ -171,6 +171,13 @@ from .constants import (
     ENV_BACKUP_KEEP_LAST,
     ENV_BACKUP_KEEP_MONTHLY,
     ENV_BACKUP_COMPRESSION_LEVEL,
+    # Source Lifecycle (M8)
+    DEFAULT_LIFECYCLE_AGE_THRESHOLD_DAYS,
+    DEFAULT_LIFECYCLE_ENABLED_AGENTS,
+    DEFAULT_LIFECYCLE_DRY_RUN,
+    ENV_LIFECYCLE_AGE_THRESHOLD_DAYS,
+    ENV_LIFECYCLE_ENABLED_AGENTS,
+    ENV_LIFECYCLE_DRY_RUN,
 )
 
 if TYPE_CHECKING:
@@ -774,6 +781,56 @@ class CompactionConfig:
 
 
 @dataclass
+class LifecycleConfig:
+    """Policy gates for `services/source_lifecycle.py` (M8): a source
+    conversation file is archive/prune-eligible only once it is BOTH
+    older than `age_threshold_days` AND its owning connector's name is
+    explicitly listed in `enabled_agents` -- no connector is eligible by
+    default.
+
+    `dry_run` is parsed here for completeness and for any future non-CLI
+    caller of `services.source_lifecycle.run_lifecycle_action`, but the
+    shipped `sources` CLI (`cli/sources_cmd.py`) deliberately does NOT
+    read it: the CLI's own `--dry-run` flag always defaults to `True`
+    independent of this value, and only an explicit `--dry-run=false` on
+    the command line can disable it. This is intentional, not an
+    oversight -- it means a misconfigured `dry_run = false` in
+    `settings.toml` can never by itself enable a real mutation from the
+    CLI, closing off config-only opt-out as an accidental bypass.
+    """
+
+    age_threshold_days: int
+    enabled_agents: frozenset[str]
+    dry_run: bool
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "LifecycleConfig":
+        env_agents = _get_env_str(ENV_LIFECYCLE_ENABLED_AGENTS, None)
+        if env_agents is not None:
+            raw_agents: object = [a.strip() for a in env_agents.split(",")]
+        else:
+            raw_agents = data.get("enabled_agents", list(DEFAULT_LIFECYCLE_ENABLED_AGENTS))
+        if not isinstance(raw_agents, list):
+            raw_agents = []
+        enabled_agents = frozenset(a.strip() for a in raw_agents if isinstance(a, str) and a.strip())
+
+        return cls(
+            age_threshold_days=max(
+                _get_env_int(
+                    ENV_LIFECYCLE_AGE_THRESHOLD_DAYS,
+                    int(data.get("age_threshold_days", DEFAULT_LIFECYCLE_AGE_THRESHOLD_DAYS)),
+                ),
+                0,
+            ),
+            enabled_agents=enabled_agents,
+            dry_run=_get_env_bool(
+                ENV_LIFECYCLE_DRY_RUN,
+                bool(data.get("dry_run", DEFAULT_LIFECYCLE_DRY_RUN)),
+            ),
+        )
+
+
+@dataclass
 class ExpertiseConfig:
     enabled: bool
     auto_extract: bool
@@ -1004,6 +1061,7 @@ class Config:
     logging: LogConfig
     distillation: DistillationConfig
     palace: PalaceConfig
+    lifecycle: LifecycleConfig
 
     @classmethod
     def load(cls, config_path: Path | None = None) -> "Config":
@@ -1090,4 +1148,5 @@ class Config:
             logging=LogConfig(**data.get("logging", {})),
             distillation=DistillationConfig.from_dict(data.get("distillation", {})),
             palace=PalaceConfig.from_dict(data.get("palace", {})),
+            lifecycle=LifecycleConfig.from_dict(data.get("lifecycle", {})),
         )

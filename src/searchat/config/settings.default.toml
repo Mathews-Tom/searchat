@@ -133,3 +133,21 @@ keep_last = 10
 keep_monthly = 12
 # zstd compression level for plaintext (non-encrypted) backup payloads.
 compression_level = 3
+
+[lifecycle]
+# Source conversation-file lifecycle (M8) -- verified archive-then-prune.
+# `searchat sources archive|prune` only ever acts on a file that is BOTH
+# older than age_threshold_days AND whose connector name is explicitly
+# listed in enabled_agents; each action additionally requires both
+# verify_ingested (checksum + message-count parity) and verify_roundtrip
+# (lossless export re-parse) to pass, enforced in code, not just here.
+age_threshold_days = 60
+# No connector is prunable until explicitly added, e.g. ["claude", "codex"].
+enabled_agents = []
+# dry_run reports what WOULD happen without touching disk. NOTE: the
+# shipped `sources` CLI does NOT read this value -- its own --dry-run
+# flag always defaults to true regardless of what's set here, and only
+# an explicit --dry-run=false on the command line can disable it. This
+# key exists for completeness and any future non-CLI caller; it cannot
+# by itself enable a real mutation from the CLI.
+dry_run = true

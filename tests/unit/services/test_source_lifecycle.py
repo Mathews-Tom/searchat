@@ -16,19 +16,25 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import duckdb
 import pytest
 
+from searchat.config.settings import LifecycleConfig
+from searchat.core.connectors import registry
 from searchat.core.connectors.claude import ClaudeConnector
 from searchat.services.backup_compression import decompress_file
 from searchat.services.source_lifecycle import (
+    LifecycleDecision,
     TombstoneEntry,
     VerificationResult,
     archive_source,
+    evaluate_and_act_on_source,
     prune_source,
+    run_lifecycle_action,
     tombstone_log_path,
     verify_ingested,
     write_tombstone,
@@ -661,3 +667,599 @@ def test_prune_source_then_write_tombstone_full_integration(tmp_path: Path) -> N
     assert parsed["checksum"] != ""
     assert parsed["archived_path"] is None
 
+
+
+# ---------------------------------------------------------------------------
+# run_lifecycle_action: dry_run makes zero filesystem writes (M8 acceptance
+# criterion).
+#
+# `dry_run=True` is the shipped default (`LifecycleConfig.dry_run`). This
+# test builds the STRONGEST possible candidate for a dry run to defeat --
+# a fully valid, verified, age-eligible, connector-enabled indexed source
+# file that would otherwise be actionable -- and proves
+# `run_lifecycle_action` still performs zero filesystem writes for the
+# entire evaluation. Every `pathlib.Path.write_bytes`/`write_text`/`unlink`
+# call and every write-capable `open()` call is monkeypatched to raise
+# `AssertionError` for the duration of the `run_lifecycle_action` call only
+# -- the fixture setup above it runs with real, unpatched writes. The test
+# also proves the dry run was non-vacuous (a real candidate reached and
+# passed `verify_ingested`, not an empty candidate list) and that the real
+# fixture file is byte-for-byte unchanged on disk afterward.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_run_lifecycle_action_dry_run_makes_zero_filesystem_writes(tmp_path: Path) -> None:
+    source_file = _write_claude_jsonl(tmp_path / "conv-dry-run.jsonl", num_exchanges=3)
+    connector = ClaudeConnector()
+    real_hash = _sha256(source_file)
+    real_message_count = connector.parse(source_file, embedding_id=0).message_count
+    conversation_id = source_file.stem
+
+    db_path = _new_db(tmp_path)
+    _insert_source_file_state(
+        db_path,
+        file_path=str(source_file),
+        conversation_id=conversation_id,
+        file_hash=real_hash,
+    )
+    _insert_conversation(
+        db_path,
+        conversation_id=conversation_id,
+        file_path=str(source_file),
+        message_count=real_message_count,
+    )
+
+    # Back-date the fixture file's mtime well past the age threshold so the
+    # candidate is age-gated *in* (not refused before ever reaching
+    # `verify_ingested`) -- the strongest version of this test proves the
+    # dry run blocks every write even for a candidate that would otherwise
+    # qualify all the way through.
+    age_threshold_days = 30
+    old_mtime = (datetime.now() - timedelta(days=age_threshold_days + 10)).timestamp()
+    os.utime(source_file, (old_mtime, old_mtime))
+
+    if registry.get_connector_by_name("claude") is None:
+        registry.register_connector(ClaudeConnector())
+
+    policy = LifecycleConfig(
+        age_threshold_days=age_threshold_days,
+        enabled_agents=frozenset({"claude"}),
+        dry_run=True,
+    )
+    tombstone_dir = tmp_path / "tombstones"
+    original_bytes = source_file.read_bytes()
+
+    real_open = open
+
+    def _guarded_open(file, mode="r", *args, **kwargs):  # type: ignore[no-untyped-def]
+        # Only write-capable modes are blocked: "w"/"a"/"x" truncate-or-create
+        # or append, and "+" opens for update. Plain "r"/"rb" reads -- which
+        # `verify_ingested` legitimately performs (re-hashing and re-parsing
+        # the source file) -- must pass straight through untouched.
+        if any(flag in mode for flag in ("w", "a", "x", "+")):
+            raise AssertionError("unexpected filesystem write during dry run")
+        return real_open(file, mode, *args, **kwargs)
+
+    def _raise_write(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("unexpected filesystem write during dry run")
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(Path, "write_bytes", _raise_write)
+        mp.setattr(Path, "write_text", _raise_write)
+        mp.setattr(Path, "unlink", _raise_write)
+        mp.setattr("builtins.open", _guarded_open)
+
+        decisions = run_lifecycle_action(
+            db_path=db_path,
+            policy=policy,
+            action="prune",
+            dry_run=True,
+            tombstone_dir=tombstone_dir,
+        )
+
+    assert decisions
+    eligible = [d for d in decisions if d.eligible]
+    assert eligible, "dry run evaluated no real candidate through verify_ingested"
+    assert all(d.ingested is not None and d.ingested.ok for d in eligible)
+    assert all(d.action_taken is None for d in decisions)
+    assert all(d.archived_path is None and d.tombstone_path is None for d in decisions)
+
+    assert source_file.exists()
+    assert source_file.read_bytes() == original_bytes
+
+# ---------------------------------------------------------------------------
+# evaluate_and_act_on_source / run_lifecycle_action: gate ORDER and
+# per-field `LifecycleDecision` correctness (M8).
+#
+# `evaluate_and_act_on_source` chains four gates in a fixed,
+# safety-critical order -- per-agent opt-in, age threshold,
+# `verify_ingested`, then (only once `dry_run` is `False`)
+# `verify_roundtrip` followed by the action itself. These tests exercise
+# the REAL gate chain end to end -- no mocking of `verify_ingested`,
+# `verify_roundtrip`, `archive_source`, or `prune_source` -- and assert
+# every `LifecycleDecision` field a caller could rely on: which gates ran,
+# which were left at their zero value (proving a later, more expensive
+# gate never executed), and the exact action taken (or not taken).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_evaluate_and_act_on_source_skips_before_any_gate_when_connector_not_enabled(
+    tmp_path: Path,
+) -> None:
+    source_file = _write_claude_jsonl(tmp_path / "conv-gate-agent-disabled.jsonl", num_exchanges=1)
+    connector = ClaudeConnector()
+    real_hash = _sha256(source_file)
+    real_message_count = connector.parse(source_file, embedding_id=0).message_count
+    conversation_id = source_file.stem
+
+    db_path = _new_db(tmp_path)
+    _insert_source_file_state(
+        db_path,
+        file_path=str(source_file),
+        conversation_id=conversation_id,
+        file_hash=real_hash,
+    )
+    _insert_conversation(
+        db_path,
+        conversation_id=conversation_id,
+        file_path=str(source_file),
+        message_count=real_message_count,
+    )
+
+    # Old enough to pass the age gate too, if it were ever reached -- proves
+    # the connector-enabled gate refuses this candidate regardless of how
+    # otherwise-eligible it is.
+    age_threshold_days = 30
+    old_mtime = (datetime.now() - timedelta(days=age_threshold_days + 10)).timestamp()
+    os.utime(source_file, (old_mtime, old_mtime))
+
+    if registry.get_connector_by_name("claude") is None:
+        registry.register_connector(ClaudeConnector())
+
+    policy = LifecycleConfig(
+        age_threshold_days=age_threshold_days,
+        enabled_agents=frozenset(),
+        dry_run=True,
+    )
+
+    decision = evaluate_and_act_on_source(
+        db_path=db_path,
+        connector_name="claude",
+        file_path=source_file,
+        policy=policy,
+        action="archive",
+        dry_run=True,
+        tombstone_dir=tmp_path / "tombstones",
+    )
+
+    assert isinstance(decision, LifecycleDecision)
+    assert decision.connector_name == "claude"
+    assert decision.agent_enabled is False
+    assert decision.age_gated is False
+    assert decision.ingested is None
+    assert decision.roundtrip is None
+    assert decision.eligible is False
+    assert decision.action_taken is None
+    assert decision.archived_path is None
+    assert decision.tombstone_path is None
+    assert decision.skip_reason is not None
+    assert "enabled_agents" in decision.skip_reason
+
+
+@pytest.mark.unit
+def test_evaluate_and_act_on_source_skips_at_age_gate_before_verify_ingested_runs(
+    tmp_path: Path,
+) -> None:
+    source_file = _write_claude_jsonl(tmp_path / "conv-gate-too-young.jsonl", num_exchanges=1)
+    connector = ClaudeConnector()
+    real_hash = _sha256(source_file)
+    real_message_count = connector.parse(source_file, embedding_id=0).message_count
+    conversation_id = source_file.stem
+
+    db_path = _new_db(tmp_path)
+    _insert_source_file_state(
+        db_path,
+        file_path=str(source_file),
+        conversation_id=conversation_id,
+        file_hash=real_hash,
+    )
+    _insert_conversation(
+        db_path,
+        conversation_id=conversation_id,
+        file_path=str(source_file),
+        message_count=real_message_count,
+    )
+
+    # Freshly written, well under the age threshold -- verify_ingested
+    # would pass if it ran (the hash/message-count rows are fully valid),
+    # which is exactly what proves the age gate short-circuits before it.
+    age_threshold_days = 30
+    young_mtime = (datetime.now() - timedelta(days=1)).timestamp()
+    os.utime(source_file, (young_mtime, young_mtime))
+
+    if registry.get_connector_by_name("claude") is None:
+        registry.register_connector(ClaudeConnector())
+
+    policy = LifecycleConfig(
+        age_threshold_days=age_threshold_days,
+        enabled_agents=frozenset({"claude"}),
+        dry_run=True,
+    )
+
+    decision = evaluate_and_act_on_source(
+        db_path=db_path,
+        connector_name="claude",
+        file_path=source_file,
+        policy=policy,
+        action="archive",
+        dry_run=True,
+        tombstone_dir=tmp_path / "tombstones",
+    )
+
+    assert decision.agent_enabled is True
+    assert decision.age_days is not None
+    assert decision.age_days < age_threshold_days
+    assert decision.age_gated is False
+    assert decision.ingested is None
+    assert decision.roundtrip is None
+    assert decision.eligible is False
+    assert decision.action_taken is None
+    assert decision.skip_reason is not None
+    assert "age_threshold_days" in decision.skip_reason
+
+
+@pytest.mark.unit
+def test_evaluate_and_act_on_source_dry_run_is_eligible_but_takes_no_action_and_writes_nothing(
+    tmp_path: Path,
+) -> None:
+    source_file = _write_claude_jsonl(tmp_path / "conv-gate-dry-run.jsonl", num_exchanges=2)
+    connector = ClaudeConnector()
+    real_hash = _sha256(source_file)
+    real_message_count = connector.parse(source_file, embedding_id=0).message_count
+    conversation_id = source_file.stem
+
+    db_path = _new_db(tmp_path)
+    _insert_source_file_state(
+        db_path,
+        file_path=str(source_file),
+        conversation_id=conversation_id,
+        file_hash=real_hash,
+    )
+    _insert_conversation(
+        db_path,
+        conversation_id=conversation_id,
+        file_path=str(source_file),
+        message_count=real_message_count,
+    )
+
+    age_threshold_days = 30
+    old_mtime = (datetime.now() - timedelta(days=age_threshold_days + 10)).timestamp()
+    os.utime(source_file, (old_mtime, old_mtime))
+    original_bytes = source_file.read_bytes()
+
+    if registry.get_connector_by_name("claude") is None:
+        registry.register_connector(ClaudeConnector())
+
+    policy = LifecycleConfig(
+        age_threshold_days=age_threshold_days,
+        enabled_agents=frozenset({"claude"}),
+        dry_run=True,
+    )
+    tombstone_dir = tmp_path / "tombstones"
+
+    decision = evaluate_and_act_on_source(
+        db_path=db_path,
+        connector_name="claude",
+        file_path=source_file,
+        policy=policy,
+        action="archive",
+        dry_run=True,
+        tombstone_dir=tombstone_dir,
+    )
+
+    assert decision.agent_enabled is True
+    assert decision.age_gated is True
+    assert decision.ingested is not None
+    assert decision.ingested.ok is True
+    # verify_roundtrip is the only stage before the action itself that
+    # performs a filesystem write; dry_run=True must short-circuit before
+    # it ever runs.
+    assert decision.roundtrip is None
+    assert decision.eligible is True
+    assert decision.action_taken is None
+    assert decision.archived_path is None
+    assert decision.tombstone_path is None
+    assert decision.skip_reason is not None
+    assert "dry_run" in decision.skip_reason
+
+    assert source_file.exists()
+    assert source_file.read_bytes() == original_bytes
+    assert not (tombstone_dir / "tombstones.jsonl").exists()
+    assert not source_file.with_name(source_file.name + ".zst").exists()
+
+
+@pytest.mark.unit
+def test_evaluate_and_act_on_source_archives_and_writes_tombstone_when_all_gates_pass(
+    tmp_path: Path,
+) -> None:
+    source_file = _write_claude_jsonl(tmp_path / "conv-gate-archive.jsonl", num_exchanges=2)
+    connector = ClaudeConnector()
+    real_hash = _sha256(source_file)
+    real_message_count = connector.parse(source_file, embedding_id=0).message_count
+    conversation_id = source_file.stem
+
+    db_path = _new_db(tmp_path)
+    _insert_source_file_state(
+        db_path,
+        file_path=str(source_file),
+        conversation_id=conversation_id,
+        file_hash=real_hash,
+    )
+    _insert_conversation(
+        db_path,
+        conversation_id=conversation_id,
+        file_path=str(source_file),
+        message_count=real_message_count,
+    )
+
+    age_threshold_days = 30
+    old_mtime = (datetime.now() - timedelta(days=age_threshold_days + 10)).timestamp()
+    os.utime(source_file, (old_mtime, old_mtime))
+
+    if registry.get_connector_by_name("claude") is None:
+        registry.register_connector(ClaudeConnector())
+
+    policy = LifecycleConfig(
+        age_threshold_days=age_threshold_days,
+        enabled_agents=frozenset({"claude"}),
+        dry_run=False,
+    )
+    tombstone_dir = tmp_path / "tombstones"
+
+    decision = evaluate_and_act_on_source(
+        db_path=db_path,
+        connector_name="claude",
+        file_path=source_file,
+        policy=policy,
+        action="archive",
+        dry_run=False,
+        tombstone_dir=tombstone_dir,
+    )
+
+    assert decision.agent_enabled is True
+    assert decision.age_gated is True
+    assert decision.ingested is not None and decision.ingested.ok is True
+    assert decision.roundtrip is not None
+    assert decision.roundtrip.ok is True
+    assert decision.eligible is True
+    assert decision.action_taken == "archive"
+
+    assert decision.archived_path is not None
+    archived_path = Path(decision.archived_path)
+    assert archived_path.name.endswith(".zst")
+    assert archived_path.exists()
+    assert not source_file.exists()
+
+    assert decision.tombstone_path is not None
+    tombstone_path = Path(decision.tombstone_path)
+    assert tombstone_path.exists()
+    entries = [json.loads(line) for line in tombstone_path.read_text(encoding="utf-8").splitlines()]
+    matches = [e for e in entries if e["action"] == "archive" and e["conversation_id"] == conversation_id]
+    assert len(matches) == 1
+    assert matches[0]["archived_path"] == str(archived_path)
+
+
+@pytest.mark.unit
+def test_evaluate_and_act_on_source_prunes_and_writes_tombstone_when_all_gates_pass(
+    tmp_path: Path,
+) -> None:
+    source_file = _write_claude_jsonl(tmp_path / "conv-gate-prune.jsonl", num_exchanges=2)
+    connector = ClaudeConnector()
+    real_hash = _sha256(source_file)
+    real_message_count = connector.parse(source_file, embedding_id=0).message_count
+    conversation_id = source_file.stem
+
+    db_path = _new_db(tmp_path)
+    _insert_source_file_state(
+        db_path,
+        file_path=str(source_file),
+        conversation_id=conversation_id,
+        file_hash=real_hash,
+    )
+    _insert_conversation(
+        db_path,
+        conversation_id=conversation_id,
+        file_path=str(source_file),
+        message_count=real_message_count,
+    )
+
+    age_threshold_days = 30
+    old_mtime = (datetime.now() - timedelta(days=age_threshold_days + 10)).timestamp()
+    os.utime(source_file, (old_mtime, old_mtime))
+
+    if registry.get_connector_by_name("claude") is None:
+        registry.register_connector(ClaudeConnector())
+
+    policy = LifecycleConfig(
+        age_threshold_days=age_threshold_days,
+        enabled_agents=frozenset({"claude"}),
+        dry_run=False,
+    )
+    tombstone_dir = tmp_path / "tombstones"
+
+    decision = evaluate_and_act_on_source(
+        db_path=db_path,
+        connector_name="claude",
+        file_path=source_file,
+        policy=policy,
+        action="prune",
+        dry_run=False,
+        tombstone_dir=tombstone_dir,
+    )
+
+    assert decision.agent_enabled is True
+    assert decision.age_gated is True
+    assert decision.ingested is not None and decision.ingested.ok is True
+    assert decision.roundtrip is not None and decision.roundtrip.ok is True
+    assert decision.eligible is True
+    assert decision.action_taken == "prune"
+    assert decision.archived_path is None
+
+    assert not source_file.exists()
+    assert not source_file.with_name(source_file.name + ".zst").exists()
+
+    assert decision.tombstone_path is not None
+    tombstone_path = Path(decision.tombstone_path)
+    entries = [json.loads(line) for line in tombstone_path.read_text(encoding="utf-8").splitlines()]
+    matches = [e for e in entries if e["action"] == "prune" and e["conversation_id"] == conversation_id]
+    assert len(matches) == 1
+    assert matches[0]["archived_path"] is None
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("dry_run_value", [True, False])
+def test_evaluate_and_act_on_source_blocks_action_when_verify_ingested_fails_checksum(
+    tmp_path: Path, dry_run_value: bool
+) -> None:
+    source_file = _write_claude_jsonl(tmp_path / "conv-gate-bad-hash.jsonl", num_exchanges=1)
+    connector = ClaudeConnector()
+    real_message_count = connector.parse(source_file, embedding_id=0).message_count
+    conversation_id = source_file.stem
+    wrong_hash = "0" * 64  # deliberately does not match the real on-disk sha256
+
+    db_path = _new_db(tmp_path)
+    _insert_source_file_state(
+        db_path,
+        file_path=str(source_file),
+        conversation_id=conversation_id,
+        file_hash=wrong_hash,
+    )
+    _insert_conversation(
+        db_path,
+        conversation_id=conversation_id,
+        file_path=str(source_file),
+        message_count=real_message_count,
+    )
+
+    age_threshold_days = 30
+    old_mtime = (datetime.now() - timedelta(days=age_threshold_days + 10)).timestamp()
+    os.utime(source_file, (old_mtime, old_mtime))
+    original_bytes = source_file.read_bytes()
+
+    if registry.get_connector_by_name("claude") is None:
+        registry.register_connector(ClaudeConnector())
+
+    policy = LifecycleConfig(
+        age_threshold_days=age_threshold_days,
+        enabled_agents=frozenset({"claude"}),
+        dry_run=dry_run_value,
+    )
+    tombstone_dir = tmp_path / "tombstones"
+
+    decision = evaluate_and_act_on_source(
+        db_path=db_path,
+        connector_name="claude",
+        file_path=source_file,
+        policy=policy,
+        action="archive",
+        dry_run=dry_run_value,
+        tombstone_dir=tombstone_dir,
+    )
+
+    assert decision.agent_enabled is True
+    assert decision.age_gated is True
+    assert decision.ingested is not None
+    assert decision.ingested.ok is False
+    assert decision.roundtrip is None
+    assert decision.eligible is False
+    assert decision.action_taken is None
+    assert decision.archived_path is None
+    assert decision.tombstone_path is None
+    assert decision.skip_reason is not None
+    assert "verify_ingested" in decision.skip_reason
+
+    assert source_file.exists()
+    assert source_file.read_bytes() == original_bytes
+    assert not tombstone_dir.exists()
+
+
+@pytest.mark.unit
+def test_run_lifecycle_action_returns_one_decision_per_indexed_file_with_correct_eligibility(
+    tmp_path: Path,
+) -> None:
+    connector = ClaudeConnector()
+    db_path = _new_db(tmp_path)
+    age_threshold_days = 30
+    old_mtime = (datetime.now() - timedelta(days=age_threshold_days + 10)).timestamp()
+
+    # File A: connector enabled, old enough, fully valid -> eligible.
+    file_a = _write_claude_jsonl(tmp_path / "conv-gate-multi-eligible.jsonl", num_exchanges=1)
+    hash_a = _sha256(file_a)
+    count_a = connector.parse(file_a, embedding_id=0).message_count
+    conversation_id_a = file_a.stem
+    _insert_source_file_state(
+        db_path,
+        file_path=str(file_a),
+        conversation_id=conversation_id_a,
+        file_hash=hash_a,
+        connector_name="claude",
+    )
+    _insert_conversation(
+        db_path,
+        conversation_id=conversation_id_a,
+        file_path=str(file_a),
+        message_count=count_a,
+    )
+    os.utime(file_a, (old_mtime, old_mtime))
+
+    # File B: indexed under a connector_name that is not in
+    # `policy.enabled_agents` -- refused at the very first gate regardless
+    # of age or verification state.
+    file_b = _write_claude_jsonl(tmp_path / "conv-gate-multi-disabled.jsonl", num_exchanges=1)
+    hash_b = _sha256(file_b)
+    count_b = connector.parse(file_b, embedding_id=0).message_count
+    conversation_id_b = file_b.stem
+    _insert_source_file_state(
+        db_path,
+        file_path=str(file_b),
+        conversation_id=conversation_id_b,
+        file_hash=hash_b,
+        connector_name="codex",
+    )
+    _insert_conversation(
+        db_path,
+        conversation_id=conversation_id_b,
+        file_path=str(file_b),
+        message_count=count_b,
+    )
+    os.utime(file_b, (old_mtime, old_mtime))
+
+    if registry.get_connector_by_name("claude") is None:
+        registry.register_connector(ClaudeConnector())
+
+    policy = LifecycleConfig(
+        age_threshold_days=age_threshold_days,
+        enabled_agents=frozenset({"claude"}),
+        dry_run=True,
+    )
+
+    decisions = run_lifecycle_action(
+        db_path=db_path,
+        policy=policy,
+        action="archive",
+        dry_run=True,
+        tombstone_dir=tmp_path / "tombstones",
+    )
+
+    assert len(decisions) == 2
+    eligible = [d for d in decisions if d.eligible]
+    assert len(eligible) == 1
+    assert eligible[0].connector_name == "claude"
+    assert eligible[0].file_path == str(file_a)
+
+    disabled = [d for d in decisions if d.connector_name == "codex"]
+    assert len(disabled) == 1
+    assert disabled[0].eligible is False
+    assert disabled[0].agent_enabled is False
