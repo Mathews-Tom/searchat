@@ -36,6 +36,7 @@ from searchat.contracts.similarity import (
 from searchat.api.dataset_access import get_dataset_semantic_retrieval, get_dataset_store
 from searchat.api.warmup import invalidate_search_index
 from searchat.api.utils import detect_tool_from_path, detect_source_from_path, parse_date_filter
+from searchat.core.connectors import detect_connector
 from searchat.contracts.errors import (
     bulk_export_no_ids_message,
     bulk_export_too_many_message,
@@ -542,8 +543,25 @@ async def get_conversation(
                 messages=messages,
             )
 
+        tool_name = detect_tool_from_path(file_path)
+
         messages = []
-        if file_path.endswith('.jsonl'):
+        if tool_name in ("omp", "codex"):
+            connector = detect_connector(Path(file_path))
+            try:
+                raw_messages = await asyncio.to_thread(connector.load_messages, Path(file_path))
+            except (json.JSONDecodeError, OSError) as e:
+                logger.error(f"Failed to load {tool_name} conversation {file_path}: {e}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=conversation_invalid_json_message()
+                )
+            messages = [
+                ConversationMessage(role=m["role"], content=m["content"], timestamp="")
+                for m in raw_messages
+                if m.get("content")
+            ]
+        elif file_path.endswith('.jsonl'):
             # Claude Code JSONL
             try:
                 content = await read_file_async(file_path)
@@ -608,8 +626,6 @@ async def get_conversation(
                 messages = _extract_vibe_messages(data)
 
         logger.info(f"Successfully loaded conversation {conversation_id} with {len(messages)} messages")
-
-        tool_name = detect_tool_from_path(file_path)
 
         project_path = None
         if tool_name == "opencode":
