@@ -1,4 +1,4 @@
-"""CLI command: searchat disk -- read-only per-agent, self, and M7 cruft-advisor disk-usage report."""
+"""CLI command: searchat disk -- read-only per-agent, self, M7 cruft-advisor, and M11 dedup-suggestion disk-usage report."""
 
 from __future__ import annotations
 
@@ -116,6 +116,30 @@ def run_disk(argv: list[str]) -> int:
         console.print(cruft_table)
         console.print(
             "[dim]Report-only -- searchat never deletes or modifies these.[/dim]"
+        )
+
+    if report.duplicate_suggestions:
+        dedup_table = Table(
+            show_header=True,
+            header_style="bold",
+            title="\nDuplicate Suggestions (cross-connector)",
+        )
+        dedup_table.add_column("Connector A")
+        dedup_table.add_column("Conversation A")
+        dedup_table.add_column("Connector B")
+        dedup_table.add_column("Conversation B")
+        dedup_table.add_column("Similarity", justify="right")
+        for suggestion in report.duplicate_suggestions:
+            dedup_table.add_row(
+                suggestion.connector_a,
+                suggestion.title_a,
+                suggestion.connector_b,
+                suggestion.title_b,
+                f"{suggestion.similarity:.2f}",
+            )
+        console.print(dedup_table)
+        console.print(
+            "[dim]Report-only -- review and merge/ignore manually; searchat never merges or deletes these.[/dim]"
         )
 
     return 0

@@ -24,6 +24,7 @@ import duckdb
 
 from searchat.config import Config
 from searchat.core.connectors.registry import detect_connector, get_connectors
+from searchat.services.dedup_detection import DuplicateSuggestion, find_near_duplicates
 
 # Age histogram bucket boundaries, in days, applied to each connector's
 # discovered conversation files (mtime-based). The final bucket is open-ended.
@@ -369,6 +370,7 @@ class DiskAccountingReport:
     searchat_self: SearchatSelfUsage
     generated_at: str
     cruft_findings: tuple[CruftFinding, ...] = ()
+    duplicate_suggestions: tuple[DuplicateSuggestion, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -376,6 +378,9 @@ class DiskAccountingReport:
             "searchat_self": self.searchat_self.to_dict(),
             "generated_at": self.generated_at,
             "cruft_findings": [finding.to_dict() for finding in self.cruft_findings],
+            "duplicate_suggestions": [
+                suggestion.to_dict() for suggestion in self.duplicate_suggestions
+            ],
         }
 
 
@@ -386,7 +391,10 @@ def build_disk_accounting_report(
 
     A connector whose accounting raises is skipped so one bad harness never
     fails the whole report -- the same resilience contract `storage_health`
-    already applies to `estimate_harness_source_sizes` (M1).
+    already applies to `estimate_harness_source_sizes` (M1). The M7 cruft
+    scan and M11 dedup scan follow the same rule: either one failing (e.g.
+    a config stand-in missing `dedup.similarity_threshold` in a test) never
+    fails the whole report.
 
     `connection`: pass the live server's own `UnifiedStorage.connection`
     when calling this from within the running `searchat-web` process (see
@@ -408,11 +416,21 @@ def build_disk_accounting_report(
     except Exception:
         cruft_findings = ()
 
+    try:
+        duplicate_suggestions = find_near_duplicates(
+            db_path,
+            connection=connection,
+            similarity_threshold=config.dedup.similarity_threshold,
+        )
+    except Exception:
+        duplicate_suggestions = ()
+
     return DiskAccountingReport(
         agents=tuple(agents),
         searchat_self=compute_searchat_self_usage(search_dir),
         generated_at=datetime.now().isoformat(),
         cruft_findings=cruft_findings,
+        duplicate_suggestions=duplicate_suggestions,
     )
 
 

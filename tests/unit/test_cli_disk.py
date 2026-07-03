@@ -14,7 +14,8 @@ import pytest
 def _cfg(search_dir: Path) -> SimpleNamespace:
     """Minimal Config stand-in exposing only what run_disk touches."""
     return SimpleNamespace(
-        storage=SimpleNamespace(resolve_duckdb_path=lambda _search_dir: search_dir / "data" / "searchat.duckdb")
+        storage=SimpleNamespace(resolve_duckdb_path=lambda _search_dir: search_dir / "data" / "searchat.duckdb"),
+        dedup=SimpleNamespace(similarity_threshold=0.92),
     )
 
 
@@ -174,6 +175,77 @@ def test_disk_table_output_suppresses_cruft_table_when_no_findings(
     )
 
 
+def test_disk_table_output_shows_duplicate_suggestions_and_report_only_note(
+    temp_search_dir: Path, capsys, monkeypatch
+) -> None:
+    from searchat.cli.disk_cmd import run_disk
+    from searchat.services.dedup_detection import DuplicateSuggestion
+
+    # Wide enough console so the 5-column dedup table doesn't ellipsize cell text.
+    monkeypatch.setenv("COLUMNS", "200")
+
+    fixed_suggestions = (
+        DuplicateSuggestion(
+            conversation_id_a="claude-conv-1",
+            connector_a="claude",
+            title_a="Debugging the auth flow",
+            conversation_id_b="codex-conv-1",
+            connector_b="codex",
+            title_b="Debugging the auth flow",
+            similarity=0.98,
+        ),
+    )
+
+    with (
+        patch("searchat.config.Config.load", return_value=_cfg(temp_search_dir)),
+        patch(
+            "searchat.config.PathResolver.get_shared_search_dir",
+            return_value=temp_search_dir,
+        ),
+        patch("searchat.services.disk_accounting.get_connectors", return_value=()),
+        patch(
+            "searchat.services.disk_accounting.find_near_duplicates",
+            return_value=fixed_suggestions,
+        ),
+    ):
+        result = run_disk([])
+
+    captured = capsys.readouterr()
+    assert result == 0
+    assert "Duplicate Suggestions (cross-connector)" in captured.out
+    assert "Debugging the auth flow" in captured.out
+    assert "0.98" in captured.out
+    assert (
+        "Report-only -- review and merge/ignore manually; searchat never merges or deletes these."
+        in captured.out
+    )
+
+
+def test_disk_table_output_suppresses_duplicate_suggestions_table_when_none_found(
+    temp_search_dir: Path, capsys
+) -> None:
+    from searchat.cli.disk_cmd import run_disk
+
+    with (
+        patch("searchat.config.Config.load", return_value=_cfg(temp_search_dir)),
+        patch(
+            "searchat.config.PathResolver.get_shared_search_dir",
+            return_value=temp_search_dir,
+        ),
+        patch("searchat.services.disk_accounting.get_connectors", return_value=()),
+        patch("searchat.services.disk_accounting.find_near_duplicates", return_value=()),
+    ):
+        result = run_disk([])
+
+    captured = capsys.readouterr()
+    assert result == 0
+    assert "Duplicate Suggestions" not in captured.out
+    assert (
+        "Report-only -- review and merge/ignore manually; searchat never merges or deletes these."
+        not in captured.out
+    )
+
+
 def test_disk_json_output_matches_documented_schema(
     temp_search_dir: Path, tmp_path: Path, capsys
 ) -> None:
@@ -218,11 +290,13 @@ def test_disk_json_output_matches_documented_schema(
         "searchat_self",
         "generated_at",
         "cruft_findings",
+        "duplicate_suggestions",
     }
     assert isinstance(payload["agents"], list)
     assert isinstance(payload["searchat_self"], dict)
     assert isinstance(payload["generated_at"], str)
     assert isinstance(payload["cruft_findings"], list)
+    assert isinstance(payload["duplicate_suggestions"], list)
     for finding in payload["cruft_findings"]:
         assert set(finding.keys()) == {
             "label",
@@ -232,6 +306,16 @@ def test_disk_json_output_matches_documented_schema(
             "cleanup_hint",
             "total_size_bytes",
             "file_count",
+        }
+    for suggestion in payload["duplicate_suggestions"]:
+        assert set(suggestion.keys()) == {
+            "conversation_id_a",
+            "connector_a",
+            "title_a",
+            "conversation_id_b",
+            "connector_b",
+            "title_b",
+            "similarity",
         }
     datetime.fromisoformat(payload["generated_at"])  # valid ISO-8601 timestamp
 

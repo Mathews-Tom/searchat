@@ -3,8 +3,9 @@
 M6 -- Disk manager dashboard. Serves `services/disk_accounting.py`'s report
 over HTTP; there is no mutation endpoint anywhere in this router, matching
 the milestone's "report first" scope. M7's cruft findings (known
-non-conversation heavyweight artifacts) ride the same response -- still
-report-only.
+non-conversation heavyweight artifacts) and M11's duplicate suggestions
+(near-duplicate conversations across connectors) ride the same response --
+still report-only.
 """
 
 from __future__ import annotations
@@ -71,6 +72,19 @@ class CruftFindingResponse(BaseModel):
     file_count: int
 
 
+class DuplicateSuggestionResponse(BaseModel):
+    """One M11 cross-connector near-duplicate conversation pair -- reported,
+    never merged or deleted."""
+
+    conversation_id_a: str
+    connector_a: str
+    title_a: str
+    conversation_id_b: str
+    connector_b: str
+    title_b: str
+    similarity: float
+
+
 class DiskAccountingResponse(BaseModel):
     """Full read-only disk-accounting report."""
 
@@ -78,6 +92,7 @@ class DiskAccountingResponse(BaseModel):
     searchat_self: SearchatSelfUsageResponse
     generated_at: str
     cruft_findings: list[CruftFindingResponse]
+    duplicate_suggestions: list[DuplicateSuggestionResponse]
 
 
 @router.get("/disk", response_model=DiskAccountingResponse)

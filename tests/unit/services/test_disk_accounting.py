@@ -20,6 +20,7 @@ from unittest.mock import Mock
 import duckdb
 import pytest
 
+from searchat.services.dedup_detection import DuplicateSuggestion
 from searchat.services.disk_accounting import (
     KNOWN_CRUFT_PATTERNS,
     AgentDiskUsage,
@@ -842,3 +843,134 @@ def test_detect_cruft_and_build_disk_accounting_report_never_call_os_remove_or_s
     assert report_by_glob[".omp/stats.db"].total_size_bytes == stats_db.stat().st_size
     remove_guard.assert_not_called()
     rmtree_guard.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# M11 acceptance: cross-connector duplicate suggestions wired into the
+# unified report (build_disk_accounting_report, DiskAccountingReport.
+# duplicate_suggestions), report-only, resilient to a failing dedup scan.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_build_disk_accounting_report_wires_duplicate_suggestions_into_report(
+    temp_search_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "searchat.services.disk_accounting.get_connectors", lambda: ()
+    )
+
+    fixed_suggestions = (
+        DuplicateSuggestion(
+            conversation_id_a="claude-conv-1",
+            connector_a="claude",
+            title_a="Debugging the auth flow",
+            conversation_id_b="codex-conv-1",
+            connector_b="codex",
+            title_b="Debugging the auth flow",
+            similarity=0.97,
+        ),
+    )
+    monkeypatch.setattr(
+        "searchat.services.disk_accounting.find_near_duplicates",
+        lambda *args, **kwargs: fixed_suggestions,
+    )
+
+    config = Mock()
+    config.storage.resolve_duckdb_path.return_value = (
+        temp_search_dir / "data" / "missing.duckdb"
+    )
+    config.dedup.similarity_threshold = 0.92
+
+    report = build_disk_accounting_report(temp_search_dir, config)
+
+    assert report.duplicate_suggestions == fixed_suggestions
+    assert report.to_dict()["duplicate_suggestions"] == [
+        suggestion.to_dict() for suggestion in fixed_suggestions
+    ]
+
+
+@pytest.mark.unit
+def test_build_disk_accounting_report_passes_dedup_config_threshold_and_connection(
+    temp_search_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`build_disk_accounting_report` threads `config.dedup.similarity_threshold`
+    and the live `connection` straight through to `find_near_duplicates`."""
+    monkeypatch.setattr(
+        "searchat.services.disk_accounting.get_connectors", lambda: ()
+    )
+
+    calls: list[dict] = []
+
+    def fake_find_near_duplicates(db_path, *, connection=None, similarity_threshold=None):
+        calls.append(
+            {
+                "db_path": db_path,
+                "connection": connection,
+                "similarity_threshold": similarity_threshold,
+            }
+        )
+        return ()
+
+    monkeypatch.setattr(
+        "searchat.services.disk_accounting.find_near_duplicates", fake_find_near_duplicates
+    )
+
+    db_path = temp_search_dir / "data" / "missing.duckdb"
+    config = Mock()
+    config.storage.resolve_duckdb_path.return_value = db_path
+    config.dedup.similarity_threshold = 0.85
+    fake_connection = Mock(name="fake_duckdb_connection")
+    fake_connection.cursor.return_value.execute.return_value.fetchall.return_value = []
+
+    build_disk_accounting_report(temp_search_dir, config, connection=fake_connection)
+
+    assert len(calls) == 1
+    assert calls[0]["db_path"] == db_path
+    assert calls[0]["connection"] is fake_connection
+    assert calls[0]["similarity_threshold"] == 0.85
+
+
+@pytest.mark.unit
+def test_build_disk_accounting_report_resilient_when_find_near_duplicates_raises(
+    temp_search_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One bad subsystem (the dedup scan) never fails the whole report -- mirrors
+    `test_build_disk_accounting_report_resilient_when_detect_cruft_raises`."""
+    monkeypatch.setattr(
+        "searchat.services.disk_accounting.get_connectors", lambda: ()
+    )
+
+    def _raise(*args, **kwargs):
+        raise RuntimeError("dedup scan blew up")
+
+    monkeypatch.setattr("searchat.services.disk_accounting.find_near_duplicates", _raise)
+
+    config = Mock()
+    config.storage.resolve_duckdb_path.return_value = (
+        temp_search_dir / "data" / "missing.duckdb"
+    )
+    config.dedup.similarity_threshold = 0.92
+
+    report = build_disk_accounting_report(temp_search_dir, config)
+
+    assert report.duplicate_suggestions == ()
+
+
+@pytest.mark.unit
+def test_disk_accounting_report_duplicate_suggestions_defaults_to_empty_tuple() -> None:
+    """Omitting `duplicate_suggestions` entirely keeps pre-M11 direct
+    constructions working."""
+    report = DiskAccountingReport(
+        agents=(),
+        searchat_self=SearchatSelfUsage(
+            search_dir="/home/user/.searchat",
+            subdirectories=(),
+            total_size_bytes=0,
+            total_file_count=0,
+        ),
+        generated_at="2026-07-03T12:00:00",
+    )
+
+    assert report.duplicate_suggestions == ()
+    assert report.to_dict()["duplicate_suggestions"] == []
