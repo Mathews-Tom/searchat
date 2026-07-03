@@ -370,6 +370,7 @@ class UnifiedSearchEngine:
                 exchange_text=pr.exchange_core,
                 bm25_score=pr.keyword_score,
                 semantic_score=pr.semantic_score,
+                is_distillate=True,
             ))
 
         return results, "distill"
@@ -407,6 +408,7 @@ class UnifiedSearchEngine:
                 message_end_index=pr.ply_end,
                 exchange_id=pr.object_id,
                 exchange_text=pr.exchange_core,
+                is_distillate=True,
             )
             palace_by_conv[pr.conversation_id] = sr
 

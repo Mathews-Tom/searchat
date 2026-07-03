@@ -65,6 +65,11 @@ class SearchResult:
     exchange_text: str | None = None
     bm25_score: float | None = None
     semantic_score: float | None = None
+    # M9 tiered memory -- True when this hit came from a palace distillate
+    # rather than a live hot-index exchange (DISTILL/CROSS_LAYER search
+    # modes only). Callers can offer an "expand to verbatim" affordance by
+    # calling services.distillation_bridge.rehydrate_verbatim(conversation_id).
+    is_distillate: bool = False
 
 
 @dataclass
