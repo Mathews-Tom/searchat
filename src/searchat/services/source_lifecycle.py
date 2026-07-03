@@ -36,6 +36,7 @@ in place) or ``prune_source`` (delete) run.
 from __future__ import annotations
 
 import hashlib
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -43,6 +44,7 @@ import duckdb
 
 from searchat.core.connectors.base import AgentProviderBase
 from searchat.core.logging_config import get_logger
+from searchat.models import ConversationRecord
 
 logger = get_logger(__name__)
 
@@ -220,3 +222,94 @@ def verify_ingested(
         )
 
     return VerificationResult(True)
+
+
+@dataclass(frozen=True)
+class RoundtripResult:
+    """Verdict from `verify_roundtrip`: the reversibility proof gating
+    `archive_source`/`prune_source`. `ok=False` always carries a `reason`
+    and, when the two records were compared field-by-field, the exact
+    `mismatches` -- never a silent refusal."""
+
+    ok: bool
+    reason: str | None = None
+    mismatches: tuple[str, ...] = ()
+
+    def to_dict(self) -> dict[str, object]:
+        return {"ok": self.ok, "reason": self.reason, "mismatches": list(self.mismatches)}
+
+
+# Fields compared between the stored record and the export-then-reparse
+# result. Deliberately excludes `file_path` (the reparse always happens at
+# a throwaway mirrored path, never the original), `file_hash` (the
+# re-serialized bytes are a different, connector-native encoding of the
+# same content, not a byte-identical copy), `embedding_id` (passed through
+# unchanged, not derived), and `indexed_at` (a wall-clock stamp, not
+# content).
+_COMPARABLE_FIELDS: tuple[str, ...] = (
+    "conversation_id",
+    "project_id",
+    "title",
+    "created_at",
+    "updated_at",
+    "message_count",
+    "messages",
+    "full_text",
+    "files_mentioned",
+    "git_branch",
+)
+
+
+def _comparable(record: ConversationRecord) -> dict[str, object]:
+    return {name: getattr(record, name) for name in _COMPARABLE_FIELDS}
+
+
+def verify_roundtrip(connector: AgentProviderBase, record: ConversationRecord) -> RoundtripResult:
+    """Reversibility proof: `connector.export_original(record)` must produce
+    bytes that, once written back to a path preserving `record.file_path`'s
+    directory structure and re-parsed, reproduce a `ConversationRecord`
+    equal to `record` in every field forensic recovery could rely on.
+
+    The export is written under a throwaway `tempfile.TemporaryDirectory`,
+    mirroring `record.file_path`'s structure relative to its filesystem
+    root -- never the original path itself, and never any of its sibling
+    files -- so this function cannot write to, or otherwise disturb, the
+    real source file it is verifying. Some connectors derive part of a
+    conversation's identity from the parent (or grandparent) directory
+    name rather than file content (e.g. Claude's `project_id`, Gemini's
+    project hash); mirroring the full relative path, not just the
+    filename, preserves that identity without this function needing any
+    connector-specific knowledge.
+    """
+    try:
+        exported = connector.export_original(record)
+    except Exception as exc:
+        return RoundtripResult(False, reason=f"export_original raised: {exc}")
+
+    original_path = Path(record.file_path)
+    try:
+        with tempfile.TemporaryDirectory(prefix="searchat-roundtrip-") as tmp_dir:
+            anchor = original_path.anchor or "/"
+            relative = (
+                original_path.relative_to(anchor) if original_path.is_absolute() else original_path
+            )
+            target = Path(tmp_dir) / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(exported)
+            try:
+                reparsed = connector.parse(target, record.embedding_id)
+            except Exception as exc:
+                return RoundtripResult(False, reason=f"re-parse of exported bytes failed: {exc}")
+    except OSError as exc:
+        return RoundtripResult(False, reason=f"failed to materialize exported bytes: {exc}")
+
+    stored_view = _comparable(record)
+    reparsed_view = _comparable(reparsed)
+    mismatches = tuple(
+        sorted(name for name in _COMPARABLE_FIELDS if stored_view[name] != reparsed_view[name])
+    )
+    if mismatches:
+        return RoundtripResult(
+            False, reason="re-parsed record differs from the stored record", mismatches=mismatches
+        )
+    return RoundtripResult(True)
