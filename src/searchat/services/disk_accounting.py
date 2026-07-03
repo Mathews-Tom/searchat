@@ -21,12 +21,28 @@ from typing import Any
 import duckdb
 
 from searchat.config import Config
-from searchat.core.connectors.registry import detect_connector
+from searchat.core.connectors.registry import detect_connector, get_connectors
 
 # Age histogram bucket boundaries, in days, applied to each connector's
 # discovered conversation files (mtime-based). The final bucket is open-ended.
 _AGE_BUCKET_DAYS: tuple[int, ...] = (7, 30, 90, 365)
 _AGE_BUCKET_LABELS: tuple[str, ...] = ("0-7d", "7-30d", "30-90d", "90-365d", "365d+")
+
+# Searchat's own `~/.searchat` subdirectories included in self-accounting,
+# labeled per the M6 acceptance criterion ("index/backup/model/expertise
+# subdirectories are included"). `index` maps to `data/`, which holds the
+# DuckDB store (source-of-truth + derived tables) and its supporting Parquet
+# exports -- the single largest contributor to Searchat's own footprint.
+_SELF_ACCOUNTING_SUBDIRS: tuple[tuple[str, str], ...] = (
+    ("index", "data"),
+    ("backups", "backups"),
+    ("models", "models"),
+    ("expertise", "expertise"),
+    ("knowledge_graph", "knowledge_graph"),
+    ("analytics", "analytics"),
+    ("config", "config"),
+    ("logs", "logs"),
+)
 
 
 def _age_bucket(age_days: float) -> str:
@@ -242,4 +258,117 @@ def compute_agent_disk_usage(
         oldest_conversation_age_days=max(ages_days) if ages_days else None,
         newest_conversation_age_days=min(ages_days) if ages_days else None,
         age_histogram=histogram,
+    )
+
+
+@dataclass(frozen=True)
+class SubdirectoryUsage:
+    """Read-only disk-usage summary for one Searchat self-accounting subdirectory."""
+
+    label: str
+    path: str
+    exists: bool
+    total_size_bytes: int
+    file_count: int
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "label": self.label,
+            "path": self.path,
+            "exists": self.exists,
+            "total_size_bytes": self.total_size_bytes,
+            "file_count": self.file_count,
+        }
+
+
+@dataclass(frozen=True)
+class SearchatSelfUsage:
+    """Read-only disk-usage summary for Searchat's own `~/.searchat` footprint."""
+
+    search_dir: str
+    subdirectories: tuple[SubdirectoryUsage, ...]
+    total_size_bytes: int
+    total_file_count: int
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "search_dir": self.search_dir,
+            "subdirectories": [sub.to_dict() for sub in self.subdirectories],
+            "total_size_bytes": self.total_size_bytes,
+            "total_file_count": self.total_file_count,
+        }
+
+
+def compute_searchat_self_usage(search_dir: Path) -> SearchatSelfUsage:
+    """Sum Searchat's own footprint across its known subdirectories.
+
+    Always reports the `index`/`backups`/`models`/`expertise` subdirectories
+    by name (size 0 when absent, e.g. a fresh install with no models
+    downloaded yet) plus every other known subdirectory, so Searchat's own
+    storage is never the invisible entry the enhancement analysis called out.
+    """
+    subdirs: list[SubdirectoryUsage] = []
+    total_size = 0
+    total_count = 0
+    for label, dirname in _SELF_ACCOUNTING_SUBDIRS:
+        sub_path = search_dir / dirname
+        usage = _walk_directory(sub_path)
+        subdirs.append(
+            SubdirectoryUsage(
+                label=label,
+                path=str(sub_path),
+                exists=sub_path.exists(),
+                total_size_bytes=usage.total_size_bytes,
+                file_count=usage.file_count,
+            )
+        )
+        total_size += usage.total_size_bytes
+        total_count += usage.file_count
+    return SearchatSelfUsage(
+        search_dir=str(search_dir),
+        subdirectories=tuple(subdirs),
+        total_size_bytes=total_size,
+        total_file_count=total_count,
+    )
+
+
+@dataclass(frozen=True)
+class DiskAccountingReport:
+    """Unified, read-only disk-accounting report consumed by `searchat disk`
+    and the `/api/disk` endpoint."""
+
+    agents: tuple[AgentDiskUsage, ...]
+    searchat_self: SearchatSelfUsage
+    generated_at: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "agents": [agent.to_dict() for agent in self.agents],
+            "searchat_self": self.searchat_self.to_dict(),
+            "generated_at": self.generated_at,
+        }
+
+
+def build_disk_accounting_report(search_dir: Path, config: Config) -> DiskAccountingReport:
+    """Assemble the full read-only disk-accounting report for `search_dir`.
+
+    A connector whose accounting raises is skipped so one bad harness never
+    fails the whole report -- the same resilience contract `storage_health`
+    already applies to `estimate_harness_source_sizes` (M1).
+    """
+    db_path = config.storage.resolve_duckdb_path(search_dir)
+    indexed_by_connector = _read_indexed_paths_by_connector(db_path)
+
+    agents: list[AgentDiskUsage] = []
+    for connector in get_connectors():
+        try:
+            indexed_paths = indexed_by_connector.get(connector.name, set())
+            agents.append(compute_agent_disk_usage(connector, config, indexed_paths))
+        except Exception:
+            continue
+
+    return DiskAccountingReport(
+        agents=tuple(agents),
+        searchat_self=compute_searchat_self_usage(search_dir),
+        generated_at=datetime.now().isoformat(),
     )
