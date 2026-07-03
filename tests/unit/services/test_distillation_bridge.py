@@ -3,21 +3,26 @@
 Coverage map:
 - `TestSelectDistillationCandidates` -- age-based candidate selection,
   palace-independent.
+- `TestGenerateDistillate` -- distillate generation via the palace
+  `Distiller`, adapted onto `UnifiedStorage`.
 
-Later commits/PRs in this stack add distillate generation, hot-index
-eviction, the promotion path, the end-to-end orchestrator, and the
-fixture-benchmark acceptance tests.
+Later commits/PRs in this stack add hot-index eviction, the promotion
+path, the end-to-end orchestrator, graceful-degradation-specific tests,
+and the fixture-benchmark acceptance tests.
 """
 from __future__ import annotations
 
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import pytest
+
+from searchat.config import Config
 from searchat.core.unified_indexer import _segment_exchanges
+from searchat.palace.llm import DistillationLLM, DistillationOutput
+from searchat.palace.storage import PalaceStorage
 from searchat.services import distillation_bridge
 from searchat.storage.unified_storage import UnifiedStorage
-
-import pytest
 
 # ---------------------------------------------------------------------------
 # Shared fixtures / helpers
@@ -29,6 +34,11 @@ def storage(tmp_path: Path):
     s = UnifiedStorage(tmp_path / "unified.duckdb")
     yield s
     s.close()
+
+
+@pytest.fixture()
+def config() -> Config:
+    return Config.load()
 
 
 def _insert_conversation(
@@ -93,6 +103,35 @@ def _seed_hot_exchanges(storage: UnifiedStorage, conversation_id: str, project_i
     return exchanges
 
 
+class _FakeDistillationLLM(DistillationLLM):
+    """Deterministic stand-in: never shells out, one output per input."""
+
+    def distill(self, inputs):
+        return [
+            DistillationOutput(
+                exchange_core=f"core:{i.conversation_id}:{i.ply_start}-{i.ply_end}",
+                specific_context="ctx",
+                room_assignments=[],
+            )
+            for i in inputs
+        ]
+
+
+class _NoValidExchangesLLM(DistillationLLM):
+    """Never actually invoked when there are no valid exchanges to distill,
+    but must exist to satisfy the `Distiller` constructor's type."""
+
+    def distill(self, inputs):
+        raise AssertionError("distill() should not be called with zero valid exchanges")
+
+
+class _FixedEmbedder:
+    def encode(self, texts, batch_size=32):
+        import numpy as np
+
+        return np.array([[0.2] * 384 for _ in texts], dtype=np.float32)
+
+
 # ---------------------------------------------------------------------------
 # 1. Candidate selection
 # ---------------------------------------------------------------------------
@@ -146,3 +185,84 @@ class TestSelectDistillationCandidates:
             storage, age_threshold_days=30, now=now,
         )
         assert candidates == ["a-conv", "b-conv"]
+
+
+# ---------------------------------------------------------------------------
+# 2. Distillate generation
+# ---------------------------------------------------------------------------
+
+
+class TestGenerateDistillate:
+    def test_generates_and_persists_a_distillate(self, storage: UnifiedStorage, config: Config, tmp_path: Path):
+        messages = _make_messages(2)
+        _insert_conversation(storage, conversation_id="conv-1", project_id="proj-x", updated_at=datetime(2025, 1, 1), messages=messages)
+
+        palace_storage = PalaceStorage(tmp_path / "data")
+        try:
+            result = distillation_bridge.generate_distillate(
+                storage,
+                conversation_id="conv-1",
+                config=config,
+                llm=_FakeDistillationLLM(),
+                search_dir=tmp_path,
+                embedder=_FixedEmbedder(),
+                palace_storage=palace_storage,
+            )
+
+            assert result.conversation_id == "conv-1"
+            assert result.objects_created == 2
+            assert result.has_distillate is True
+
+            objects = palace_storage.get_all_objects(project_id="proj-x")
+            assert {o.conversation_id for o in objects} == {"conv-1"}
+            assert all(o.distilled_text.startswith("core:conv-1:") for o in objects)
+        finally:
+            palace_storage.close()
+
+    def test_no_valid_exchanges_yields_no_distillate(self, storage: UnifiedStorage, config: Config, tmp_path: Path):
+        """Messages too short to clear Distiller's own min_exchange_chars
+        filter -- `has_distillate` must be False so callers know not to
+        evict (nothing to fall back on)."""
+        tiny_messages = [
+            {"sequence": 0, "role": "user", "content": "hi", "timestamp": datetime(2025, 1, 1), "has_code": False, "code_blocks": None},
+            {"sequence": 1, "role": "assistant", "content": "hey", "timestamp": datetime(2025, 1, 1), "has_code": False, "code_blocks": None},
+        ]
+        _insert_conversation(storage, conversation_id="tiny", updated_at=datetime(2025, 1, 1), messages=tiny_messages)
+
+        palace_storage = PalaceStorage(tmp_path / "data")
+        try:
+            result = distillation_bridge.generate_distillate(
+                storage,
+                conversation_id="tiny",
+                config=config,
+                llm=_NoValidExchangesLLM(),
+                search_dir=tmp_path,
+                embedder=_FixedEmbedder(),
+                palace_storage=palace_storage,
+            )
+            assert result.objects_created == 0
+            assert result.has_distillate is False
+        finally:
+            palace_storage.close()
+
+    def test_idempotent_second_call_reports_has_distillate_without_new_objects(
+        self, storage: UnifiedStorage, config: Config, tmp_path: Path
+    ):
+        messages = _make_messages(1)
+        _insert_conversation(storage, conversation_id="conv-1", updated_at=datetime(2025, 1, 1), messages=messages)
+
+        palace_storage = PalaceStorage(tmp_path / "data")
+        try:
+            first = distillation_bridge.generate_distillate(
+                storage, conversation_id="conv-1", config=config, llm=_FakeDistillationLLM(),
+                search_dir=tmp_path, embedder=_FixedEmbedder(), palace_storage=palace_storage,
+            )
+            second = distillation_bridge.generate_distillate(
+                storage, conversation_id="conv-1", config=config, llm=_FakeDistillationLLM(),
+                search_dir=tmp_path, embedder=_FixedEmbedder(), palace_storage=palace_storage,
+            )
+            assert first.objects_created == 1
+            assert second.objects_created == 0
+            assert second.has_distillate is True
+        finally:
+            palace_storage.close()

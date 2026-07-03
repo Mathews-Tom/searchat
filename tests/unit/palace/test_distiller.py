@@ -4,6 +4,7 @@ from __future__ import annotations
 import pytest
 
 from searchat.palace.distiller import extract_file_paths, make_room_id, Distiller
+from searchat.palace.llm import DistillationLLM, DistillationOutput
 from searchat.config import Config
 
 
@@ -135,3 +136,109 @@ class TestSegmentExchanges:
         exchanges = distiller._segment_exchanges(messages)
         # Should be split into chunks of max_ply_length
         assert all(end - start + 1 <= config.distillation.max_ply_length for start, end in exchanges)
+
+
+# ---------------------------------------------------------------------------
+# M9 bridge integration: _UnifiedStorageDuckStore adapter (Gap 2)
+# ---------------------------------------------------------------------------
+
+
+class TestUnifiedStorageDuckStoreAdapter:
+    """`services.distillation_bridge._UnifiedStorageDuckStore` is the
+    missing read-side integration seam between `UnifiedStorage` (v2
+    unified store) and `Distiller._read_conversation`, which expects a
+    `get_conversation`/`get_conversation_messages` duck-typed store.
+    Verifies the adapter satisfies that contract end to end -- including
+    through `Distiller.distill_conversation` itself -- against a real
+    `UnifiedStorage`, and that the resulting distillate carries the
+    schema fields the bridge's eviction/search-surfacing rely on.
+    """
+
+    def _build_storage(self, tmp_path):
+        from searchat.storage.unified_storage import UnifiedStorage
+
+        return UnifiedStorage(tmp_path / "unified.duckdb")
+
+    def test_adapter_exposes_conversation_meta_and_messages(self, tmp_path):
+        from datetime import datetime
+
+        from searchat.services.distillation_bridge import _UnifiedStorageDuckStore
+
+        storage = self._build_storage(tmp_path)
+        try:
+            now = datetime(2025, 1, 1)
+            storage.upsert_conversation(
+                conversation_id="conv-1", project_id="proj-1", file_path="/f",
+                title="t", created_at=now, updated_at=now, message_count=2,
+                full_text="x", file_hash="h", indexed_at=now,
+            )
+            storage.insert_messages("conv-1", [
+                {"sequence": 0, "role": "user", "content": "hi", "timestamp": now, "has_code": False, "code_blocks": None},
+                {"sequence": 1, "role": "assistant", "content": "hello", "timestamp": now, "has_code": False, "code_blocks": None},
+            ])
+
+            adapter = _UnifiedStorageDuckStore(storage)
+            conv = adapter.get_conversation("conv-1")
+            assert conv is not None
+            assert conv["conversation_id"] == "conv-1"
+            assert conv["project_id"] == "proj-1"
+
+            messages = adapter.get_conversation_messages("conv-1")
+            assert [m["role"] for m in messages] == ["user", "assistant"]
+
+            assert adapter.get_conversation("missing") is None
+            assert adapter.get_conversation_messages("missing") == []
+        finally:
+            storage.close()
+
+    def test_distiller_reads_a_v2_conversation_through_the_adapter(self, tmp_path, config):
+        from datetime import datetime
+
+        from searchat.services.distillation_bridge import _UnifiedStorageDuckStore
+
+        storage = self._build_storage(tmp_path)
+        try:
+            now = datetime(2025, 1, 1)
+            storage.upsert_conversation(
+                conversation_id="conv-1", project_id="proj-1", file_path="/f",
+                title="t", created_at=now, updated_at=now, message_count=2,
+                full_text="x", file_hash="h", indexed_at=now,
+            )
+            storage.insert_messages("conv-1", [
+                {"sequence": 0, "role": "user", "content": "How do I configure the retry policy?", "timestamp": now, "has_code": False, "code_blocks": None},
+                {"sequence": 1, "role": "assistant", "content": "Set retry.max_attempts in settings.toml and restart the service.", "timestamp": now, "has_code": False, "code_blocks": None},
+            ])
+
+            class _FakeLLM(DistillationLLM):
+                def distill(self, inputs):
+                    return [
+                        DistillationOutput(
+                            exchange_core="Configured retry policy via settings.toml",
+                            specific_context="retry.max_attempts",
+                            room_assignments=[],
+                        )
+                        for _ in inputs
+                    ]
+
+            distiller = Distiller(
+                search_dir=tmp_path,
+                config=config,
+                llm=_FakeLLM(),
+                duckdb_store=_UnifiedStorageDuckStore(storage),
+            )
+            try:
+                objects = distiller.distill_conversation("conv-1")
+            finally:
+                distiller.close()
+
+            assert len(objects) == 1
+            obj = objects[0]
+            # Distillate schema the bridge's eviction/search-surfacing rely on.
+            assert obj.conversation_id == "conv-1"
+            assert obj.project_id == "proj-1"
+            assert obj.exchange_core == "Configured retry policy via settings.toml"
+            assert obj.specific_context == "retry.max_attempts"
+            assert obj.distilled_text.startswith("Configured retry policy")
+            assert isinstance(obj.embedding_id, int)
+        finally:
+            storage.close()
