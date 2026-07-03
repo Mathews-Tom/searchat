@@ -159,3 +159,12 @@ enabled_agents = []
 # key exists for completeness and any future non-CLI caller; it cannot
 # by itself enable a real mutation from the CLI.
 dry_run = true
+
+[dedup]
+# Cross-agent duplicate detection (M11) -- report-only. A pair of
+# conversations ingested by two DIFFERENT connectors is surfaced as a
+# merge/ignore suggestion in the M6 dashboard when their mean
+# exchange-embedding cosine similarity meets or exceeds this threshold.
+# No code path in this milestone merges or deletes anything -- see
+# services/dedup_detection.py.
+similarity_threshold = 0.92

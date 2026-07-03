@@ -398,6 +398,18 @@ ENV_LIFECYCLE_ENABLED_AGENTS = "SEARCHAT_LIFECYCLE_ENABLED_AGENTS"
 ENV_LIFECYCLE_DRY_RUN = "SEARCHAT_LIFECYCLE_DRY_RUN"
 
 # ============================================================================
+# Cross-Agent Duplicate Detection Defaults (M11 -- report-only)
+# ============================================================================
+
+# Conservative default: only conversation pairs whose mean exchange-embedding
+# cosine similarity is at or above 0.92 are surfaced as suggestions. Report-
+# only -- services/dedup_detection.py never merges or deletes anything this
+# threshold gates.
+DEFAULT_DEDUP_SIMILARITY_THRESHOLD = 0.92
+
+ENV_DEDUP_SIMILARITY_THRESHOLD = "SEARCHAT_DEDUP_SIMILARITY_THRESHOLD"
+
+# ============================================================================
 # Query Expansion / Synonyms
 # ============================================================================
 
