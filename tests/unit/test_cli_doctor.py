@@ -53,8 +53,8 @@ def test_doctor_table_output_shows_bloat_ratio_and_backups(temp_search_dir: Path
     data_dir.mkdir(parents=True, exist_ok=True)
     db_path = data_dir / "searchat.duckdb"
     con = duckdb.connect(str(db_path))
-    con.execute("CREATE TABLE conversations(id INTEGER)")
-    con.execute("INSERT INTO conversations SELECT * FROM range(5)")
+    con.execute("CREATE TABLE dummy_bloat(id INTEGER)")
+    con.execute("INSERT INTO dummy_bloat SELECT * FROM range(5)")
     con.execute("CHECKPOINT")
     con.close()
 
@@ -85,8 +85,8 @@ def test_doctor_json_output_matches_documented_schema(temp_search_dir: Path, cap
     data_dir.mkdir(parents=True, exist_ok=True)
     db_path = data_dir / "searchat.duckdb"
     con = duckdb.connect(str(db_path))
-    con.execute("CREATE TABLE conversations(id INTEGER)")
-    con.execute("INSERT INTO conversations SELECT * FROM range(5)")
+    con.execute("CREATE TABLE dummy_bloat(id INTEGER)")
+    con.execute("INSERT INTO dummy_bloat SELECT * FROM range(5)")
     con.execute("CHECKPOINT")
     con.close()
 

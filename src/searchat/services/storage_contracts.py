@@ -20,6 +20,13 @@ BACKUP_METADATA_FILE = "backup_metadata.json"
 BACKUP_MANIFEST_VERSION = 1
 BACKUP_METADATA_VERSION = 1
 
+# Schema version of the source-of-truth DuckDB tables (conversations,
+# messages, source_file_state, code_blocks) that a source-of-truth-only
+# backup's exported Parquet files conform to. Recorded on `BackupMetadata`
+# at backup time so restore can tell whether `rebuild_derived` (M2) knows
+# how to reconstruct derived data from a given backup's exported tables.
+BACKUP_SOURCE_SCHEMA_VERSION = 1
+
 
 class StorageCompatibilityError(ValueError):
     """Raised when persisted storage artifacts are incompatible."""
@@ -197,6 +204,15 @@ class BackupMetadata:
     total_size_bytes: int
     backup_type: str = "manual"
     metadata_version: int = BACKUP_METADATA_VERSION
+    # M4: True when this backup deliberately excludes the derivable
+    # DuckDB/FAISS index (rebuildable via `rebuild_derived`). False for
+    # every pre-M4 backup and for any backup explicitly requested in
+    # legacy full-copy mode.
+    excludes_derived: bool = False
+    # Schema version of the exported source-of-truth tables, valid only
+    # when `excludes_derived` is True. 0 means "not applicable" (a
+    # full-copy backup already contains its own derived index).
+    derived_schema_version: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -208,6 +224,8 @@ class BackupMetadata:
             "total_size_bytes": self.total_size_bytes,
             "total_size_mb": round(self.total_size_bytes / (1024 * 1024), 2),
             "backup_type": self.backup_type,
+            "excludes_derived": self.excludes_derived,
+            "derived_schema_version": self.derived_schema_version,
         }
 
     @classmethod
@@ -226,6 +244,8 @@ class BackupMetadata:
             total_size_bytes=int(data["total_size_bytes"]),
             backup_type=str(data.get("backup_type", "manual")),
             metadata_version=metadata_version,
+            excludes_derived=bool(data.get("excludes_derived", False)),
+            derived_schema_version=int(data.get("derived_schema_version", 0)),
         )
 
     def normalized(self) -> "BackupMetadata":
@@ -237,4 +257,6 @@ class BackupMetadata:
             total_size_bytes=self.total_size_bytes,
             backup_type=self.backup_type,
             metadata_version=BACKUP_METADATA_VERSION,
+            excludes_derived=self.excludes_derived,
+            derived_schema_version=self.derived_schema_version,
         )
