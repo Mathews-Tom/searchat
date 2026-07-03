@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from searchat.services.storage_contracts import BackupMetadata
+
 
 @dataclass(frozen=True)
 class BackupArtifactInspection:
@@ -122,4 +124,18 @@ class RetentionResult:
             "kept": list(self.kept),
             "pruned": list(self.pruned),
             "dry_run": self.dry_run,
+        }
+
+
+@dataclass(frozen=True)
+class RestoreResult:
+    """Outcome of `BackupManager.restore_from_backup`."""
+
+    pre_restore_backup: BackupMetadata | None
+    rebuild_performed: bool
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "pre_restore_backup": None if self.pre_restore_backup is None else self.pre_restore_backup.to_dict(),
+            "rebuild_performed": self.rebuild_performed,
         }

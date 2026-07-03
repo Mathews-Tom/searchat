@@ -9,7 +9,7 @@ from __future__ import annotations
 import shutil
 import json
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Callable, cast
 from datetime import datetime
 import logging
 import hashlib
@@ -22,13 +22,14 @@ from searchat.config.constants import (
 )
 from searchat.services.backup_crypto import decrypt_file, encrypt_file, get_backup_key
 from searchat.services.backup_contracts import (
+    RestoreResult,
     RetentionResult,
     inspect_backup_chain,
     inspect_legacy_full_backup,
     inspect_manifest_backup,
 )
 from searchat.services.backup_compression import compress_file, decompress_file
-from searchat.services.backup_export import export_source_tables
+from searchat.services.backup_export import export_source_tables, import_source_tables
 from searchat.services.storage_contracts import (
     BACKUP_MANIFEST_FILE,
     BACKUP_MANIFEST_VERSION,
@@ -972,7 +973,8 @@ class BackupManager:
         backup_path: Path,
         create_pre_restore_backup: bool = True,
         verify_hashes: bool = True,
-    ) -> BackupMetadata | None:
+        rebuild_derived: Callable[[Path], object] | None = None,
+    ) -> RestoreResult:
         """
         Restore data from a backup.
 
@@ -984,9 +986,19 @@ class BackupManager:
         Args:
             backup_path: Path to the backup directory to restore from
             create_pre_restore_backup: Create a backup before restoring (recommended)
+            rebuild_derived: called with `self.data_dir` after a
+                source-of-truth-only restore imports its exported
+                searchat.duckdb tables, to regenerate the derived
+                exchanges/embeddings/FTS/HNSW data (M2's
+                `UnifiedIndexer.rebuild_derived`). Defaults to the real
+                `UnifiedIndexer` when not given. Only invoked when the
+                restored backup's metadata has `excludes_derived=True` and
+                it actually exported source tables at backup time;
+                pre-M4 full backups restore unchanged, without this step.
 
         Returns:
-            Metadata of the pre-restore backup (if created)
+            RestoreResult: the pre-restore backup's metadata (if created)
+            and whether a derived-index rebuild was performed.
 
         Raises:
             FileNotFoundError: If backup doesn't exist
@@ -1007,6 +1019,15 @@ class BackupManager:
             raise ValueError(f"Backup validation failed: {errors}")
 
         manifest = self._load_manifest(backup_path) if (backup_path / BACKUP_MANIFEST_FILE).exists() else None
+
+        excludes_derived = False
+        metadata_path = backup_path / self.METADATA_FILE
+        if metadata_path.exists():
+            try:
+                with open(metadata_path, "r", encoding="utf-8") as f:
+                    excludes_derived = bool(BackupMetadata.from_dict(json.load(f)).excludes_derived)
+            except (ValueError, KeyError, OSError):
+                excludes_derived = False
 
         # Create pre-restore backup
         pre_restore_metadata = None
@@ -1067,9 +1088,46 @@ class BackupManager:
             if temp_dir_cm is not None:
                 temp_dir_cm.cleanup()
 
+        rebuild_performed = False
+        if excludes_derived:
+            rebuild_performed = self._rebuild_derived_after_restore(rebuild_derived)
+
         logger.info(f"Restore complete from: {backup_path.name}")
 
-        return pre_restore_metadata
+        return RestoreResult(
+            pre_restore_backup=pre_restore_metadata,
+            rebuild_performed=rebuild_performed,
+        )
+
+    def _rebuild_derived_after_restore(
+        self, rebuild_derived: Callable[[Path], object] | None
+    ) -> bool:
+        """Import exported source tables and regenerate derived data.
+
+        No-ops when the restored dataset never had a unified-engine
+        database at backup time (no `data/duckdb_source/` was exported --
+        a legacy-engine dataset or one with no index built yet), since
+        there is nothing to rebuild from. Returns whether a rebuild was
+        actually performed.
+        """
+        duckdb_source_dir = self.data_dir / "data" / "duckdb_source"
+        if not duckdb_source_dir.exists():
+            return False
+
+        db_path = self.data_dir / DEFAULT_DATA_SUBDIR / DEFAULT_DUCKDB_FILENAME
+        logger.info("Importing exported source-of-truth tables into a fresh searchat.duckdb...")
+        import_source_tables(db_path, duckdb_source_dir)
+        shutil.rmtree(duckdb_source_dir)
+
+        logger.info("Rebuilding derived exchanges/embeddings/FTS/HNSW from restored source tables...")
+        if rebuild_derived is not None:
+            rebuild_derived(self.data_dir)
+        else:
+            from searchat.config import Config
+            from searchat.core.unified_indexer import UnifiedIndexer
+
+            UnifiedIndexer(self.data_dir, Config.load()).rebuild_derived(force=True)
+        return True
 
     def delete_backup(self, backup_path: Path) -> None:
         """

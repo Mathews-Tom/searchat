@@ -517,6 +517,18 @@ def test_serialize_backup_payloads_preserve_shapes() -> None:
         "success": True,
         "restored_from": "backup_20250120_100000",
         "message": "Successfully restored from backup: backup_20250120_100000",
+        "rebuild_performed": False,
+    }
+    assert serialize_backup_restore_payload(
+        restored_from="backup_20250120_100000",
+        pre_restore_backup=backup,
+        rebuild_performed=True,
+    ) == {
+        "success": True,
+        "restored_from": "backup_20250120_100000",
+        "message": "Successfully restored from backup: backup_20250120_100000",
+        "rebuild_performed": True,
+        "pre_restore_backup": backup,
     }
     assert serialize_backup_delete_payload(deleted="backup_20250120_100000") == {
         "success": True,

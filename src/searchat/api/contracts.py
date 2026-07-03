@@ -399,11 +399,13 @@ def serialize_backup_restore_payload(
     *,
     restored_from: str,
     pre_restore_backup: dict[str, Any] | None = None,
+    rebuild_performed: bool = False,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "success": True,
         "restored_from": restored_from,
         "message": f"Successfully restored from backup: {restored_from}",
+        "rebuild_performed": rebuild_performed,
     }
     if pre_restore_backup is not None:
         payload["pre_restore_backup"] = pre_restore_backup
