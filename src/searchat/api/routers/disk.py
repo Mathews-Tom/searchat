@@ -2,8 +2,11 @@
 
 M6 -- Disk manager dashboard. Serves `services/disk_accounting.py`'s report
 over HTTP; there is no mutation endpoint anywhere in this router, matching
-the milestone's "report first" scope.
+the milestone's "report first" scope. M7's cruft findings (known
+non-conversation heavyweight artifacts) ride the same response -- still
+report-only.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -56,12 +59,25 @@ class SearchatSelfUsageResponse(BaseModel):
     total_file_count: int
 
 
+class CruftFindingResponse(BaseModel):
+    """One matched M7 cruft artifact -- reported, never a delete target."""
+
+    label: str
+    path: str
+    path_glob: str
+    explanation: str
+    cleanup_hint: str | None
+    total_size_bytes: int
+    file_count: int
+
+
 class DiskAccountingResponse(BaseModel):
     """Full read-only disk-accounting report."""
 
     agents: list[AgentDiskUsageResponse]
     searchat_self: SearchatSelfUsageResponse
     generated_at: str
+    cruft_findings: list[CruftFindingResponse]
 
 
 @router.get("/disk", response_model=DiskAccountingResponse)

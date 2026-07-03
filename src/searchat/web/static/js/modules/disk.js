@@ -44,10 +44,17 @@ async function renderDiskManager(resultsDiv) {
                 </div>
 
                 <!-- Searchat self -->
-                <div class="glass">
+                <div class="glass" style="margin-bottom: 24px;">
                     <div class="card-title">Searchat's Own Footprint</div>
                     <p style="color: hsl(var(--text-secondary)); margin: 0 0 16px 0; font-size: 14px;">Index, backups, models, and expertise storage under ${escapeHtml(report.searchat_self.search_dir)}.</p>
                     ${renderSelfUsage(report.searchat_self)}
+                </div>
+
+                <!-- Cruft advisor -->
+                <div class="glass">
+                    <div class="card-title">Cruft &amp; Non-Conversation Artifacts</div>
+                    <p style="color: hsl(var(--text-secondary)); margin: 0 0 16px 0; font-size: 14px;">Known non-conversation heavyweight artifacts (tool logs, plugin dirs, caches) found on this machine. Report-only &mdash; searchat never deletes or modifies these.</p>
+                    ${renderCruftFindings(report.cruft_findings)}
                 </div>
             </div>
         `;
@@ -118,6 +125,29 @@ function renderSelfUsage(selfUsage) {
         </div>
         <div style="font-weight: 700; color: hsl(var(--text-primary));">
             Total: ${formatBytes(selfUsage.total_size_bytes)} across ${selfUsage.total_file_count} files
+        </div>
+    `;
+}
+
+function renderCruftFindings(findings) {
+    if (!findings || findings.length === 0) {
+        return '<div style="color: hsl(var(--text-tertiary)); font-style: italic;">No known cruft patterns matched on this machine.</div>';
+    }
+
+    return `
+        <div style="display: grid; gap: 8px;">
+            ${findings.map(finding => `
+                <div class="glass" style="display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 14px;">
+                    <div style="min-width: 0;">
+                        <div style="font-weight: 600; color: hsl(var(--text-primary));">${escapeHtml(finding.label)}</div>
+                        <div style="font-size: 12px; color: hsl(var(--text-tertiary)); overflow-wrap: anywhere;">${escapeHtml(finding.path)}</div>
+                        <div style="font-size: 12px; color: hsl(var(--text-tertiary)); margin-top: 2px;">${escapeHtml(finding.explanation)}</div>
+                    </div>
+                    <div style="font-size: 14px; font-weight: 700; color: hsl(var(--text-primary)); white-space: nowrap;">
+                        ${formatBytes(finding.total_size_bytes)}
+                    </div>
+                </div>
+            `).join('')}
         </div>
     `;
 }

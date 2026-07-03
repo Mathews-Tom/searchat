@@ -1,4 +1,5 @@
-"""CLI command: searchat disk -- read-only per-agent and self disk-usage report."""
+"""CLI command: searchat disk -- read-only per-agent, self, and M7 cruft-advisor disk-usage report."""
+
 from __future__ import annotations
 
 import argparse
@@ -94,5 +95,27 @@ def run_disk(argv: list[str]) -> int:
         )
     console.print(self_table)
     console.print(f"\nTotal Searchat footprint: {_format_bytes(self_usage.total_size_bytes)}")
+
+    if report.cruft_findings:
+        cruft_table = Table(
+            show_header=True,
+            header_style="bold",
+            title="\nCruft (non-conversation artifacts)",
+        )
+        cruft_table.add_column("Label")
+        cruft_table.add_column("Size", justify="right")
+        cruft_table.add_column("Path")
+        cruft_table.add_column("Explanation")
+        for finding in report.cruft_findings:
+            cruft_table.add_row(
+                finding.label,
+                _format_bytes(finding.total_size_bytes),
+                finding.path,
+                finding.explanation,
+            )
+        console.print(cruft_table)
+        console.print(
+            "[dim]Report-only -- searchat never deletes or modifies these.[/dim]"
+        )
 
     return 0
