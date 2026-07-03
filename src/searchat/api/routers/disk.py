@@ -6,6 +6,7 @@ the milestone's "report first" scope.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from fastapi import APIRouter, HTTPException
@@ -72,6 +73,14 @@ async def get_disk_accounting() -> DiskAccountingResponse:
     parameter) -- a fresh `duckdb.connect(db_path, read_only=True)` from
     this same process conflicts with `UnifiedStorage`'s already-open
     connection and would otherwise 500 on every request.
+
+    Runs off-thread (`asyncio.to_thread`): this walks every registered
+    connector's watch directory tree byte-by-byte plus Searchat's own
+    subdirectories, which can be several GB / thousands of files (e.g. a
+    9 GB omp store) -- running that synchronously on the event loop would
+    stall every other in-flight request for the duration of the scan, the
+    same constraint documented on `dependencies.maybe_auto_compact_on_shutdown`
+    and followed by every other heavy-IO route in this codebase.
     """
     connection = None
     try:
@@ -79,7 +88,9 @@ async def get_disk_accounting() -> DiskAccountingResponse:
     except Exception:
         connection = None
     try:
-        report = build_disk_accounting_report(get_search_dir(), get_config(), connection=connection)
+        report = await asyncio.to_thread(
+            build_disk_accounting_report, get_search_dir(), get_config(), connection=connection
+        )
     except Exception:
         logger.exception("Failed to build disk accounting report")
         raise HTTPException(status_code=500, detail=internal_server_error_message())
