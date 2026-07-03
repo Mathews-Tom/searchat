@@ -17,6 +17,7 @@ _orig_resolve_gemini = PathResolver.__dict__["resolve_gemini_dirs"]
 _orig_resolve_continue = PathResolver.__dict__["resolve_continue_dirs"]
 _orig_resolve_cursor = PathResolver.__dict__["resolve_cursor_dirs"]
 _orig_resolve_aider = PathResolver.__dict__["resolve_aider_dirs"]
+_orig_resolve_omp = PathResolver.__dict__["resolve_omp_dirs"]
 
 
 def _restore(monkeypatch, name: str, original: object) -> None:
@@ -270,6 +271,25 @@ class TestResolveContinueDirs:
         monkeypatch.setenv("SEARCHAT_CONTINUE_DATA_DIR", str(tmp_path))
         dirs = PathResolver.resolve_continue_dirs()
         assert tmp_path in dirs
+
+
+class TestResolveOmpDirs:
+    """Tests for PathResolver.resolve_omp_dirs."""
+
+    def test_env_var_overrides(self, monkeypatch, tmp_path):
+        _restore(monkeypatch, "resolve_omp_dirs", _orig_resolve_omp)
+        monkeypatch.setenv("SEARCHAT_OMP_DATA_DIR", str(tmp_path))
+        dirs = PathResolver.resolve_omp_dirs()
+        assert tmp_path in dirs
+
+    def test_no_env_var_no_candidate_returns_empty(self, monkeypatch, tmp_path):
+        _restore(monkeypatch, "resolve_omp_dirs", _orig_resolve_omp)
+        monkeypatch.delenv("SEARCHAT_OMP_DATA_DIR", raising=False)
+        monkeypatch.setattr(
+            "searchat.config.path_resolver.OMP_DIR_CANDIDATES",
+            [tmp_path / "does-not-exist"],
+        )
+        assert PathResolver.resolve_omp_dirs() == []
 
 
 class TestResolveCursorDirs:

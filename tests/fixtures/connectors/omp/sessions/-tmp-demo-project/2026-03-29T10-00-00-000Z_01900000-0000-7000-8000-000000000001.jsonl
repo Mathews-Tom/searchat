@@ -1,0 +1,7 @@
+{"type":"session","version":3,"id":"01900000-0000-7000-8000-000000000001","timestamp":"2026-03-29T10:00:00.000Z","cwd":"/tmp/demo-project","title":"Fix login bug","titleSource":"auto"}
+{"type":"model_change","id":"a1","parentId":null,"timestamp":"2026-03-29T10:00:01.000Z","model":"anthropic/claude-sonnet-5"}
+{"type":"thinking_level_change","id":"a2","parentId":"a1","timestamp":"2026-03-29T10:00:01.000Z","thinkingLevel":"medium"}
+{"type":"message","id":"m1","parentId":"a2","timestamp":"2026-03-29T10:00:05.000Z","message":{"role":"user","content":[{"type":"text","text":"Fix the login bug in auth.py"}],"attribution":"user","timestamp":1743235205000}}
+{"type":"message","id":"m2","parentId":"m1","timestamp":"2026-03-29T10:00:10.000Z","message":{"role":"assistant","content":[{"type":"thinking","thinking":"Let's look at auth.py first."},{"type":"toolCall","id":"call_1","name":"read","arguments":{"path":"auth.py"}}],"attribution":"agent","timestamp":1743235210000}}
+{"type":"message","id":"m3","parentId":"m2","timestamp":"2026-03-29T10:00:12.000Z","message":{"role":"toolResult","toolCallId":"call_1","toolName":"read","content":[{"type":"text","text":"def login(user):\n    pass\n"}],"timestamp":1743235212000}}
+{"type":"message","id":"m4","parentId":"m3","timestamp":"2026-03-29T10:00:20.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Found the bug: login() is a stub. Implementing it now.\n\n```python\ndef login(user):\n    return authenticate(user)\n```"}],"attribution":"agent","timestamp":1743235220000}}
