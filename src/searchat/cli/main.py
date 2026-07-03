@@ -465,6 +465,11 @@ def main():
 
             raise SystemExit(run_ci_check(argv[1:]))
 
+        if argv and argv[0] == "disk":
+            from searchat.cli.disk_cmd import run_disk
+
+            raise SystemExit(run_disk(argv[1:]))
+
         if "-h" in argv_set or "--help" in argv_set:
             print("Usage: searchat")
             print()
@@ -500,6 +505,7 @@ def main():
             print("  searchat reingest-sources [--force]")
             print("  searchat compact [--json] [--in-process]")
             print("  searchat ci-check [--fail-on-contradictions] [--fail-on-staleness-threshold FLOAT]")
+            print("  searchat disk [--json]")
             print()
             return
 
