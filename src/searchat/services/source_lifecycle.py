@@ -45,6 +45,7 @@ import duckdb
 from searchat.core.connectors.base import AgentProviderBase
 from searchat.core.logging_config import get_logger
 from searchat.models import ConversationRecord
+from searchat.services.backup_compression import compress_file, decompress_file
 
 logger = get_logger(__name__)
 
@@ -313,3 +314,47 @@ def verify_roundtrip(connector: AgentProviderBase, record: ConversationRecord) -
             False, reason="re-parsed record differs from the stored record", mismatches=mismatches
         )
     return RoundtripResult(True)
+
+
+def archive_source(file_path: Path, *, compression_level: int = 3) -> Path:
+    """Zstd-compress `file_path` in place, replacing it with `<name>.zst`.
+
+    Verifies the compressed file decompresses back to byte-identical
+    content -- via a real decompress-to-a-temp-file round trip, not just
+    an in-memory hash -- BEFORE removing the original, mirroring
+    `services/compaction.py`'s verify-before-destructive-step pattern.
+    The original is left completely untouched on any failure: a missing
+    source, an existing `.zst` target, or a failed verification all raise
+    before `file_path.unlink()` is ever reached.
+
+    Callers (`services.source_lifecycle`'s own orchestration, never a
+    bare CLI flag) are responsible for having already confirmed
+    `verify_ingested` and `verify_roundtrip` both passed and the file is
+    age- and agent-gated; this function performs no gating of its own --
+    it only performs the compression, verification, and swap once called.
+    """
+    if not file_path.is_file():
+        raise FileNotFoundError(f"cannot archive missing file: {file_path}")
+
+    archived_path = file_path.with_name(file_path.name + ".zst")
+    if archived_path.exists():
+        raise FileExistsError(f"archive target already exists: {archived_path}")
+
+    original_hash = _sha256_file(file_path)
+    content_sha256, _stored_sha256, _stored_size = compress_file(
+        file_path, archived_path, level=compression_level
+    )
+    if content_sha256 != original_hash:
+        archived_path.unlink(missing_ok=True)
+        raise RuntimeError(f"compression content hash mismatch for {file_path}; original left untouched")
+
+    with tempfile.TemporaryDirectory(prefix="searchat-archive-verify-") as tmp_dir:
+        decompressed_path = Path(tmp_dir) / file_path.name
+        decompress_file(archived_path, decompressed_path)
+        if _sha256_file(decompressed_path) != original_hash:
+            archived_path.unlink(missing_ok=True)
+            raise RuntimeError(f"decompression verification failed for {file_path}; original left untouched")
+
+    file_path.unlink()
+    return archived_path
+
