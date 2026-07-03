@@ -108,6 +108,72 @@ def test_disk_table_output_shows_connector_usage(
     assert "Unindexed" in captured.out
 
 
+def test_disk_table_output_shows_cruft_findings_and_report_only_note(
+    temp_search_dir: Path, capsys, monkeypatch
+) -> None:
+    from searchat.cli.disk_cmd import run_disk
+    from searchat.services.disk_accounting import CruftFinding
+
+    # Wide enough console so the 4-column cruft table doesn't ellipsize cell text.
+    monkeypatch.setenv("COLUMNS", "200")
+
+    fixed_findings = (
+        CruftFinding(
+            label="Codex CLI log database",
+            path=str(temp_search_dir / ".codex" / "logs_2.sqlite"),
+            path_glob=".codex/logs_2.sqlite",
+            explanation="fabricated for CLI table test",
+            cleanup_hint=None,
+            total_size_bytes=4096,
+            file_count=1,
+        ),
+    )
+
+    with (
+        patch("searchat.config.Config.load", return_value=_cfg(temp_search_dir)),
+        patch(
+            "searchat.config.PathResolver.get_shared_search_dir",
+            return_value=temp_search_dir,
+        ),
+        patch("searchat.services.disk_accounting.get_connectors", return_value=()),
+        patch(
+            "searchat.services.disk_accounting.detect_cruft",
+            return_value=fixed_findings,
+        ),
+    ):
+        result = run_disk([])
+
+    captured = capsys.readouterr()
+    assert result == 0
+    assert "Cruft (non-conversation artifacts)" in captured.out
+    assert "Codex CLI log database" in captured.out
+    assert "Report-only -- searchat never deletes or modifies these." in captured.out
+
+
+def test_disk_table_output_suppresses_cruft_table_when_no_findings(
+    temp_search_dir: Path, capsys
+) -> None:
+    from searchat.cli.disk_cmd import run_disk
+
+    with (
+        patch("searchat.config.Config.load", return_value=_cfg(temp_search_dir)),
+        patch(
+            "searchat.config.PathResolver.get_shared_search_dir",
+            return_value=temp_search_dir,
+        ),
+        patch("searchat.services.disk_accounting.get_connectors", return_value=()),
+        patch("searchat.services.disk_accounting.detect_cruft", return_value=()),
+    ):
+        result = run_disk([])
+
+    captured = capsys.readouterr()
+    assert result == 0
+    assert "Cruft" not in captured.out
+    assert (
+        "Report-only -- searchat never deletes or modifies these." not in captured.out
+    )
+
+
 def test_disk_json_output_matches_documented_schema(
     temp_search_dir: Path, tmp_path: Path, capsys
 ) -> None:
@@ -147,10 +213,26 @@ def test_disk_json_output_matches_documented_schema(
     payload = json.loads(captured.out)
 
     # Top-level schema.
-    assert set(payload.keys()) == {"agents", "searchat_self", "generated_at"}
+    assert set(payload.keys()) == {
+        "agents",
+        "searchat_self",
+        "generated_at",
+        "cruft_findings",
+    }
     assert isinstance(payload["agents"], list)
     assert isinstance(payload["searchat_self"], dict)
     assert isinstance(payload["generated_at"], str)
+    assert isinstance(payload["cruft_findings"], list)
+    for finding in payload["cruft_findings"]:
+        assert set(finding.keys()) == {
+            "label",
+            "path",
+            "path_glob",
+            "explanation",
+            "cleanup_hint",
+            "total_size_bytes",
+            "file_count",
+        }
     datetime.fromisoformat(payload["generated_at"])  # valid ISO-8601 timestamp
 
     assert len(payload["agents"]) == 1

@@ -368,12 +368,14 @@ class DiskAccountingReport:
     agents: tuple[AgentDiskUsage, ...]
     searchat_self: SearchatSelfUsage
     generated_at: str
+    cruft_findings: tuple[CruftFinding, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "agents": [agent.to_dict() for agent in self.agents],
             "searchat_self": self.searchat_self.to_dict(),
             "generated_at": self.generated_at,
+            "cruft_findings": [finding.to_dict() for finding in self.cruft_findings],
         }
 
 
@@ -401,10 +403,16 @@ def build_disk_accounting_report(
         except Exception:
             continue
 
+    try:
+        cruft_findings = detect_cruft()
+    except Exception:
+        cruft_findings = ()
+
     return DiskAccountingReport(
         agents=tuple(agents),
         searchat_self=compute_searchat_self_usage(search_dir),
         generated_at=datetime.now().isoformat(),
+        cruft_findings=cruft_findings,
     )
 
 
