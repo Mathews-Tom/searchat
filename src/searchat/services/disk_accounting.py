@@ -124,14 +124,37 @@ def _connector_watch_dirs(connector: Any, config: Config) -> list[Path]:
     return dirs
 
 
-def _read_indexed_paths_by_connector(db_path: Path) -> dict[str, set[str]]:
+def _read_indexed_paths_by_connector(
+    db_path: Path, *, connection: duckdb.DuckDBPyConnection | None = None
+) -> dict[str, set[str]]:
     """Return `{connector_name: {file_path, ...}}` for `status = 'indexed'` rows.
 
     Rows written before `connector_name` was threaded through (or by legacy
     code paths) have a null/empty `connector_name`; those are routed to the
     correct connector by re-running `detect_connector` on the stored path
     rather than being fanned out into every connector's set.
+
+    When `connection` is given (the live server's own open `UnifiedStorage`
+    connection), a fresh cursor on it is used instead of opening a second
+    file handle -- DuckDB refuses a second same-process connection to the
+    same file once the first has non-default config (e.g. `memory_limit`
+    set by `UnifiedStorage.__init__`), which a bare
+    `duckdb.connect(db_path, read_only=True)` would hit whenever this runs
+    inside the running `searchat-web` process. The CLI path (no live
+    connection) keeps opening its own short-lived read-only connection.
     """
+    if connection is not None:
+        cur = connection.cursor()
+        try:
+            rows = cur.execute(
+                "SELECT connector_name, file_path FROM source_file_state WHERE status = 'indexed'"
+            ).fetchall()
+        except duckdb.Error:
+            return {}
+        finally:
+            cur.close()
+        return _group_indexed_rows(rows)
+
     if not db_path.exists():
         return {}
     con = duckdb.connect(str(db_path), read_only=True)
@@ -143,7 +166,10 @@ def _read_indexed_paths_by_connector(db_path: Path) -> dict[str, set[str]]:
         return {}
     finally:
         con.close()
+    return _group_indexed_rows(rows)
 
+
+def _group_indexed_rows(rows: list[tuple[str | None, str]]) -> dict[str, set[str]]:
     by_connector: dict[str, set[str]] = {}
     for connector_name, file_path in rows:
         name = connector_name
@@ -349,15 +375,21 @@ class DiskAccountingReport:
         }
 
 
-def build_disk_accounting_report(search_dir: Path, config: Config) -> DiskAccountingReport:
+def build_disk_accounting_report(
+    search_dir: Path, config: Config, *, connection: duckdb.DuckDBPyConnection | None = None
+) -> DiskAccountingReport:
     """Assemble the full read-only disk-accounting report for `search_dir`.
 
     A connector whose accounting raises is skipped so one bad harness never
     fails the whole report -- the same resilience contract `storage_health`
     already applies to `estimate_harness_source_sizes` (M1).
+
+    `connection`: pass the live server's own `UnifiedStorage.connection`
+    when calling this from within the running `searchat-web` process (see
+    `_read_indexed_paths_by_connector`); omit it for standalone/CLI use.
     """
     db_path = config.storage.resolve_duckdb_path(search_dir)
-    indexed_by_connector = _read_indexed_paths_by_connector(db_path)
+    indexed_by_connector = _read_indexed_paths_by_connector(db_path, connection=connection)
 
     agents: list[AgentDiskUsage] = []
     for connector in get_connectors():
