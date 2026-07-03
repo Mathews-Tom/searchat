@@ -120,3 +120,16 @@ min_interval_days = 7
 # killed) if it runs longer than this, rather than blocking the CLI or
 # graceful shutdown forever.
 max_duration_seconds = 1800.0
+
+[backup]
+# Backup v2 (M4) -- source-of-truth-only backups by default, with a
+# retention policy so backups/ doesn't grow unbounded. Pinned backups
+# are always exempt from pruning.
+# The keep_last most recent non-pinned backups are always kept.
+keep_last = 10
+# Independently, the newest non-pinned backup in each of the most
+# recent keep_monthly distinct calendar months is kept too (a backup
+# can satisfy both rules at once; the kept sets are unioned).
+keep_monthly = 12
+# zstd compression level for plaintext (non-encrypted) backup payloads.
+compression_level = 3
