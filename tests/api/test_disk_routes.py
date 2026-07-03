@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -313,3 +313,33 @@ class TestDiskAccountingEndpoint:
 
         assert response.status_code == 200
         mock_build.assert_called_once_with(fake_search_dir, fake_config, connection=None)
+
+    def test_get_disk_accounting_offloads_via_asyncio_to_thread(self, client, mock_report):
+        """The heavy filesystem walk runs via `asyncio.to_thread`, not a direct synchronous call.
+
+        Mocking `asyncio.to_thread` itself -- rather than `build_disk_accounting_report` -- is
+        the only way to distinguish `await asyncio.to_thread(fn, ...)` from `fn(...)`: only the
+        former ever reaches this mock. Asserting the mock's call signature plus that the real
+        service function was never invoked directly proves the route genuinely offloads the scan
+        instead of running it inline on the event loop.
+        """
+        fake_search_dir = Path("/home/user/.searchat")
+        fake_config = Mock(name="fake_config")
+
+        with patch('searchat.api.routers.disk.get_search_dir', return_value=fake_search_dir):
+            with patch('searchat.api.routers.disk.get_config', return_value=fake_config):
+                with patch(
+                    'searchat.api.routers.disk.build_disk_accounting_report'
+                ) as mock_build:
+                    with patch(
+                        'searchat.api.routers.disk.asyncio.to_thread',
+                        new_callable=AsyncMock,
+                        return_value=mock_report,
+                    ) as mock_to_thread:
+                        response = client.get("/api/disk")
+
+        assert response.status_code == 200
+        mock_to_thread.assert_called_once_with(
+            mock_build, fake_search_dir, fake_config, connection=None
+        )
+        mock_build.assert_not_called()
