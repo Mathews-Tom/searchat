@@ -822,3 +822,45 @@ Parameters:
 ```
 force  bool  Force shutdown even if indexing is in progress (default: false)
 ```
+
+---
+
+## Disk Accounting
+
+### GET /api/disk
+
+Read-only per-agent and Searchat self disk-usage report. No mutation capability -- this endpoint only reports.
+
+Response:
+```json
+{
+  "agents": [
+    {
+      "connector": "omp",
+      "watch_dirs": ["/Users/you/.omp/agent/sessions"],
+      "total_size_bytes": 9773412352,
+      "total_file_count": 4210,
+      "conversation_file_count": 4102,
+      "indexed_file_count": 4102,
+      "indexed_size_bytes": 9700000000,
+      "unindexed_file_count": 0,
+      "unindexed_size_bytes": 0,
+      "oldest_conversation_age_days": 214.5,
+      "newest_conversation_age_days": 0.3,
+      "age_histogram": {"0-7d": 12, "7-30d": 40, "30-90d": 118, "90-365d": 3932, "365d+": 0}
+    }
+  ],
+  "searchat_self": {
+    "search_dir": "/Users/you/.searchat",
+    "subdirectories": [
+      {"label": "index", "path": "/Users/you/.searchat/data", "exists": true, "total_size_bytes": 7464300544, "file_count": 812},
+      {"label": "backups", "path": "/Users/you/.searchat/backups", "exists": true, "total_size_bytes": 512000000, "file_count": 4}
+    ],
+    "total_size_bytes": 7976300544,
+    "total_file_count": 816
+  },
+  "generated_at": "2026-07-03T09:29:54.090146"
+}
+```
+
+`total_size_bytes`/`total_file_count` per agent are a `du`-equivalent walk of the connector's watch directories (every file, not just recognized conversation files). `indexed_file_count`/`unindexed_file_count` are scoped to discovered conversation files only, matched against `source_file_state`. `searchat_self.subdirectories` always includes `index`, `backups`, `models`, and `expertise` (size 0 when absent) alongside any other known Searchat subdirectory.
