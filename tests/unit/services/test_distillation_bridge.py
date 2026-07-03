@@ -688,3 +688,15 @@ class TestBenchmarkAcceptance:
             f"exceeding the {MAX_RELATIVE_RECALL_DROP:.0%} budget "
             f"(pre={pre_recall_distilled:.3f}, post={post_recall_distilled:.3f})"
         )
+
+    def test_index_size_reduction_meets_m9_acceptance_budget(
+        self, storage: UnifiedStorage, config: Config, tmp_path: Path
+    ):
+        run = _run_benchmark(storage, config, tmp_path)
+
+        assert run.pre_row_count == sum(len(c.exchanges) for c in run.corpus)
+        reduction_factor = run.pre_row_count / run.post_row_count
+        assert reduction_factor >= MIN_INDEX_SIZE_REDUCTION_FACTOR, (
+            f"expected >= {MIN_INDEX_SIZE_REDUCTION_FACTOR}x reduction, got {reduction_factor:.2f}x "
+            f"(pre={run.pre_row_count}, post={run.post_row_count})"
+        )
