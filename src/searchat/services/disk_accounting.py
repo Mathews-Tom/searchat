@@ -8,9 +8,11 @@ and any other subdirectory found).
 
 Every function in this module only reads the filesystem and the DuckDB
 store opened read-only -- there is no mutation code path here, matching the
-"report first" ordering from the enhancement catalog (M7 cruft advisor and
-M11 dedup detection build on this module but stay report-only too).
+"report first" ordering from the enhancement catalog. M7's cruft advisor
+(`KNOWN_CRUFT_PATTERNS`, `detect_cruft`) extends this module with the same
+contract; M11 dedup detection builds on it too and stays report-only.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -404,3 +406,117 @@ def build_disk_accounting_report(
         searchat_self=compute_searchat_self_usage(search_dir),
         generated_at=datetime.now().isoformat(),
     )
+
+
+# ---------------------------------------------------------------------------
+# M7 -- Cruft advisor (report-only).
+#
+# Flags known non-conversation heavyweight artifacts per harness (tool
+# logs, plugin dirs, caches) so the M6 dashboard/CLI can surface them
+# alongside conversation accounting. Deleting another tool's internals is
+# out of contract (concern 5 in the enhancement analysis) -- every function
+# below only calls `Path.glob`, `Path.is_dir`/`is_symlink`, and `stat()`,
+# the same read-only primitives `_walk_directory` already uses. There is no
+# `os.remove`/`shutil.rmtree`/`Path.unlink`/`Path.rmdir` call anywhere in
+# this module.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class CruftPattern:
+    """One known non-conversation heavyweight-artifact pattern.
+
+    `path_glob` is resolved relative to a harness home directory
+    (`Path.home()` by default, injectable via `detect_cruft`'s `home`
+    argument for tests) through `Path.glob()` -- supports a literal
+    relative path (the common case, e.g. `.codex/logs_2.sqlite`) or a
+    pattern with wildcard components. `cleanup_hint` names the owning
+    tool's own documented cleanup command when one is confirmed; `None`
+    when no such command is known -- this module never fabricates one and
+    never runs one.
+    """
+
+    path_glob: str
+    label: str
+    explanation: str
+    cleanup_hint: str | None = None
+
+
+# Grounded in each harness's own well-documented, non-conversation state:
+# plugin/extension installs, log and telemetry stores, and rebuildable
+# local caches that sit alongside (never inside) the connector's own
+# conversation watch directory. `.codex/logs_2.sqlite` is the exact example
+# cited by the enhancement analysis (a 424 MB internal log database, sized
+# independently of the 346 MB `sessions/` conversation directory it sits
+# next to).
+KNOWN_CRUFT_PATTERNS: tuple[CruftPattern, ...] = (
+    CruftPattern(
+        path_glob=".codex/logs_2.sqlite",
+        label="Codex CLI log database",
+        explanation=(
+            "OpenAI Codex CLI's internal SQLite log store, a sibling of the "
+            "conversation sessions/ directory; holds no conversation content."
+        ),
+    ),
+    CruftPattern(
+        path_glob=".codex/plugins",
+        label="Codex CLI plugins",
+        explanation="Installed Codex CLI plugin/extension data.",
+    ),
+    CruftPattern(
+        path_glob=".claude/plugins",
+        label="Claude Code plugins",
+        explanation="Installed Claude Code plugin and MCP-server data (marketplace installs).",
+    ),
+    CruftPattern(
+        path_glob=".claude/shell-snapshots",
+        label="Claude Code shell snapshots",
+        explanation=(
+            "Per-session shell environment snapshots captured for bash-tool "
+            "commands; grows unbounded, holds no conversation content."
+        ),
+    ),
+    CruftPattern(
+        path_glob=".claude/file-history",
+        label="Claude Code file history cache",
+        explanation=(
+            "Claude Code's file-edit checkpoint/undo cache, not a "
+            "conversation transcript."
+        ),
+    ),
+    CruftPattern(
+        path_glob=".omp/cache",
+        label="omp cache",
+        explanation="oh-my-pi's own tool/session cache directory.",
+    ),
+    CruftPattern(
+        path_glob=".omp/logs",
+        label="omp logs",
+        explanation="oh-my-pi's own log output directory.",
+    ),
+    CruftPattern(
+        path_glob=".omp/stats.db",
+        label="omp stats database",
+        explanation=(
+            "oh-my-pi's local usage-metrics database; not a conversation store."
+        ),
+    ),
+    CruftPattern(
+        path_glob=".continue/index",
+        label="Continue local index cache",
+        explanation=(
+            "Continue's local embedding/search index over the workspace, "
+            "rebuildable from source."
+        ),
+    ),
+    CruftPattern(
+        path_glob=".cursor/extensions",
+        label="Cursor extensions",
+        explanation="Installed Cursor/VS-Code-derived extension binaries.",
+    ),
+    CruftPattern(
+        path_glob=".config/opencode/node_modules",
+        label="opencode config dependencies",
+        explanation="npm dependencies installed for opencode's local config/plugins.",
+    ),
+)
