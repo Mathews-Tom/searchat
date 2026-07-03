@@ -133,6 +133,14 @@ keep_last = 10
 keep_monthly = 12
 # zstd compression level for plaintext (non-encrypted) backup payloads.
 compression_level = 3
+# M10 -- scheduled backups. Disabled by default; when enabled, a
+# BackupScheduler fires a `create_backup(backup_type="scheduled")` every
+# schedule_interval_hours, skipping the run if no source-of-truth data
+# changed since the prior backup (any type). Purely additive on top of
+# the keep_last/keep_monthly/compression_level retention policy above --
+# scheduled backups are pruned by that same policy like any other backup.
+schedule_enabled = false
+schedule_interval_hours = 24.0
 
 [lifecycle]
 # Source conversation-file lifecycle (M8) -- verified archive-then-prune.

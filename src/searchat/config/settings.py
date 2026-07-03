@@ -171,6 +171,11 @@ from .constants import (
     ENV_BACKUP_KEEP_LAST,
     ENV_BACKUP_KEEP_MONTHLY,
     ENV_BACKUP_COMPRESSION_LEVEL,
+    # Scheduled Backups (M10)
+    DEFAULT_BACKUP_SCHEDULE_ENABLED,
+    DEFAULT_BACKUP_SCHEDULE_INTERVAL_HOURS,
+    ENV_BACKUP_SCHEDULE_ENABLED,
+    ENV_BACKUP_SCHEDULE_INTERVAL_HOURS,
     # Source Lifecycle (M8)
     DEFAULT_LIFECYCLE_AGE_THRESHOLD_DAYS,
     DEFAULT_LIFECYCLE_ENABLED_AGENTS,
@@ -741,6 +746,33 @@ class BackupConfig:
 
 
 @dataclass
+class BackupScheduleConfig:
+    """Interval trigger for `services/backup_scheduler.py` (M10) over M4's
+    `BackupManager` -- reads the same `[backup]` TOML table as
+    `BackupConfig` but owns a disjoint key set (`schedule_enabled`,
+    `schedule_interval_hours`) and is parsed into its own dataclass so
+    M4's retention config is never touched by this milestone."""
+    enabled: bool
+    interval_hours: float
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "BackupScheduleConfig":
+        return cls(
+            enabled=_get_env_bool(
+                ENV_BACKUP_SCHEDULE_ENABLED,
+                bool(data.get("schedule_enabled", DEFAULT_BACKUP_SCHEDULE_ENABLED)),
+            ),
+            interval_hours=max(
+                _get_env_float(
+                    ENV_BACKUP_SCHEDULE_INTERVAL_HOURS,
+                    float(data.get("schedule_interval_hours", DEFAULT_BACKUP_SCHEDULE_INTERVAL_HOURS)),
+                ),
+                0.0,
+            ),
+        )
+
+
+@dataclass
 class CompactionConfig:
     """Auto-trigger thresholds for `searchat compact` (M3)."""
     auto_trigger_ratio: float
@@ -1053,6 +1085,7 @@ class Config:
     reranking: RerankingConfig
     compaction: CompactionConfig
     backup: BackupConfig
+    backup_schedule: BackupScheduleConfig
     storage: StorageConfig
     server: ServerConfig
     expertise: ExpertiseConfig
@@ -1140,6 +1173,7 @@ class Config:
             reranking=RerankingConfig.from_dict(data.get("reranking", {})),
             compaction=CompactionConfig.from_dict(data.get("compaction", {})),
             backup=BackupConfig.from_dict(data.get("backup", {})),
+            backup_schedule=BackupScheduleConfig.from_dict(data.get("backup", {})),
             storage=StorageConfig.from_dict(data.get("storage", {})),
             server=ServerConfig.from_dict(data.get("server", {})),
             expertise=ExpertiseConfig.from_dict(data.get("expertise", {})),
