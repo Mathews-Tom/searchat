@@ -183,6 +183,9 @@ from .constants import (
     ENV_LIFECYCLE_AGE_THRESHOLD_DAYS,
     ENV_LIFECYCLE_ENABLED_AGENTS,
     ENV_LIFECYCLE_DRY_RUN,
+    # Cross-Agent Duplicate Detection (M11)
+    DEFAULT_DEDUP_SIMILARITY_THRESHOLD,
+    ENV_DEDUP_SIMILARITY_THRESHOLD,
 )
 
 if TYPE_CHECKING:
@@ -863,6 +866,33 @@ class LifecycleConfig:
 
 
 @dataclass
+class DedupConfig:
+    """Cross-connector near-duplicate detection threshold for
+    `services/dedup_detection.py` (M11). Report-only: no code path this
+    threshold gates ever merges or deletes a conversation -- it only
+    decides which conversation pairs are similar enough to surface as a
+    suggestion in the M6 dashboard.
+    """
+
+    similarity_threshold: float
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "DedupConfig":
+        return cls(
+            similarity_threshold=min(
+                max(
+                    _get_env_float(
+                        ENV_DEDUP_SIMILARITY_THRESHOLD,
+                        float(data.get("similarity_threshold", DEFAULT_DEDUP_SIMILARITY_THRESHOLD)),
+                    ),
+                    0.0,
+                ),
+                1.0,
+            ),
+        )
+
+
+@dataclass
 class ExpertiseConfig:
     enabled: bool
     auto_extract: bool
@@ -1095,6 +1125,7 @@ class Config:
     distillation: DistillationConfig
     palace: PalaceConfig
     lifecycle: LifecycleConfig
+    dedup: DedupConfig
 
     @classmethod
     def load(cls, config_path: Path | None = None) -> "Config":
@@ -1183,4 +1214,5 @@ class Config:
             distillation=DistillationConfig.from_dict(data.get("distillation", {})),
             palace=PalaceConfig.from_dict(data.get("palace", {})),
             lifecycle=LifecycleConfig.from_dict(data.get("lifecycle", {})),
+            dedup=DedupConfig.from_dict(data.get("dedup", {})),
         )
