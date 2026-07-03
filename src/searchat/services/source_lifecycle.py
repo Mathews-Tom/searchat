@@ -39,12 +39,15 @@ import hashlib
 import json
 import tempfile
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 import duckdb
 
 from searchat.core.connectors.base import AgentProviderBase
+from searchat.core.connectors.registry import get_connector_by_name
 from searchat.core.logging_config import get_logger
+from searchat.config.settings import LifecycleConfig
 from searchat.models import ConversationRecord
 from searchat.services.backup_compression import compress_file, decompress_file
 
@@ -432,3 +435,276 @@ def write_tombstone(tombstone_dir: Path, entry: TombstoneEntry) -> Path:
     with open(log_path, "a", encoding="utf-8") as f:
         f.write(json.dumps(entry.to_dict()) + "\n")
     return log_path
+
+
+def _iter_indexed_source_files(
+    db_path: Path, *, connection: duckdb.DuckDBPyConnection | None = None
+) -> list[tuple[str, str]]:
+    """`(connector_name, file_path)` pairs for every `status = 'indexed'`
+    `source_file_state` row. Rows with a null/empty `connector_name` or
+    `file_path` are skipped -- they cannot be gated by
+    `lifecycle.enabled_agents` or acted on."""
+    query = "SELECT connector_name, file_path FROM source_file_state WHERE status = 'indexed'"
+    if connection is not None:
+        cur = connection.cursor()
+        try:
+            rows = cur.execute(query).fetchall()
+        except duckdb.Error:
+            return []
+        finally:
+            cur.close()
+    else:
+        if not db_path.exists():
+            return []
+        con = duckdb.connect(str(db_path), read_only=True)
+        try:
+            rows = con.execute(query).fetchall()
+        except duckdb.Error:
+            return []
+        finally:
+            con.close()
+    return [(name, path) for name, path in rows if name and path]
+
+
+@dataclass(frozen=True)
+class LifecycleDecision:
+    """Outcome of evaluating one source file through the full M8 gate
+    chain: per-agent opt-in, age threshold, `verify_ingested`, and --
+    only when neither of those refused it and `dry_run` is `False` --
+    `verify_roundtrip` followed by the action itself. `eligible=True`
+    means every gate that ran passed; it does NOT by itself mean the
+    action was taken (see `action_taken`, which is `None` for a dry run
+    even when `eligible` is `True`)."""
+
+    connector_name: str
+    file_path: str
+    age_days: float | None
+    agent_enabled: bool
+    age_gated: bool
+    ingested: VerificationResult | None
+    roundtrip: RoundtripResult | None
+    eligible: bool
+    action_taken: str | None
+    archived_path: str | None
+    tombstone_path: str | None
+    skip_reason: str | None
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "connector_name": self.connector_name,
+            "file_path": self.file_path,
+            "age_days": self.age_days,
+            "agent_enabled": self.agent_enabled,
+            "age_gated": self.age_gated,
+            "ingested": self.ingested.to_dict() if self.ingested is not None else None,
+            "roundtrip": self.roundtrip.to_dict() if self.roundtrip is not None else None,
+            "eligible": self.eligible,
+            "action_taken": self.action_taken,
+            "archived_path": self.archived_path,
+            "tombstone_path": self.tombstone_path,
+            "skip_reason": self.skip_reason,
+        }
+
+
+@dataclass
+class _DecisionBuilder:
+    """Mutable, field-for-field twin of `LifecycleDecision` used while
+    `evaluate_and_act_on_source` walks the gate chain -- `LifecycleDecision`
+    itself stays frozen (an immutable result value), so building it up
+    incrementally across many early-return points needs a separate,
+    type-checked mutable holder rather than an untyped `dict[str, object]`.
+    """
+
+    connector_name: str
+    file_path: str
+    age_days: float | None = None
+    agent_enabled: bool = False
+    age_gated: bool = False
+    ingested: VerificationResult | None = None
+    roundtrip: RoundtripResult | None = None
+    eligible: bool = False
+    action_taken: str | None = None
+    archived_path: str | None = None
+    tombstone_path: str | None = None
+    skip_reason: str | None = None
+
+    def freeze(self) -> LifecycleDecision:
+        return LifecycleDecision(
+            connector_name=self.connector_name,
+            file_path=self.file_path,
+            age_days=self.age_days,
+            agent_enabled=self.agent_enabled,
+            age_gated=self.age_gated,
+            ingested=self.ingested,
+            roundtrip=self.roundtrip,
+            eligible=self.eligible,
+            action_taken=self.action_taken,
+            archived_path=self.archived_path,
+            tombstone_path=self.tombstone_path,
+            skip_reason=self.skip_reason,
+        )
+
+
+def evaluate_and_act_on_source(
+    *,
+    db_path: Path,
+    connector_name: str,
+    file_path: Path,
+    policy: LifecycleConfig,
+    action: str,
+    dry_run: bool,
+    tombstone_dir: Path,
+    now: datetime | None = None,
+    connection: duckdb.DuckDBPyConnection | None = None,
+) -> LifecycleDecision:
+    """Evaluate one candidate through every M8 gate and, only once all of
+    them pass AND `dry_run` is `False`, perform `action` ("archive" or
+    "prune") and write its tombstone.
+
+    Gate order, cheapest and most safety-critical first: per-agent
+    opt-in, age threshold, `verify_ingested` (read-only). `dry_run` is
+    checked immediately after `verify_ingested`, before `verify_roundtrip`
+    ever runs -- `verify_roundtrip` is the only stage in this whole chain
+    that performs a filesystem write (to a throwaway temp directory), so
+    a `dry_run=True` call can never write to disk no matter how many
+    candidates would otherwise be eligible.
+    """
+    if action not in ("archive", "prune"):
+        raise ValueError(f"unknown lifecycle action: {action!r}")
+
+    now = now or datetime.now(timezone.utc)
+    state = _DecisionBuilder(connector_name=connector_name, file_path=str(file_path))
+
+    if connector_name not in policy.enabled_agents:
+        state.skip_reason = f"connector {connector_name!r} is not in lifecycle.enabled_agents"
+        return state.freeze()
+    state.agent_enabled = True
+
+    try:
+        age_days = (now.timestamp() - file_path.stat().st_mtime) / 86400.0
+    except OSError:
+        state.skip_reason = "source file does not exist on disk"
+        return state.freeze()
+    state.age_days = age_days
+
+    if age_days < policy.age_threshold_days:
+        state.skip_reason = "younger than lifecycle.age_threshold_days"
+        return state.freeze()
+    state.age_gated = True
+
+    connector = get_connector_by_name(connector_name)
+    if connector is None or not isinstance(connector, AgentProviderBase):
+        state.skip_reason = f"no registered AgentProviderBase connector named {connector_name!r}"
+        return state.freeze()
+
+    ingested = verify_ingested(db_path, connector, file_path, connection=connection)
+    state.ingested = ingested
+    if not ingested.ok:
+        state.skip_reason = f"verify_ingested failed: {ingested.reason}"
+        return state.freeze()
+
+    if dry_run:
+        state.eligible = True
+        state.skip_reason = "dry_run=True: verify_roundtrip and the action were not attempted"
+        return state.freeze()
+
+    row = _read_source_file_state(db_path, file_path, connection=connection)
+    conversation_id = row["conversation_id"] if row else None
+    project_id = row["project_id"] if row else None
+    if not conversation_id or not isinstance(conversation_id, str):
+        state.skip_reason = "no conversation_id on source_file_state row"
+        return state.freeze()
+
+    try:
+        record = connector.parse(file_path, embedding_id=0)
+    except Exception as exc:
+        state.skip_reason = f"re-parse before roundtrip check failed: {exc}"
+        return state.freeze()
+
+    roundtrip = verify_roundtrip(connector, record)
+    state.roundtrip = roundtrip
+    if not roundtrip.ok:
+        state.skip_reason = f"verify_roundtrip failed: {roundtrip.reason}"
+        return state.freeze()
+
+    checksum = _sha256_file(file_path)
+    meta = _read_conversation_meta(db_path, conversation_id, connection=connection)
+    raw_message_count = meta["message_count"] if meta else None
+    message_count = raw_message_count if isinstance(raw_message_count, int) else record.message_count
+
+    # Tombstone is written BEFORE the irreversible archive_source/prune_source
+    # call, not after: `archived_path` for the "archive" action is fully
+    # predictable (archive_source's own contract is `<name>.zst`, computed
+    # here without touching the file), so nothing about the tombstone's
+    # content actually depends on the action having already run. This
+    # ordering guarantees the module's own invariant ("every successful
+    # archive/prune writes exactly one tombstone entry") even when
+    # `write_tombstone` itself fails: a failure here raises BEFORE the
+    # file is ever touched, so there is no code path that deletes/archives
+    # a file and then fails to record it. The reverse ordering (act, then
+    # tombstone) would instead risk an irreversible deletion with no
+    # tombstone if the write failed afterward -- exactly the forensic gap
+    # this module exists to prevent.
+    predicted_archived_path = (
+        str(file_path.with_name(file_path.name + ".zst")) if action == "archive" else None
+    )
+    entry = TombstoneEntry(
+        action=action,
+        connector_name=connector_name,
+        file_path=str(file_path),
+        conversation_id=conversation_id,
+        project_id=project_id if isinstance(project_id, str) else None,
+        checksum=checksum,
+        message_count=message_count,
+        archived_path=predicted_archived_path,
+        timestamp=now.isoformat(),
+    )
+    tombstone_path = write_tombstone(tombstone_dir, entry)
+
+    if action == "archive":
+        archived = archive_source(file_path)
+        state.archived_path = str(archived)
+    else:
+        prune_source(file_path)
+
+    state.eligible = True
+    state.action_taken = action
+    state.tombstone_path = str(tombstone_path)
+    return state.freeze()
+
+
+def run_lifecycle_action(
+    *,
+    db_path: Path,
+    policy: LifecycleConfig,
+    action: str,
+    dry_run: bool,
+    tombstone_dir: Path,
+    now: datetime | None = None,
+    connection: duckdb.DuckDBPyConnection | None = None,
+) -> list[LifecycleDecision]:
+    """Evaluate every currently-indexed source file against the full M8
+    gate chain, performing `action` ("archive" or "prune") for each one
+    that passes every gate, when `dry_run` is `False`.
+
+    With the shipped defaults (`lifecycle.enabled_agents = []`,
+    `lifecycle.dry_run = true`), this makes zero filesystem writes: every
+    candidate is refused at the per-agent opt-in gate before
+    `verify_ingested` (a read) or `verify_roundtrip`/the action itself
+    (the only writing stages) ever run.
+    """
+    candidates = _iter_indexed_source_files(db_path, connection=connection)
+    return [
+        evaluate_and_act_on_source(
+            db_path=db_path,
+            connector_name=connector_name,
+            file_path=Path(file_path),
+            policy=policy,
+            action=action,
+            dry_run=dry_run,
+            tombstone_dir=tombstone_dir,
+            now=now,
+            connection=connection,
+        )
+        for connector_name, file_path in candidates
+    ]
