@@ -178,3 +178,36 @@ class AiderConnector(AgentProviderBase):
 
         return messages
 
+
+    # -- V3: source lifecycle (M8) --
+
+    def export_original(self, record: ConversationRecord) -> bytes:
+        """Re-serialize as an `.aider.chat.history.md` transcript using the
+        `#### role` header delimiter `_parse_messages` recognizes.
+
+        NOTE: two fields are not reconstructible from `record` alone, both
+        because Aider's format carries no session identity or timestamp of
+        its own -- everything is inferred from the file's OWN filesystem
+        state at parse time, not from file content:
+
+        - `conversation_id` is `sha256(str(path.resolve()))[:16]`, a hash
+          of the file's absolute path.
+        - `created_at`/`updated_at`/every message `timestamp` are all
+          `path.stat().st_mtime` of that same file.
+
+        Once the export is written to a different path (as
+        `verify_roundtrip` always does, to avoid ever writing to the real
+        source location during verification), re-parsing it necessarily
+        yields a different `conversation_id` and different timestamps.
+        `verify_roundtrip` correctly reports this mismatch; Aider
+        conversations are not round-trip provable under this connector's
+        current path/mtime-only identity scheme, so they are not real
+        candidates for `archive_source`/`prune_source` until that scheme
+        changes -- a known, disclosed limitation, not a bug in this export.
+        """
+        parts: list[str] = []
+        for message in record.messages:
+            parts.append(f"#### {message.role}")
+            parts.append(message.content)
+            parts.append("")
+        return "\n".join(parts).encode("utf-8")

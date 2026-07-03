@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
@@ -321,3 +322,65 @@ class CursorConnector(AgentProviderBase):
                 return f"cursor-{db_path.parts[idx + 1]}"
         suffix = hashlib.sha1(db_path.as_posix().encode("utf-8")).hexdigest()[:10]
         return f"cursor-{suffix}"
+
+    # -- V3: source lifecycle (M8) --
+
+    def export_original(self, record: ConversationRecord) -> bytes:
+        """Re-serialize as a minimal Cursor `state.vscdb`-shaped SQLite
+        database (an `ItemTable(key, value)` holding one
+        `composerData:<id>` row and one row per bubble) -- Cursor's native
+        format is rows inside a *shared* per-workspace SQLite state file,
+        not a standalone file, so this is the closest analog `parse()` can
+        read back.
+
+        NOTE: `project_id` is derived by `parse()` from the real
+        `state.vscdb` file's OWN filesystem path (`_project_id_from_db_path`),
+        which cannot be reconstructed from `record` alone once relocated to
+        a different path -- `verify_roundtrip` correctly reports a mismatch
+        on that one field for Cursor conversations. This is expected and is
+        exactly why Cursor's discovered pseudo-paths (see `discover_files`)
+        never reach a real `archive_source`/`prune_source` call in
+        production: they point at a path that does not exist on disk at
+        that literal location (the shared `.vscdb` lives one level up), so
+        `verify_ingested`'s existence check already refuses them before
+        `verify_roundtrip` would ever run.
+        """
+        bubble_ids: list[str] = [f"bubble-{index}" for index in range(len(record.messages))]
+        rows: list[tuple[str, str]] = []
+        for bubble_id, message in zip(bubble_ids, record.messages):
+            rows.append(
+                (
+                    f"bubbleId:{bubble_id}",
+                    json.dumps(
+                        {
+                            "bubbleId": bubble_id,
+                            "rawText": message.content,
+                            "timingInfo": {
+                                "clientEndTime": round(message.timestamp.timestamp() * 1000)
+                            },
+                        }
+                    ),
+                )
+            )
+
+        composer = {
+            "composerId": record.conversation_id,
+            "createdAt": round(record.created_at.timestamp() * 1000),
+            "lastUpdatedAt": round(record.updated_at.timestamp() * 1000),
+            "fullConversationHeadersOnly": [
+                {"bubbleId": bubble_id, "type": 1 if message.role == "user" else 2}
+                for bubble_id, message in zip(bubble_ids, record.messages)
+            ],
+        }
+        rows.insert(0, (f"composerData:{record.conversation_id}", json.dumps(composer)))
+
+        with tempfile.TemporaryDirectory(prefix="searchat-cursor-export-") as tmp:
+            db_path = Path(tmp) / "export.vscdb"
+            con = sqlite3.connect(str(db_path))
+            try:
+                con.execute("CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT)")
+                con.executemany("INSERT INTO ItemTable (key, value) VALUES (?, ?)", rows)
+                con.commit()
+            finally:
+                con.close()
+            return db_path.read_bytes()
