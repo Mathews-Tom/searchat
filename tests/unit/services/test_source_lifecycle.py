@@ -15,6 +15,7 @@ and get their own test coverage in this same file at that point.
 from __future__ import annotations
 
 import hashlib
+import itertools
 import json
 import os
 from datetime import datetime, timedelta, timezone
@@ -26,6 +27,7 @@ import pytest
 from searchat.config.settings import LifecycleConfig
 from searchat.core.connectors import registry
 from searchat.core.connectors.claude import ClaudeConnector
+from searchat.core.connectors.continue_cli import ContinueConnector
 from searchat.services.backup_compression import decompress_file
 from searchat.services.source_lifecycle import (
     LifecycleDecision,
@@ -1263,3 +1265,221 @@ def test_run_lifecycle_action_returns_one_decision_per_indexed_file_with_correct
     assert len(disabled) == 1
     assert disabled[0].eligible is False
     assert disabled[0].agent_enabled is False
+
+# ---------------------------------------------------------------------------
+# evaluate_and_act_on_source: core M8 safety invariant, exhaustively
+# proven across the full boolean state space (M8, closing PR).
+#
+# The whole point of the M8 gate chain is that NO code path can reach a
+# real archive/prune action unless every gate explicitly allowed it. This
+# is the formal statement of that invariant:
+#
+#     decision.action_taken is not None
+#         <=>
+#     agent_enabled AND age_gated AND ingested.ok AND roundtrip.ok
+#         AND (dry_run is False)
+#
+# Every one of the 2**5 = 32 combinations of the five independent axes is
+# built as a REAL fixture -- a real DuckDB via `ensure_tables`, a real
+# Continue-format session JSON, a real on-disk mtime, and a real (correct
+# or deliberately wrong) `source_file_state.file_hash` -- and run through
+# the unmocked `evaluate_and_act_on_source`. `ContinueConnector` is used
+# (rather than `ClaudeConnector`, used everywhere else in this file) so
+# the `roundtrip.ok` axis can be driven by a real, already-documented
+# connector behaviour rather than a mock: per
+# `ContinueConnector.export_original`'s docstring, a session with
+# `workspaceDirectory` unset round-trips (`project_id="continue"` both
+# ways), while the same session WITH `workspaceDirectory` set fails
+# round trip on `project_id` alone (`"continue-<hash>"` vs re-parsed
+# `"continue"`) -- `workspaceDirectory` has no effect on the checksum or
+# message count `verify_ingested` checks, so it isolates the roundtrip
+# axis cleanly from the ingested axis.
+# ---------------------------------------------------------------------------
+
+
+def _write_continue_json(
+    path: Path, *, workspace_directory: str | None, num_exchanges: int = 1
+) -> Path:
+    """Write a real, minimal Continue-format session JSON fixture -- the
+    exact shape `ContinueConnector.parse()` expects: a `history` list of
+    `{"role", "content", "timestamp"}` entries. `workspace_directory`,
+    when not `None`, is Continue's `workspaceDirectory` field, which
+    `parse()` hashes into `project_id` as `f"continue-{sha1(...)[:10]}"`
+    -- and which `export_original` can never reproduce (see its
+    docstring), making it the deliberate lever for the roundtrip axis.
+    """
+    base = datetime(2025, 1, 15, 10, 0, 0)
+    history: list[dict[str, object]] = []
+    for i in range(num_exchanges):
+        history.append(
+            {
+                "role": "user",
+                "content": f"Question {i}",
+                "timestamp": (base + timedelta(minutes=2 * i)).isoformat(),
+            }
+        )
+        history.append(
+            {
+                "role": "assistant",
+                "content": f"Answer {i}",
+                "timestamp": (base + timedelta(minutes=2 * i, seconds=30)).isoformat(),
+            }
+        )
+    payload: dict[str, object] = {
+        "sessionId": path.stem,
+        "title": "Continue property test session",
+        "history": history,
+    }
+    if workspace_directory is not None:
+        payload["workspaceDirectory"] = workspace_directory
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
+
+
+_GATE_INVARIANT_AGE_THRESHOLD_DAYS = 30
+
+
+def _build_gate_invariant_fixture(
+    tmp_path: Path,
+    *,
+    agent_enabled_axis: bool,
+    age_gated_axis: bool,
+    ingested_ok_axis: bool,
+    roundtrip_ok_axis: bool,
+) -> tuple[Path, Path, LifecycleConfig]:
+    """Build one real (db_path, source_file, policy) fixture for the given
+    axis combination. `dry_run` is deliberately NOT part of this fixture
+    -- it is passed straight through to `evaluate_and_act_on_source` by
+    the caller, per the M8 contract that it is a call-time argument, not
+    a fixture property.
+    """
+    connector = ContinueConnector()
+    workspace_directory = None if roundtrip_ok_axis else "/home/user/real-project"
+    source_file = _write_continue_json(
+        tmp_path / "conv-gate-invariant.json", workspace_directory=workspace_directory
+    )
+    real_hash = _sha256(source_file)
+    real_message_count = connector.parse(source_file, embedding_id=0).message_count
+    conversation_id = source_file.stem
+
+    db_path = _new_db(tmp_path)
+    stored_hash = real_hash if ingested_ok_axis else "0" * 64
+    _insert_source_file_state(
+        db_path,
+        file_path=str(source_file),
+        conversation_id=conversation_id,
+        file_hash=stored_hash,
+        connector_name="continue",
+    )
+    _insert_conversation(
+        db_path,
+        conversation_id=conversation_id,
+        file_path=str(source_file),
+        message_count=real_message_count,
+    )
+
+    if age_gated_axis:
+        mtime = (
+            datetime.now() - timedelta(days=_GATE_INVARIANT_AGE_THRESHOLD_DAYS + 10)
+        ).timestamp()
+    else:
+        mtime = (datetime.now() - timedelta(days=1)).timestamp()
+    os.utime(source_file, (mtime, mtime))
+
+    enabled_agents = frozenset({"continue"}) if agent_enabled_axis else frozenset()
+    policy = LifecycleConfig(
+        age_threshold_days=_GATE_INVARIANT_AGE_THRESHOLD_DAYS,
+        enabled_agents=enabled_agents,
+        dry_run=True,  # unused: dry_run is always passed explicitly below
+    )
+    return db_path, source_file, policy
+
+
+_GATE_INVARIANT_AXES = list(itertools.product([True, False], repeat=5))
+_GATE_INVARIANT_IDS = [
+    f"agent_enabled={a}-age_gated={b}-ingested_ok={c}-roundtrip_ok={d}-dry_run={e}"
+    for a, b, c, d, e in _GATE_INVARIANT_AXES
+]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "agent_enabled_axis,age_gated_axis,ingested_ok_axis,roundtrip_ok_axis,dry_run_axis",
+    _GATE_INVARIANT_AXES,
+    ids=_GATE_INVARIANT_IDS,
+)
+def test_evaluate_and_act_on_source_action_taken_iff_every_gate_passes_and_not_dry_run(
+    tmp_path: Path,
+    agent_enabled_axis: bool,
+    age_gated_axis: bool,
+    ingested_ok_axis: bool,
+    roundtrip_ok_axis: bool,
+    dry_run_axis: bool,
+) -> None:
+    """Exhaustive property test over all 2**5 = 32 combinations of the
+    five independent axes: proves `action_taken is not None` if and only
+    if every gate passed AND `dry_run` is `False` -- for every point in
+    the boolean state space, not just the hand-picked scenarios the other
+    gate-order tests in this file cover individually.
+    """
+    if registry.get_connector_by_name("continue") is None:
+        registry.register_connector(ContinueConnector())
+
+    db_path, source_file, policy = _build_gate_invariant_fixture(
+        tmp_path,
+        agent_enabled_axis=agent_enabled_axis,
+        age_gated_axis=age_gated_axis,
+        ingested_ok_axis=ingested_ok_axis,
+        roundtrip_ok_axis=roundtrip_ok_axis,
+    )
+
+    decision = evaluate_and_act_on_source(
+        db_path=db_path,
+        connector_name="continue",
+        file_path=source_file,
+        policy=policy,
+        action="prune",
+        dry_run=dry_run_axis,
+        tombstone_dir=tmp_path / "tombstones",
+    )
+
+    expected_action_taken = (
+        agent_enabled_axis
+        and age_gated_axis
+        and ingested_ok_axis
+        and roundtrip_ok_axis
+        and not dry_run_axis
+    )
+
+    assert (decision.action_taken is not None) == expected_action_taken, (
+        f"invariant violated for agent_enabled={agent_enabled_axis}, "
+        f"age_gated={age_gated_axis}, ingested_ok={ingested_ok_axis}, "
+        f"roundtrip_ok={roundtrip_ok_axis}, dry_run={dry_run_axis}: "
+        f"action_taken={decision.action_taken!r}, skip_reason={decision.skip_reason!r}"
+    )
+
+    # `action="prune"` deletes unconditionally once reached, so the file's
+    # fate on disk is the same invariant viewed from a second, independent
+    # angle: gone iff the action fired, byte-for-byte present otherwise.
+    assert source_file.exists() != expected_action_taken
+    if expected_action_taken:
+        assert decision.action_taken == "prune"
+    else:
+        assert decision.action_taken is None
+
+
+# ---------------------------------------------------------------------------
+# NOTE on the "verify_roundtrip never runs when dry_run=True" invariant:
+# this file's earlier gate-order tests already cover every distinct point
+# on that claim --
+# `test_evaluate_and_act_on_source_skips_before_any_gate_when_connector_not_enabled`
+# (agent_enabled=False), `test_evaluate_and_act_on_source_skips_at_age_gate_before_verify_ingested_runs`
+# (age_gated=False), `test_evaluate_and_act_on_source_blocks_action_when_verify_ingested_fails_checksum`
+# (ingested.ok=False, parametrized over both `dry_run` values), and
+# `test_evaluate_and_act_on_source_dry_run_is_eligible_but_takes_no_action_and_writes_nothing`
+# (every other gate passing) -- each already asserts `decision.roundtrip
+# is None` for its scenario with `dry_run=True`. Together they are the
+# exhaustive case split (which of agent_enabled/age_gated/ingested.ok is
+# the first to fail, or none of them), so a further standalone test would
+# only restate them; deliberately not duplicated here.
+# ---------------------------------------------------------------------------

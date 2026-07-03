@@ -470,6 +470,11 @@ def main():
 
             raise SystemExit(run_disk(argv[1:]))
 
+        if argv and argv[0] == "sources":
+            from searchat.cli.sources_cmd import run_sources
+
+            raise SystemExit(run_sources(argv[1:]))
+
         if "-h" in argv_set or "--help" in argv_set:
             print("Usage: searchat")
             print()
@@ -506,6 +511,8 @@ def main():
             print("  searchat compact [--json] [--in-process]")
             print("  searchat ci-check [--fail-on-contradictions] [--fail-on-staleness-threshold FLOAT]")
             print("  searchat disk [--json]")
+            print("  searchat sources archive [--dry-run=true|false] [--json]")
+            print("  searchat sources prune [--dry-run=true|false] [--json]")
             print()
             return
 
