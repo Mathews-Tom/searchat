@@ -23,7 +23,8 @@ import duckdb
 import pytest
 
 from searchat.core.connectors.claude import ClaudeConnector
-from searchat.services.source_lifecycle import VerificationResult, verify_ingested
+from searchat.services.backup_compression import decompress_file
+from searchat.services.source_lifecycle import VerificationResult, archive_source, verify_ingested
 from searchat.storage.schema import ensure_tables
 
 # ---------------------------------------------------------------------------
@@ -362,3 +363,90 @@ def test_verify_ingested_fails_when_conversation_id_has_no_matching_conversation
     assert result.reason
     assert conversation_id in result.reason
     assert "conversations" in result.reason.lower()
+
+# ---------------------------------------------------------------------------
+# archive_source: zstd-compress-then-verify-then-delete (M8).
+#
+# These tests exercise the real zstandard compress/decompress round trip
+# against real files on disk -- no mocking -- because a bug here can
+# destroy user data (see module docstring). Every scenario asserts the
+# original file's fate: deleted only on a fully verified success, left
+# byte-for-byte untouched on any failure.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_archive_source_compresses_deletes_original_and_roundtrips(tmp_path: Path) -> None:
+    source_file = _write_claude_jsonl(tmp_path / "conv-archive.jsonl", num_exchanges=200)
+    original_bytes = source_file.read_bytes()
+    assert len(original_bytes) > 2000  # "a few KB", not a token fixture
+
+    result = archive_source(source_file)
+
+    assert result == source_file.with_name(source_file.name + ".zst")
+    assert result.exists()
+    assert not source_file.exists()
+
+    decompressed = tmp_path / "roundtrip-decompressed.jsonl"
+    decompress_file(result, decompressed)
+    assert decompressed.read_bytes() == original_bytes
+    assert _sha256(decompressed) == hashlib.sha256(original_bytes).hexdigest()
+
+
+@pytest.mark.unit
+def test_archive_source_raises_file_not_found_for_missing_source(tmp_path: Path) -> None:
+    missing_file = tmp_path / "never-written.jsonl"
+
+    with pytest.raises(FileNotFoundError):
+        archive_source(missing_file)
+
+    assert not missing_file.with_name(missing_file.name + ".zst").exists()
+
+
+@pytest.mark.unit
+def test_archive_source_raises_file_exists_and_leaves_both_files_untouched(tmp_path: Path) -> None:
+    source_file = _write_claude_jsonl(tmp_path / "conv-target-exists.jsonl")
+    archived_path = source_file.with_name(source_file.name + ".zst")
+    archived_path.write_bytes(b"not a real zst archive -- arbitrary pre-existing content")
+
+    source_bytes_before = source_file.read_bytes()
+    archived_bytes_before = archived_path.read_bytes()
+
+    with pytest.raises(FileExistsError):
+        archive_source(source_file)
+
+    assert source_file.read_bytes() == source_bytes_before
+    assert archived_path.read_bytes() == archived_bytes_before
+
+
+@pytest.mark.unit
+def test_archive_source_with_custom_compression_level_still_roundtrips(tmp_path: Path) -> None:
+    source_file = _write_claude_jsonl(tmp_path / "conv-archive-level9.jsonl", num_exchanges=200)
+    original_bytes = source_file.read_bytes()
+
+    result = archive_source(source_file, compression_level=9)
+
+    assert result == source_file.with_name(source_file.name + ".zst")
+    assert result.exists()
+    assert not source_file.exists()
+
+    decompressed = tmp_path / "roundtrip-decompressed-level9.jsonl"
+    decompress_file(result, decompressed)
+    assert decompressed.read_bytes() == original_bytes
+
+
+@pytest.mark.unit
+def test_archive_source_roundtrips_empty_file(tmp_path: Path) -> None:
+    empty_file = tmp_path / "empty.jsonl"
+    empty_file.write_bytes(b"")
+
+    result = archive_source(empty_file)
+
+    assert result == empty_file.with_name(empty_file.name + ".zst")
+    assert result.exists()
+    assert not empty_file.exists()
+
+    decompressed = tmp_path / "roundtrip-decompressed-empty.jsonl"
+    decompress_file(result, decompressed)
+    assert decompressed.exists()
+    assert decompressed.read_bytes() == b""
