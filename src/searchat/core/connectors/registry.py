@@ -93,6 +93,15 @@ def get_connectors() -> tuple[AgentConnector, ...]:
     return tuple(_CONNECTORS)
 
 
+def get_connector_by_name(name: str) -> AgentConnector | None:
+    """Look up a registered connector by its `name` attribute, or `None`
+    if no connector with that name is registered."""
+    for connector in _CONNECTORS:
+        if connector.name == name:
+            return connector
+    return None
+
+
 def discover_all_files(config: Config) -> list[ConnectorMatch]:
     matches: list[ConnectorMatch] = []
     for connector in _CONNECTORS:
