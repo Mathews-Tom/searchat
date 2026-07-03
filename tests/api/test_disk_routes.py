@@ -264,9 +264,12 @@ class TestDiskAccountingEndpoint:
         assert data["agents"][0]["newest_conversation_age_days"] is None
 
     def test_get_disk_accounting_calls_service_with_search_dir_and_config(self, client, mock_report):
-        """The route wires `get_search_dir()`/`get_config()` singletons into the service call."""
+        """The route wires `get_search_dir()`/`get_config()`/the live DuckDB connection into the service call."""
         fake_search_dir = Path("/home/user/.searchat")
         fake_config = Mock(name="fake_config")
+        fake_connection = Mock(name="fake_duckdb_connection")
+        fake_store = Mock(name="fake_duckdb_store")
+        fake_store.connection = fake_connection
 
         with patch(
             'searchat.api.routers.disk.get_search_dir', return_value=fake_search_dir
@@ -275,12 +278,38 @@ class TestDiskAccountingEndpoint:
                 'searchat.api.routers.disk.get_config', return_value=fake_config
             ) as mock_get_config:
                 with patch(
-                    'searchat.api.routers.disk.build_disk_accounting_report',
-                    return_value=mock_report,
-                ) as mock_build:
-                    response = client.get("/api/disk")
+                    'searchat.api.routers.disk.get_duckdb_store', return_value=fake_store
+                ) as mock_get_store:
+                    with patch(
+                        'searchat.api.routers.disk.build_disk_accounting_report',
+                        return_value=mock_report,
+                    ) as mock_build:
+                        response = client.get("/api/disk")
 
         assert response.status_code == 200
         mock_get_dir.assert_called_once()
         mock_get_config.assert_called_once()
-        mock_build.assert_called_once_with(fake_search_dir, fake_config)
+        mock_get_store.assert_called_once()
+        mock_build.assert_called_once_with(fake_search_dir, fake_config, connection=fake_connection)
+
+    def test_get_disk_accounting_falls_back_when_duckdb_store_unavailable(self, client, mock_report):
+        """If `get_duckdb_store()` raises (services not initialized), the route degrades to a
+        fresh-connection call instead of failing the whole request with a 500.
+        """
+        fake_search_dir = Path("/home/user/.searchat")
+        fake_config = Mock(name="fake_config")
+
+        with patch('searchat.api.routers.disk.get_search_dir', return_value=fake_search_dir):
+            with patch('searchat.api.routers.disk.get_config', return_value=fake_config):
+                with patch(
+                    'searchat.api.routers.disk.get_duckdb_store',
+                    side_effect=RuntimeError("Services not initialized"),
+                ):
+                    with patch(
+                        'searchat.api.routers.disk.build_disk_accounting_report',
+                        return_value=mock_report,
+                    ) as mock_build:
+                        response = client.get("/api/disk")
+
+        assert response.status_code == 200
+        mock_build.assert_called_once_with(fake_search_dir, fake_config, connection=None)
