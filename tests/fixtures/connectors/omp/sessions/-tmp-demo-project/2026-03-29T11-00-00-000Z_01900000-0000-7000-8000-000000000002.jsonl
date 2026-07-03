@@ -1,0 +1,7 @@
+{"type":"title","v":1,"title":"Resume deploy script","source":"auto","updatedAt":"2026-03-29T11:05:00.000Z","pad":"                    "}
+{"type":"session","version":3,"id":"01900000-0000-7000-8000-000000000002","timestamp":"2026-03-29T11:00:00.000Z","cwd":"/tmp/demo-project","title":"Deploy script","titleSource":"auto"}
+{"type":"message","id":"n1","parentId":null,"timestamp":"2026-03-29T11:00:05.000Z","message":{"role":"developer","content":[{"type":"text","text":"Resume work on the deploy script."}],"attribution":"agent","timestamp":1743238805000}}
+{this is not valid json
+{"type":"message","id":"n2","parentId":"n1","timestamp":"2026-03-29T11:00:10.000Z","message":{"role":"user","content":[{"type":"text","text":"Run the deploy script and report the exit code"}],"attribution":"user","timestamp":1743238810000}}
+{"type":"message","id":"n3","parentId":"n2","timestamp":"2026-03-29T11:00:15.000Z","message":{"role":"bashExecution","content":[{"type":"text","text":"$ ./deploy.sh\nexit code: 0"}],"timestamp":1743238815000}}
+{"type":"message","id":"n4","parentId":"n3","timestamp":"2026-03-29T11:00:20.000Z","message":{"role":"assistant","content":[{"type":"image","data":"base64placeholder"}],"attribution":"agent","timestamp":1743238820000}}

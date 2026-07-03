@@ -1,0 +1,2 @@
+{"type":"session","version":3,"id":"01900000-0000-7000-8000-0000000000ff","timestamp":"2026-03-29T10:00:30.000Z","cwd":"/tmp/demo-project","title":"reviewer subagent","titleSource":"auto"}
+{"type":"message","id":"s1","parentId":null,"timestamp":"2026-03-29T10:00:31.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Subagent transcript -- must not be discovered as a top-level conversation."}],"attribution":"agent","timestamp":1743235231000}}

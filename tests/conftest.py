@@ -192,6 +192,7 @@ def _isolate_user_agent_dirs(monkeypatch):
     monkeypatch.setattr(PathResolver, "resolve_continue_dirs", staticmethod(lambda _cfg=None: []))
     monkeypatch.setattr(PathResolver, "resolve_cursor_dirs", staticmethod(lambda _cfg=None: []))
     monkeypatch.setattr(PathResolver, "resolve_aider_dirs", staticmethod(lambda _cfg=None: []))
+    monkeypatch.setattr(PathResolver, "resolve_omp_dirs", staticmethod(lambda _cfg=None: []))
 
 
 @pytest.fixture(autouse=True)
