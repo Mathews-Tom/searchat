@@ -164,7 +164,7 @@ function getToolLabel(tool) {
         return 'Aider';
     }
     if (tool === 'omp') {
-        return 'Oh My Pi (OMP)';
+        return 'Oh My Pi';
     }
     return 'Claude Code';
 }
