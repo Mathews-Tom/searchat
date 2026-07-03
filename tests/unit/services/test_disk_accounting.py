@@ -20,12 +20,16 @@ import duckdb
 import pytest
 
 from searchat.services.disk_accounting import (
+    KNOWN_CRUFT_PATTERNS,
     AgentDiskUsage,
+    CruftFinding,
+    CruftPattern,
     DiskAccountingReport,
     _read_indexed_paths_by_connector,
     build_disk_accounting_report,
     compute_agent_disk_usage,
     compute_searchat_self_usage,
+    detect_cruft,
 )
 from searchat.storage.schema import ensure_tables
 
@@ -518,3 +522,145 @@ def test_build_disk_accounting_report_threads_connection_kwarg_to_indexed_paths_
 
     assert received["connection"] is sentinel_connection
     assert received["db_path"] == db_path
+
+
+# ---------------------------------------------------------------------------
+# M7 acceptance: cruft advisor detection primitives (CruftPattern,
+# CruftFinding, KNOWN_CRUFT_PATTERNS, detect_cruft). Report-only -- nothing
+# below ever deletes anything, and a real conversation-bearing path must
+# never be flagged.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_detect_cruft_matches_known_patterns_with_exact_sizes_and_never_flags_conversations(
+    tmp_path: Path,
+) -> None:
+    fake_home = tmp_path / "home"
+    log_db = _write(fake_home / ".codex" / "logs_2.sqlite", 4096)
+    plugin1 = _write(fake_home / ".claude" / "plugins" / "one.json", 100)
+    plugin2 = _write(fake_home / ".claude" / "plugins" / "two.json", 250)
+    plugin3 = _write(fake_home / ".claude" / "plugins" / "nested" / "three.bin", 75)
+    conversation = _write(
+        fake_home / ".codex" / "sessions" / "some-conversation.jsonl", 999
+    )
+
+    results = detect_cruft(home=fake_home)
+
+    by_glob = {finding.path_glob: finding for finding in results}
+    assert by_glob[".codex/logs_2.sqlite"].total_size_bytes == log_db.stat().st_size
+    assert by_glob[".codex/logs_2.sqlite"].file_count == 1
+    assert by_glob[".claude/plugins"].total_size_bytes == sum(
+        p.stat().st_size for p in (plugin1, plugin2, plugin3)
+    )
+    assert by_glob[".claude/plugins"].file_count == 3
+    assert sum(1 for f in results if f.path_glob == ".codex/logs_2.sqlite") == 1
+    assert sum(1 for f in results if f.path_glob == ".claude/plugins") == 1
+    assert all(finding.path != str(conversation) for finding in results)
+    # Registry patterns whose target was never created contribute no finding
+    # at all -- not a zero-sized one.
+    assert not any(f.path_glob == ".omp/cache" for f in results)
+    assert not any(f.path_glob == ".cursor/extensions" for f in results)
+
+
+@pytest.mark.unit
+def test_detect_cruft_results_sorted_largest_first(tmp_path: Path) -> None:
+    fake_home = tmp_path / "home"
+    _write(fake_home / ".codex" / "logs_2.sqlite", 500)
+    _write(fake_home / ".omp" / "stats.db", 9000)
+    _write(fake_home / ".claude" / "shell-snapshots" / "a.txt", 2000)
+    _write(fake_home / ".claude" / "shell-snapshots" / "b.txt", 1000)  # dir totals 3000
+    _write(fake_home / ".omp" / "logs" / "one.log", 100)  # dir totals 100
+
+    results = detect_cruft(home=fake_home)
+
+    assert len(results) == 4
+    sizes = [finding.total_size_bytes for finding in results]
+    assert len(set(sizes)) == 4  # distinct known sizes, not a coincidental tie
+    assert all(sizes[i] >= sizes[i + 1] for i in range(len(sizes) - 1))
+
+
+@pytest.mark.unit
+def test_detect_cruft_home_none_defaults_to_path_home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_home = tmp_path / "home"
+    _write(fake_home / ".codex" / "logs_2.sqlite", 321)
+    monkeypatch.setattr(Path, "home", lambda: fake_home)
+
+    explicit = detect_cruft(home=fake_home)
+    defaulted = detect_cruft()
+
+    assert defaulted == explicit
+    assert len(defaulted) == 1
+
+
+@pytest.mark.unit
+def test_detect_cruft_skips_symlinked_match(tmp_path: Path) -> None:
+    fake_home = tmp_path / "home"
+    real_target_dir = (tmp_path / "real_target").resolve()
+    _write(real_target_dir / "big.bin", 5000)
+    symlink_path = fake_home / ".omp" / "cache"
+    symlink_path.parent.mkdir(parents=True, exist_ok=True)
+    symlink_path.symlink_to(real_target_dir)
+
+    results = detect_cruft(home=fake_home)
+
+    assert not any(finding.path_glob == ".omp/cache" for finding in results)
+
+
+@pytest.mark.unit
+def test_detect_cruft_custom_patterns_override_registry(tmp_path: Path) -> None:
+    fake_home = tmp_path / "home"
+    custom_file = _write(fake_home / "custom" / "thing", 42)
+    custom_pattern = CruftPattern(
+        path_glob="custom/thing", label="Custom", explanation="A custom test pattern."
+    )
+
+    results = detect_cruft(home=fake_home, patterns=(custom_pattern,))
+
+    assert len(results) == 1
+    finding = results[0]
+    assert finding.label == "Custom"
+    assert finding.path_glob == "custom/thing"
+    assert finding.explanation == "A custom test pattern."
+    assert finding.cleanup_hint is None
+    assert finding.total_size_bytes == custom_file.stat().st_size
+    assert finding.file_count == 1
+
+
+@pytest.mark.unit
+def test_cruft_finding_to_dict_serializes_all_seven_fields() -> None:
+    finding = CruftFinding(
+        label="Test Label",
+        path="/fake/home/.tool/cruft",
+        path_glob=".tool/cruft",
+        explanation="A fabricated finding for serialization testing.",
+        cleanup_hint="tool cache clear",
+        total_size_bytes=123456,
+        file_count=7,
+    )
+
+    payload = finding.to_dict()
+
+    assert payload == {
+        "label": "Test Label",
+        "path": "/fake/home/.tool/cruft",
+        "path_glob": ".tool/cruft",
+        "explanation": "A fabricated finding for serialization testing.",
+        "cleanup_hint": "tool cache clear",
+        "total_size_bytes": 123456,
+        "file_count": 7,
+    }
+
+
+@pytest.mark.unit
+def test_known_cruft_patterns_registry_entries_are_well_formed_and_unique() -> None:
+    assert len(KNOWN_CRUFT_PATTERNS) > 0
+    for pattern in KNOWN_CRUFT_PATTERNS:
+        assert pattern.path_glob
+        assert pattern.label
+        assert pattern.explanation
+
+    globs = [pattern.path_glob for pattern in KNOWN_CRUFT_PATTERNS]
+    assert len(globs) == len(set(globs))
