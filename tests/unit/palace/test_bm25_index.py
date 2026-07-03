@@ -7,6 +7,10 @@ from unittest.mock import MagicMock
 import duckdb
 import pytest
 
+pytest.importorskip(
+    "rank_bm25", reason="PalaceBM25Index needs the 'palace' extra (rank-bm25)"
+)
+
 from searchat.models.domain import DistilledObject, FileTouched, Room
 from searchat.palace.bm25_index import PalaceBM25Index
 from searchat.palace.storage import PalaceStorage
