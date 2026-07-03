@@ -137,6 +137,7 @@
 .manage-tool-continue { background: hsl(30 80% 50% / 0.15); color: hsl(30 80% 60%); }
 .manage-tool-cursor { background: hsl(190 60% 50% / 0.15); color: hsl(190 60% 60%); }
 .manage-tool-aider { background: hsl(0 60% 50% / 0.15); color: hsl(0 60% 60%); }
+.manage-tool-omp { background: hsl(320 65% 55% / 0.15); color: hsl(320 65% 60%); }
 
 /* Source path */
 .manage-source-path {

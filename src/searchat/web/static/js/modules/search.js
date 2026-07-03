@@ -163,6 +163,9 @@ function getToolLabel(tool) {
     if (tool === 'aider') {
         return 'Aider';
     }
+    if (tool === 'omp') {
+        return 'Oh My Pi (OMP)';
+    }
     return 'Claude Code';
 }
 
@@ -174,6 +177,7 @@ function detectToolFromPath(filePath) {
     if (normalized.includes('.vscdb.cursor/') && normalized.endsWith('.json')) return 'cursor';
     if (normalized.includes('/.gemini/tmp/') && normalized.includes('/chats/') && normalized.endsWith('.json')) return 'gemini';
     if (normalized.endsWith('/.aider.chat.history.md') || normalized.endsWith('.aider.chat.history.md')) return 'aider';
+    if (normalized.includes('/.omp/agent/sessions/')) return 'omp';
     if (normalized.includes('/.claude/') && normalized.endsWith('.jsonl')) return 'claude';
     if (normalized.includes('/.vibe/') && normalized.endsWith('.json')) return 'vibe';
     if (normalized.endsWith('.jsonl')) return 'claude';

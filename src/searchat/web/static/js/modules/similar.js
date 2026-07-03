@@ -10,6 +10,7 @@ function toolLabelFor(tool) {
     if (tool === 'continue') return 'Continue';
     if (tool === 'cursor') return 'Cursor';
     if (tool === 'aider') return 'Aider';
+    if (tool === 'omp') return 'Oh My Pi (OMP)';
     return 'Claude Code';
 }
 
