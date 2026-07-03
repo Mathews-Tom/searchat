@@ -11,13 +11,13 @@ Coverage map:
   `conversations`/`messages`.
 - `TestRehydrateVerbatim` -- lossless promotion round trip.
 - `TestRunTieringCycle` -- the end-to-end orchestrator.
-
-Later commits/PRs in this stack add search-layer surfacing and the
-fixture-benchmark acceptance tests.
+- `TestBenchmarkAcceptance` -- the M9 fixture-benchmark acceptance
+  criteria: recall@10 and index-size reduction.
 """
 from __future__ import annotations
 
 import sys
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -30,6 +30,15 @@ from searchat.palace.llm import DistillationLLM, DistillationOutput
 from searchat.palace.storage import PalaceStorage
 from searchat.services import distillation_bridge
 from searchat.storage.unified_storage import UnifiedStorage
+
+from tests.fixtures.distillation_benchmark import (
+    MAX_RELATIVE_RECALL_DROP,
+    MIN_INDEX_SIZE_REDUCTION_FACTOR,
+    build_fixture_corpus,
+    build_query_set,
+    distillate_embedding,
+    recall_at_k,
+)
 
 # ---------------------------------------------------------------------------
 # Shared fixtures / helpers
@@ -515,3 +524,167 @@ class TestRunTieringCycle:
         assert stats.conversations_distilled == 0
         assert stats.conversations_evicted == 0
         assert storage.get_row_counts()["exchanges"] == 1
+
+
+# ---------------------------------------------------------------------------
+# 7. M9 fixture-benchmark acceptance criteria
+# ---------------------------------------------------------------------------
+
+
+class _TopicAwareFakeLLM(DistillationLLM):
+    """Embeds the conversation_id into the distillate text so the paired
+    fake embedder can look up this benchmark's precomputed distillate
+    vector for that conversation -- lets the test control distillate
+    embedding geometry precisely without a real LLM or embedding model."""
+
+    def distill(self, inputs):
+        return [
+            DistillationOutput(
+                exchange_core=f"conv={i.conversation_id}",
+                specific_context="distilled",
+                room_assignments=[],
+            )
+            for i in inputs
+        ]
+
+
+class _TopicAwareFakeEmbedder:
+    def __init__(self, topic_by_conversation: dict[str, str]) -> None:
+        self._topic_by_conversation = topic_by_conversation
+
+    def encode(self, texts, batch_size=32):
+        import numpy as np
+
+        vectors = []
+        for text in texts:
+            conversation_id = text.split("\n", 1)[0].removeprefix("conv=")
+            topic = self._topic_by_conversation[conversation_id]
+            vectors.append(distillate_embedding(topic, conversation_id))
+        return np.array(vectors, dtype=np.float32)
+
+
+@dataclass
+class _BenchmarkRun:
+    corpus: list
+    queries: list
+    pre_row_count: int
+    post_row_count: int
+    pre_embedding_by_conversation: dict
+    post_embedding_by_conversation: dict
+    still_hot: set
+    stats: object
+
+
+def _run_benchmark(storage: UnifiedStorage, config: Config, tmp_path: Path) -> _BenchmarkRun:
+    """Seeds the fixture corpus into a real UnifiedStorage, runs the real
+    M9 tiering pipeline (distillation_bridge.run_tiering_cycle through the
+    real Distiller/PalaceStorage, with a topic-aware fake LLM/embedder
+    controlling distillate geometry precisely), and returns everything
+    both acceptance tests need."""
+    base_date = datetime(2026, 7, 1)
+    corpus = build_fixture_corpus(base_date=base_date)
+    queries = build_query_set(corpus)
+    topic_by_conversation = {c.conversation_id: c.topic for c in corpus}
+
+    for conversation in corpus:
+        messages = []
+        seq = 0
+        for exchange in conversation.exchanges:
+            messages.append({
+                "sequence": seq, "role": "user",
+                "content": f"Tell me about {exchange.text}", "timestamp": conversation.updated_at,
+                "has_code": False, "code_blocks": None,
+            })
+            seq += 1
+            messages.append({
+                "sequence": seq, "role": "assistant",
+                "content": f"{exchange.text}. " * 3, "timestamp": conversation.updated_at,
+                "has_code": False, "code_blocks": None,
+            })
+            seq += 1
+        _insert_conversation(
+            storage, conversation_id=conversation.conversation_id,
+            project_id=conversation.project_id, updated_at=conversation.updated_at,
+            messages=messages,
+        )
+        segmented = _segment_exchanges(
+            conversation.conversation_id, conversation.project_id, messages, conversation.updated_at,
+        )
+        assert len(segmented) == len(conversation.exchanges)
+        for exc_row, fixture_exchange in zip(segmented, conversation.exchanges):
+            storage.upsert_exchange(**exc_row)
+            storage.upsert_embedding(exc_row["exchange_id"], fixture_exchange.verbatim_embedding)
+
+    pre_row_count = storage.get_row_counts()["verbatim_embeddings"]
+    pre_embedding_by_conversation = {
+        c.conversation_id: c.exchanges[0].verbatim_embedding for c in corpus
+    }
+
+    config.palace.enabled = True
+    config.distillation.age_threshold_days = 45
+    stats = distillation_bridge.run_tiering_cycle(
+        storage,
+        config=config,
+        llm=_TopicAwareFakeLLM(),
+        search_dir=tmp_path,
+        embedder=_TopicAwareFakeEmbedder(topic_by_conversation),
+        now=base_date,
+    )
+
+    post_row_count = storage.get_row_counts()["verbatim_embeddings"]
+    cur = storage.connection.cursor()
+    still_hot = {
+        row[0]
+        for row in cur.execute("SELECT DISTINCT conversation_id FROM exchanges").fetchall()
+    }
+    cur.close()
+
+    post_embedding_by_conversation: dict[str, list[float]] = {}
+    for c in corpus:
+        if c.conversation_id in still_hot:
+            post_embedding_by_conversation[c.conversation_id] = c.exchanges[0].verbatim_embedding
+        else:
+            post_embedding_by_conversation[c.conversation_id] = distillate_embedding(
+                c.topic, c.conversation_id,
+            )
+
+    return _BenchmarkRun(
+        corpus=corpus,
+        queries=queries,
+        pre_row_count=pre_row_count,
+        post_row_count=post_row_count,
+        pre_embedding_by_conversation=pre_embedding_by_conversation,
+        post_embedding_by_conversation=post_embedding_by_conversation,
+        still_hot=still_hot,
+        stats=stats,
+    )
+
+
+class TestBenchmarkAcceptance:
+    """Exercises the real `distillation_bridge` -> `Distiller` ->
+    `PalaceStorage` pipeline against the fixture corpus, then measures
+    recall@10 and index-size reduction per M9's acceptance criteria."""
+
+    def test_recall_at_10_meets_m9_acceptance_budget(
+        self, storage: UnifiedStorage, config: Config, tmp_path: Path
+    ):
+        run = _run_benchmark(storage, config, tmp_path)
+
+        pre_recall = recall_at_k(run.queries, run.pre_embedding_by_conversation, k=10)
+        assert pre_recall >= 0.99  # sanity: fixture geometry is well-separated
+
+        distilled_queries = [
+            q for q in run.queries if not (q.relevant_conversation_ids & run.still_hot)
+        ]
+        assert distilled_queries, "fixture must actually exercise the distilled path"
+
+        pre_recall_distilled = recall_at_k(distilled_queries, run.pre_embedding_by_conversation, k=10)
+        post_recall_distilled = recall_at_k(distilled_queries, run.post_embedding_by_conversation, k=10)
+
+        assert pre_recall_distilled > 0
+        relative_drop = (pre_recall_distilled - post_recall_distilled) / pre_recall_distilled
+        assert relative_drop <= MAX_RELATIVE_RECALL_DROP, (
+            f"distilled-conversation recall@10 dropped {relative_drop:.1%}, "
+            f"exceeding the {MAX_RELATIVE_RECALL_DROP:.0%} budget "
+            f"(pre={pre_recall_distilled:.3f}, post={post_recall_distilled:.3f})"
+        )
