@@ -83,6 +83,22 @@ def test_detect_connector_aider(tmp_path):
     assert connector.name == "aider"
 
 
+def test_detect_connector_omp(tmp_path):
+    slug_dir = tmp_path / "-tmp-demo-project"
+    slug_dir.mkdir()
+    file_path = slug_dir / "2026-03-29T10-00-00-000Z_01900000-0000-7000-8000-000000000001.jsonl"
+    file_path.write_text(
+        json.dumps({"type": "session", "id": "s1", "cwd": "/tmp/demo-project", "title": "t"}) + "\n",
+        encoding="utf-8",
+    )
+    connector = detect_connector(file_path)
+    assert connector.name == "omp"
+
+
+def test_get_connectors_includes_omp():
+    assert "omp" in {c.name for c in get_connectors()}
+
+
 def test_supported_extensions():
     extensions = supported_extensions()
     assert ".jsonl" in extensions
