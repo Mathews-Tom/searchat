@@ -1,4 +1,4 @@
-"""Protocol conformance tests for all 8 agent connectors.
+"""Protocol conformance tests for all 9 agent connectors.
 
 Verifies that each connector:
 1. Is an instance of AgentProviderBase (ABC)
@@ -21,6 +21,7 @@ from searchat.core.connectors.gemini import GeminiCLIConnector
 from searchat.core.connectors.continue_cli import ContinueConnector
 from searchat.core.connectors.cursor import CursorConnector
 from searchat.core.connectors.aider import AiderConnector
+from searchat.core.connectors.omp import OmpConnector
 
 
 ALL_CONNECTOR_CLASSES = [
@@ -32,6 +33,7 @@ ALL_CONNECTOR_CLASSES = [
     ContinueConnector,
     CursorConnector,
     AiderConnector,
+    OmpConnector,
 ]
 
 EXPECTED_NAMES = {
@@ -43,6 +45,7 @@ EXPECTED_NAMES = {
     ContinueConnector: "continue",
     CursorConnector: "cursor",
     AiderConnector: "aider",
+    OmpConnector: "omp",
 }
 
 

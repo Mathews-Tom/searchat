@@ -23,6 +23,7 @@ def test_discover_watch_dirs_uses_connector_watch_dirs(monkeypatch, tmp_path: Pa
     monkeypatch.setattr(PathResolver, "resolve_continue_dirs", staticmethod(lambda _cfg=None: []))
     monkeypatch.setattr(PathResolver, "resolve_cursor_dirs", staticmethod(lambda _cfg=None: []))
     monkeypatch.setattr(PathResolver, "resolve_aider_dirs", staticmethod(lambda _cfg=None: []))
+    monkeypatch.setattr(PathResolver, "resolve_omp_dirs", staticmethod(lambda _cfg=None: []))
 
     config = Mock()
     watch_dirs = discover_watch_dirs(config)
@@ -33,3 +34,23 @@ def test_discover_watch_dirs_uses_connector_watch_dirs(monkeypatch, tmp_path: Pa
 
     # Ensure we are not generating a directory per discovered file.
     assert len(watch_dirs) == 3
+
+
+def test_discover_watch_dirs_includes_omp_root(monkeypatch, tmp_path: Path):
+    omp_root = tmp_path / "omp-sessions"
+    omp_root.mkdir()
+
+    monkeypatch.setattr(PathResolver, "resolve_claude_dirs", staticmethod(lambda _cfg=None: []))
+    monkeypatch.setattr(PathResolver, "resolve_vibe_dirs", staticmethod(lambda: []))
+    monkeypatch.setattr(PathResolver, "resolve_opencode_dirs", staticmethod(lambda _cfg=None: []))
+    monkeypatch.setattr(PathResolver, "resolve_codex_dirs", staticmethod(lambda _cfg=None: []))
+    monkeypatch.setattr(PathResolver, "resolve_gemini_dirs", staticmethod(lambda _cfg=None: []))
+    monkeypatch.setattr(PathResolver, "resolve_continue_dirs", staticmethod(lambda _cfg=None: []))
+    monkeypatch.setattr(PathResolver, "resolve_cursor_dirs", staticmethod(lambda _cfg=None: []))
+    monkeypatch.setattr(PathResolver, "resolve_aider_dirs", staticmethod(lambda _cfg=None: []))
+    monkeypatch.setattr(PathResolver, "resolve_omp_dirs", staticmethod(lambda _cfg=None: [omp_root]))
+
+    config = Mock()
+    watch_dirs = discover_watch_dirs(config)
+
+    assert watch_dirs == [omp_root]

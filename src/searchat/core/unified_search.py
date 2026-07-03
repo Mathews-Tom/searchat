@@ -827,6 +827,8 @@ class UnifiedSearchEngine:
     def _get_cache_key(self, query: str, algo: AlgorithmType, filters: SearchFilters | None) -> str:
         key_parts = [query, algo.value]
         if filters:
+            if filters.tool:
+                key_parts.append(f"tool:{filters.tool}")
             if filters.project_ids:
                 key_parts.append(f"projects:{','.join(filters.project_ids)}")
             if filters.date_from:
