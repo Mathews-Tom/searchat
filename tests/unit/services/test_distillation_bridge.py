@@ -9,9 +9,10 @@ Coverage map:
   degrades to a disabled feature, never a crash.
 - `TestEvictHotRows` -- hot-index eviction never touches
   `conversations`/`messages`.
+- `TestRehydrateVerbatim` -- lossless promotion round trip.
 - `TestRunTieringCycle` -- the end-to-end orchestrator.
 
-Later commits/PRs in this stack add the promotion path and the
+Later commits/PRs in this stack add search-layer surfacing and the
 fixture-benchmark acceptance tests.
 """
 from __future__ import annotations
@@ -23,7 +24,8 @@ from pathlib import Path
 import pytest
 
 from searchat.config import Config
-from searchat.core.unified_indexer import _segment_exchanges
+from searchat.core.progress import NullProgressAdapter
+from searchat.core.unified_indexer import UnifiedIndexer, _segment_exchanges
 from searchat.palace.llm import DistillationLLM, DistillationOutput
 from searchat.palace.storage import PalaceStorage
 from searchat.services import distillation_bridge
@@ -387,7 +389,41 @@ class TestEvictHotRows:
 
 
 # ---------------------------------------------------------------------------
-# 5. End-to-end orchestrator
+# 5. Promotion path (rehydrate_verbatim)
+# ---------------------------------------------------------------------------
+
+
+class TestRehydrateVerbatim:
+    def _snapshot_exchanges(self, storage: UnifiedStorage, conversation_id: str) -> list[tuple]:
+        cur = storage.connection.cursor()
+        try:
+            return cur.execute(
+                "SELECT exchange_id, conversation_id, project_id, ply_start, ply_end, "
+                "exchange_text, created_at FROM exchanges WHERE conversation_id = ? "
+                "ORDER BY exchange_id",
+                [conversation_id],
+            ).fetchall()
+        finally:
+            cur.close()
+
+    def _snapshot_embeddings(self, storage: UnifiedStorage, conversation_id: str) -> list[tuple]:
+        cur = storage.connection.cursor()
+        try:
+            return cur.execute(
+                "SELECT ve.exchange_id, ve.embedding FROM verbatim_embeddings ve "
+                "JOIN exchanges e ON e.exchange_id = ve.exchange_id "
+                "WHERE e.conversation_id = ? ORDER BY ve.exchange_id",
+                [conversation_id],
+            ).fetchall()
+        finally:
+            cur.close()
+
+    def test_raises_key_error_when_conversation_has_no_messages(self, storage: UnifiedStorage, config: Config):
+        with pytest.raises(KeyError):
+            distillation_bridge.rehydrate_verbatim(storage, "missing", config=config)
+
+# ---------------------------------------------------------------------------
+# 6. End-to-end orchestrator
 # ---------------------------------------------------------------------------
 
 

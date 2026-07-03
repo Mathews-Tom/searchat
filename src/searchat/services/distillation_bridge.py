@@ -8,15 +8,14 @@ The missing integration seam (enhancement-analysis Gap 2) between
 (``palace.duckdb``) + FAISS index and has never read from or written back
 to ``UnifiedStorage``.
 
-This PR lands three of the four per-conversation pipeline steps, plus the
-end-to-end orchestrator:
+Per-conversation pipeline:
 
-1. ``select_distillation_candidates`` -- conversations older than a
-   configurable age threshold that still have at least one hot exchange
-   row. Palace-independent: reads only ``UnifiedStorage``, no faiss/
-   rank-bm25 import. Already-distilled-and-evicted conversations drop out
-   of candidacy on their own (no exchange rows left), so this is
-   naturally idempotent across repeated runs.
+1. ``select_distillation_candidates`` -- conversations older than
+   ``distillation.age_threshold_days`` that still have at least one hot
+   exchange row. Palace-independent: reads only ``UnifiedStorage``, no
+   faiss/rank-bm25 import. Already-distilled-and-evicted conversations
+   drop out of candidacy on their own (no exchange rows left), so this
+   is naturally idempotent across repeated runs.
 2. ``generate_distillate`` -- invokes the palace ``Distiller`` for one
    conversation via ``_UnifiedStorageDuckStore``, an adapter translating
    ``UnifiedStorage``'s actual read methods into the
@@ -27,18 +26,23 @@ end-to-end orchestrator:
    ``messages`` (the source-of-truth tables M2's ``rebuild_derived`` and
    M4's backup export already treat as "Parquet") are never referenced
    by this function.
+4. ``rehydrate_verbatim`` -- the promotion path: re-derives a single
+   conversation's ``exchanges``/``verbatim_embeddings`` from its
+   still-intact ``conversations``/``messages`` rows, reusing
+   ``core.unified_indexer``'s deterministic segmentation
+   (``_segment_exchanges``) and embedding (``UnifiedIndexer._embed_exchanges``)
+   logic -- the same machinery M2's ``rebuild_derived`` uses, applied to
+   one conversation instead of the whole store. Lossless: identical
+   messages always segment into identical exchange ids/text.
 
 ``run_tiering_cycle`` wires 1-3 together into one pass: select, distill,
 then evict every conversation that ends up with a persisted distillate.
 
-The promotion path (``rehydrate_verbatim``) lands in a later PR of this
-stack.
-
 Graceful degradation: importing this module never touches the `palace`
-extra (faiss-cpu, rank-bm25). ``select_distillation_candidates`` and
-``evict_hot_rows`` need only DuckDB and never raise for a missing extra.
-Only ``generate_distillate`` and ``run_tiering_cycle`` need palace, and
-raise/report ``PalaceUnavailableError``/``palace_unavailable=True`` --
+extra (faiss-cpu, rank-bm25). ``select_distillation_candidates``,
+``evict_hot_rows``, and ``rehydrate_verbatim`` need only DuckDB and never
+raise for a missing extra. Only ``generate_distillate`` and
+``run_tiering_cycle`` need palace, and raise ``PalaceUnavailableError`` --
 never a bare ``ImportError`` -- when it is not installed.
 """
 from __future__ import annotations
@@ -52,6 +56,9 @@ from typing import TYPE_CHECKING
 
 from searchat.config.settings import Config
 from searchat.core.logging_config import get_logger
+from searchat.core.progress import NullProgressAdapter
+from searchat.core.unified_indexer import UnifiedIndexer, _segment_exchanges
+from searchat.storage.schema import create_fts_indexes, create_hnsw_indexes
 from searchat.storage.unified_storage import UnifiedStorage
 
 if TYPE_CHECKING:
@@ -67,8 +74,8 @@ class PalaceUnavailableError(RuntimeError):
     extra (faiss-cpu, rank-bm25) but it is not installed.
 
     Callers should treat this as "feature disabled", not a crash:
-    candidate selection and eviction never raise it (they need only
-    DuckDB). Only distillate generation does.
+    candidate selection, eviction, and rehydrate_verbatim never raise it
+    (they need only DuckDB). Only distillate generation does.
     """
 
 
@@ -298,6 +305,79 @@ def evict_hot_rows(storage: UnifiedStorage, conversation_id: str) -> EvictionRes
         )
     finally:
         cur.close()
+
+
+# ---------------------------------------------------------------------------
+# 4. Promotion path (palace-independent)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class RehydrationResult:
+    """Outcome of `rehydrate_verbatim` for one conversation."""
+
+    conversation_id: str
+    exchanges_restored: int
+    embeddings_restored: int
+
+
+def rehydrate_verbatim(
+    storage: UnifiedStorage,
+    conversation_id: str,
+    *,
+    config: Config,
+) -> RehydrationResult:
+    """Re-derive `exchanges`/`verbatim_embeddings` for exactly one
+    conversation from its still-intact `conversations`/`messages` rows --
+    the promotion path for a conversation previously evicted by
+    `evict_hot_rows`.
+
+    Reuses `core.unified_indexer`'s own segmentation
+    (`_segment_exchanges`) and embedding (`UnifiedIndexer._embed_exchanges`)
+    logic -- the exact machinery `rebuild_derived` (M2) uses for a full
+    rebuild -- applied to one conversation. Deterministic: the same
+    messages always segment into the same exchange ids/text, so a
+    distill-then-rehydrate round trip reproduces the original rows
+    exactly.
+
+    Raises `KeyError` if the conversation has no persisted messages to
+    rehydrate from (that would mean the source-of-truth itself is gone,
+    a condition this function cannot recover from).
+    """
+    record = storage.get_conversation_record(conversation_id)
+    if record is None or not record["messages"]:
+        raise KeyError(
+            f"cannot rehydrate: conversation not found or has no messages: {conversation_id!r}"
+        )
+
+    exchanges = _segment_exchanges(
+        conversation_id,
+        record["project_id"],
+        record["messages"],
+        record["created_at"],
+    )
+    for exchange in exchanges:
+        storage.upsert_exchange(**exchange)
+
+    embeddings_restored = 0
+    if exchanges:
+        # search_dir is unused by _embed_exchanges when storage= is given
+        # directly (only config.embedding + the injected storage matter).
+        indexer = UnifiedIndexer(search_dir=Path("."), config=config, storage=storage)
+        embeddings_restored = indexer._embed_exchanges(exchanges, NullProgressAdapter())
+
+    create_fts_indexes(storage.connection)
+    create_hnsw_indexes(
+        storage.connection,
+        ef_construction=config.storage.hnsw_ef_construction,
+        m=config.storage.hnsw_m,
+    )
+
+    return RehydrationResult(
+        conversation_id=conversation_id,
+        exchanges_restored=len(exchanges),
+        embeddings_restored=embeddings_restored,
+    )
 
 
 # ---------------------------------------------------------------------------
