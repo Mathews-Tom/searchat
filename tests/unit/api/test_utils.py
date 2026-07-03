@@ -27,6 +27,11 @@ class TestDetectToolFromPath:
     def test_aider(self):
         assert detect_tool_from_path("/project/.aider.chat.history.md") == "aider"
 
+    def test_omp(self):
+        assert detect_tool_from_path(
+            "/home/user/.omp/agent/sessions/-my-project/2026-03-29T10-00-00-000Z_uuid.jsonl"
+        ) == "omp"
+
     def test_claude_jsonl(self):
         assert detect_tool_from_path("/home/user/.claude/projects/conv.jsonl") == "claude"
 
