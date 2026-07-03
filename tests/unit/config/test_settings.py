@@ -82,6 +82,57 @@ class TestRetentionConfig:
         assert policy is not None
         assert policy.never_touch is True
 
+    def test_malformed_block_unknown_key_fails_closed_to_never_touch(self) -> None:
+        """An unrecognized key is ambiguous -- M12's contract is that this
+        resolves to never_touch=True, never to silently dropping the
+        unknown key and falling through to the global default."""
+        from searchat.config.settings import RetentionConfig
+
+        config = RetentionConfig.from_dict(
+            {"project": {"proj-a": {"archive_after_dyas": 30}}}
+        )
+        policy = config.resolve("proj-a")
+        assert policy is not None
+        assert policy.never_touch is True
+
+    def test_malformed_block_non_bool_never_touch_fails_closed(self) -> None:
+        from searchat.config.settings import RetentionConfig
+
+        config = RetentionConfig.from_dict(
+            {"project": {"proj-a": {"never_touch": "yes"}}}
+        )
+        policy = config.resolve("proj-a")
+        assert policy is not None
+        assert policy.never_touch is True
+
+    def test_malformed_block_negative_day_count_fails_closed(self) -> None:
+        from searchat.config.settings import RetentionConfig
+
+        config = RetentionConfig.from_dict(
+            {"project": {"proj-a": {"archive_after_days": -1}}}
+        )
+        policy = config.resolve("proj-a")
+        assert policy is not None
+        assert policy.never_touch is True
+
+    def test_malformed_block_non_integer_day_count_fails_closed(self) -> None:
+        from searchat.config.settings import RetentionConfig
+
+        config = RetentionConfig.from_dict(
+            {"project": {"proj-a": {"distill_after_days": "soon"}}}
+        )
+        policy = config.resolve("proj-a")
+        assert policy is not None
+        assert policy.never_touch is True
+
+    def test_malformed_block_not_a_table_fails_closed(self) -> None:
+        from searchat.config.settings import RetentionConfig
+
+        config = RetentionConfig.from_dict({"project": {"proj-a": "not-a-table"}})
+        policy = config.resolve("proj-a")
+        assert policy is not None
+        assert policy.never_touch is True
+
     def test_non_dict_project_section_yields_empty_config(self) -> None:
         from searchat.config.settings import RetentionConfig
 
