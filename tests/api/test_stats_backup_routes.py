@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from searchat.api.app import app
 from searchat.api import state as api_state
+from searchat.services.backup_contracts import RestoreResult
 
 
 @pytest.fixture
@@ -54,7 +55,7 @@ def mock_backup_manager():
     mock.create_backup.return_value = mock_metadata
     mock.create_incremental_backup.return_value = mock_metadata
     mock.list_backups.return_value = [mock_metadata]
-    mock.restore_from_backup.return_value = None
+    mock.restore_from_backup.return_value = RestoreResult(pre_restore_backup=None, rebuild_performed=False)
     mock.get_backup_summary.return_value = {
         "name": "backup_20250120_100000",
         "backup_mode": "full",
@@ -461,7 +462,9 @@ class TestRestoreBackupEndpoint:
         backup_dir.mkdir()
 
         mock_backup_manager.backup_dir = tmp_path
-        mock_backup_manager.restore_from_backup.return_value = None
+        mock_backup_manager.restore_from_backup.return_value = RestoreResult(
+            pre_restore_backup=None, rebuild_performed=False
+        )
 
         with patch('searchat.api.routers.backup.get_backup_manager', return_value=mock_backup_manager):
             with patch('searchat.api.routers.backup.invalidate_search_index') as invalidate:
@@ -470,7 +473,7 @@ class TestRestoreBackupEndpoint:
             assert response.status_code == 200
             data = response.json()
 
-            assert list(data) == ["success", "restored_from", "message"]
+            assert list(data) == ["success", "restored_from", "message", "rebuild_performed"]
             assert data["success"] is True
             assert data["restored_from"] == "backup_20250120_100000"
             assert "Successfully restored" in data["message"]
@@ -498,7 +501,9 @@ class TestRestoreBackupEndpoint:
         # Mock pre-restore backup metadata
         pre_restore_meta = Mock()
         pre_restore_meta.to_dict.return_value = {"backup_path": "/backups/pre_restore"}
-        mock_backup_manager.restore_from_backup.return_value = pre_restore_meta
+        mock_backup_manager.restore_from_backup.return_value = RestoreResult(
+            pre_restore_backup=pre_restore_meta, rebuild_performed=True
+        )
 
         with patch('searchat.api.routers.backup.get_backup_manager', return_value=mock_backup_manager):
             with patch('searchat.api.routers.backup.invalidate_search_index'):
@@ -507,7 +512,10 @@ class TestRestoreBackupEndpoint:
                 assert response.status_code == 200
                 data = response.json()
 
-                assert list(data) == ["success", "restored_from", "message", "pre_restore_backup"]
+                assert list(data) == [
+                    "success", "restored_from", "message", "rebuild_performed", "pre_restore_backup"
+                ]
+                assert data["rebuild_performed"] is True
                 assert "pre_restore_backup" in data
                 assert data["pre_restore_backup"]["backup_path"] == "/backups/pre_restore"
 
