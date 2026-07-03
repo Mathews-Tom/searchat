@@ -10,6 +10,7 @@ resilience in `build_disk_accounting_report`, and age-histogram bucketing.
 from __future__ import annotations
 
 import os
+import shutil
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -25,6 +26,7 @@ from searchat.services.disk_accounting import (
     CruftFinding,
     CruftPattern,
     DiskAccountingReport,
+    SearchatSelfUsage,
     _read_indexed_paths_by_connector,
     build_disk_accounting_report,
     compute_agent_disk_usage,
@@ -664,3 +666,179 @@ def test_known_cruft_patterns_registry_entries_are_well_formed_and_unique() -> N
 
     globs = [pattern.path_glob for pattern in KNOWN_CRUFT_PATTERNS]
     assert len(globs) == len(set(globs))
+
+
+# ---------------------------------------------------------------------------
+# M7 acceptance: cruft findings wired into the unified report
+# (build_disk_accounting_report, DiskAccountingReport.cruft_findings) plus
+# the milestone's hard mutation-guard acceptance bar -- a test mocking
+# os.remove/shutil.rmtree to raise on any call must pass, proving no code
+# path in this milestone can ever delete or modify anything on disk.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_build_disk_accounting_report_wires_cruft_findings_into_report(
+    temp_search_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    watch_dir = tmp_path / "claude_home"
+    conv = _write(watch_dir / "conv.jsonl", 10)
+    connector = _FakeConnector(
+        name="claude", supported_extensions=(".jsonl",), files=[conv]
+    )
+    monkeypatch.setattr(
+        "searchat.services.disk_accounting.get_connectors", lambda: (connector,)
+    )
+
+    fixed_findings = (
+        CruftFinding(
+            label="Codex CLI log database",
+            path="/fake/home/.codex/logs_2.sqlite",
+            path_glob=".codex/logs_2.sqlite",
+            explanation="fabricated for this test",
+            cleanup_hint=None,
+            total_size_bytes=4096,
+            file_count=1,
+        ),
+        CruftFinding(
+            label="Claude Code plugins",
+            path="/fake/home/.claude/plugins",
+            path_glob=".claude/plugins",
+            explanation="fabricated for this test",
+            cleanup_hint="claude plugins clean",
+            total_size_bytes=2048,
+            file_count=3,
+        ),
+    )
+    monkeypatch.setattr(
+        "searchat.services.disk_accounting.detect_cruft", lambda: fixed_findings
+    )
+
+    config = Mock()
+    config.storage.resolve_duckdb_path.return_value = (
+        temp_search_dir / "data" / "missing.duckdb"
+    )
+
+    report = build_disk_accounting_report(temp_search_dir, config)
+
+    assert report.cruft_findings == fixed_findings
+    assert report.to_dict()["cruft_findings"] == [
+        finding.to_dict() for finding in fixed_findings
+    ]
+
+
+@pytest.mark.unit
+def test_build_disk_accounting_report_resilient_when_detect_cruft_raises(
+    temp_search_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One bad subsystem (the cruft scan) never fails the whole report -- mirrors the
+    per-connector resilience contract in
+    test_build_disk_accounting_report_skips_connector_whose_accounting_raises.
+    """
+    watch_dir = tmp_path / "claude_home"
+    conv = _write(watch_dir / "conv.jsonl", 10)
+    connector = _FakeConnector(
+        name="claude", supported_extensions=(".jsonl",), files=[conv]
+    )
+    monkeypatch.setattr(
+        "searchat.services.disk_accounting.get_connectors", lambda: (connector,)
+    )
+
+    def _raise() -> tuple[CruftFinding, ...]:
+        raise RuntimeError("cruft scan blew up")
+
+    monkeypatch.setattr("searchat.services.disk_accounting.detect_cruft", _raise)
+
+    config = Mock()
+    config.storage.resolve_duckdb_path.return_value = (
+        temp_search_dir / "data" / "missing.duckdb"
+    )
+
+    report = build_disk_accounting_report(temp_search_dir, config)
+
+    assert report.cruft_findings == ()
+    assert len(report.agents) == 1  # the rest of the report still assembles
+
+
+@pytest.mark.unit
+def test_disk_accounting_report_cruft_findings_defaults_to_empty_tuple() -> None:
+    """Omitting `cruft_findings` entirely keeps pre-M7 direct constructions working."""
+    report = DiskAccountingReport(
+        agents=(),
+        searchat_self=SearchatSelfUsage(
+            search_dir="/home/user/.searchat",
+            subdirectories=(),
+            total_size_bytes=0,
+            total_file_count=0,
+        ),
+        generated_at="2026-07-03T12:00:00",
+    )
+
+    assert report.cruft_findings == ()
+    assert report.to_dict()["cruft_findings"] == []
+
+
+@pytest.mark.unit
+def test_detect_cruft_and_build_disk_accounting_report_never_call_os_remove_or_shutil_rmtree(
+    temp_search_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The milestone's hard acceptance bar: mocking os.remove/shutil.rmtree to raise on
+    any call must never trip, for detect_cruft() alone AND for the full
+    build_disk_accounting_report() -> cruft-findings path -- proving no code path in
+    this milestone can ever delete or modify anything on disk.
+    """
+    fake_home = tmp_path / "home"
+    log_db = _write(fake_home / ".codex" / "logs_2.sqlite", 4096)
+    plugin1 = _write(fake_home / ".claude" / "plugins" / "one.json", 100)
+    plugin2 = _write(fake_home / ".claude" / "plugins" / "two.json", 250)
+    stats_db = _write(fake_home / ".omp" / "stats.db", 512)
+
+    remove_guard = Mock(
+        side_effect=AssertionError("detect_cruft must never call os.remove")
+    )
+    rmtree_guard = Mock(
+        side_effect=AssertionError("detect_cruft must never call shutil.rmtree")
+    )
+    monkeypatch.setattr(os, "remove", remove_guard)
+    monkeypatch.setattr(shutil, "rmtree", rmtree_guard)
+
+    # (i) detect_cruft() alone completes without tripping either guard, and (ii) it
+    # returns the real findings the fixture created -- proving the guard didn't
+    # accidentally block a legitimate read too (which would be a false-negative pass).
+    results = detect_cruft(home=fake_home)
+
+    assert len(results) == 3
+    by_glob = {finding.path_glob: finding for finding in results}
+    assert by_glob[".codex/logs_2.sqlite"].total_size_bytes == log_db.stat().st_size
+    assert by_glob[".claude/plugins"].total_size_bytes == (
+        plugin1.stat().st_size + plugin2.stat().st_size
+    )
+    assert by_glob[".omp/stats.db"].total_size_bytes == stats_db.stat().st_size
+    remove_guard.assert_not_called()
+    rmtree_guard.assert_not_called()
+
+    # Full build_disk_accounting_report() -> cruft-findings path, with detect_cruft's
+    # real home=None default (Path.home is patched to the fixture tree, not
+    # detect_cruft itself -- mocking detect_cruft away would defeat the point of this
+    # test) and both guards still active.
+    monkeypatch.setattr(Path, "home", lambda: fake_home)
+    monkeypatch.setattr("searchat.services.disk_accounting.get_connectors", lambda: ())
+
+    config = Mock()
+    config.storage.resolve_duckdb_path.return_value = (
+        temp_search_dir / "data" / "missing.duckdb"
+    )
+
+    report = build_disk_accounting_report(temp_search_dir, config)
+
+    assert len(report.cruft_findings) == 3
+    report_by_glob = {finding.path_glob: finding for finding in report.cruft_findings}
+    assert (
+        report_by_glob[".codex/logs_2.sqlite"].total_size_bytes == log_db.stat().st_size
+    )
+    assert report_by_glob[".claude/plugins"].total_size_bytes == (
+        plugin1.stat().st_size + plugin2.stat().st_size
+    )
+    assert report_by_glob[".omp/stats.db"].total_size_bytes == stats_db.stat().st_size
+    remove_guard.assert_not_called()
+    rmtree_guard.assert_not_called()

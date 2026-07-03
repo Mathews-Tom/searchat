@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from searchat.api.app import app
 from searchat.services.disk_accounting import (
     AgentDiskUsage,
+    CruftFinding,
     DiskAccountingReport,
     SearchatSelfUsage,
     SubdirectoryUsage,
@@ -109,7 +110,12 @@ class TestDiskAccountingEndpoint:
         assert response.status_code == 200
         data = response.json()
 
-        assert list(data) == ["agents", "searchat_self", "generated_at"]
+        assert list(data) == [
+            "agents",
+            "searchat_self",
+            "generated_at",
+            "cruft_findings",
+        ]
         assert data["generated_at"] == "2026-07-03T12:00:00"
 
         assert len(data["agents"]) == 1
@@ -222,6 +228,71 @@ class TestDiskAccountingEndpoint:
         assert isinstance(subdir["exists"], bool)
         assert isinstance(subdir["total_size_bytes"], int)
         assert isinstance(subdir["file_count"], int)
+
+    def test_get_disk_accounting_includes_cruft_findings(
+        self, client, mock_agent_usage, mock_subdirectories
+    ):
+        """Cruft findings round-trip through `CruftFindingResponse` with all seven
+        fields intact -- proves the response model doesn't silently drop/rename
+        anything.
+        """
+        cruft_findings = (
+            CruftFinding(
+                label="Codex CLI log database",
+                path="/home/user/.codex/logs_2.sqlite",
+                path_glob=".codex/logs_2.sqlite",
+                explanation="OpenAI Codex CLI's internal SQLite log store.",
+                cleanup_hint=None,
+                total_size_bytes=4096,
+                file_count=1,
+            ),
+            CruftFinding(
+                label="Claude Code plugins",
+                path="/home/user/.claude/plugins",
+                path_glob=".claude/plugins",
+                explanation="Installed Claude Code plugin and MCP-server data.",
+                cleanup_hint="claude plugins clean",
+                total_size_bytes=2048,
+                file_count=3,
+            ),
+        )
+        report = DiskAccountingReport(
+            agents=(mock_agent_usage,),
+            searchat_self=SearchatSelfUsage(
+                search_dir="/home/user/.searchat",
+                subdirectories=mock_subdirectories,
+                total_size_bytes=52428800,
+                total_file_count=8,
+            ),
+            generated_at="2026-07-03T12:00:00",
+            cruft_findings=cruft_findings,
+        )
+
+        with patch(
+            "searchat.api.routers.disk.get_search_dir",
+            return_value=Path("/home/user/.searchat"),
+        ):
+            with patch("searchat.api.routers.disk.get_config", return_value=Mock()):
+                with patch(
+                    "searchat.api.routers.disk.build_disk_accounting_report",
+                    return_value=report,
+                ):
+                    response = client.get("/api/disk")
+
+        assert response.status_code == 200
+        data = response.json()
+
+        assert len(data["cruft_findings"]) == 2
+        for expected, actual in zip(cruft_findings, data["cruft_findings"]):
+            assert actual == {
+                "label": expected.label,
+                "path": expected.path,
+                "path_glob": expected.path_glob,
+                "explanation": expected.explanation,
+                "cleanup_hint": expected.cleanup_hint,
+                "total_size_bytes": expected.total_size_bytes,
+                "file_count": expected.file_count,
+            }
 
     def test_get_disk_accounting_null_ages_when_no_conversations(self, client, mock_subdirectories):
         """Optional age fields serialize as JSON null when no conversation files exist."""
