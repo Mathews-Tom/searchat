@@ -54,8 +54,8 @@ def test_encrypted_incremental_backup_restore(monkeypatch: pytest.MonkeyPatch, t
 
     parquet = live / "data" / "conversations" / "conv.parquet"
     settings = live / "config" / "settings.toml"
-    removed = live / "data" / "indices" / "removed.bin"
-    added = live / "data" / "indices" / "added.bin"
+    removed = live / "data" / "code" / "removed.bin"
+    added = live / "data" / "code" / "added.bin"
 
     _write_bytes(parquet, b"PAR1\n")
     _write_bytes(settings, b"a = 1\n")
@@ -78,7 +78,7 @@ def test_encrypted_incremental_backup_restore(monkeypatch: pytest.MonkeyPatch, t
 
     assert settings.read_bytes() == b"a = 2\n"
     assert not removed.exists()
-    assert (live / "data" / "indices" / "added.bin").read_bytes() == b"new\n"
+    assert (live / "data" / "code" / "added.bin").read_bytes() == b"new\n"
     assert parquet.read_bytes() == b"PAR1\n"
 
 

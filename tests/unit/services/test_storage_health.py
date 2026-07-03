@@ -411,8 +411,8 @@ def test_build_storage_doctor_report_assembles_all_sections(
 
     db_path = data_root / "searchat.duckdb"
     con = duckdb.connect(str(db_path))
-    con.execute("CREATE TABLE conversations(id INTEGER)")
-    con.execute("INSERT INTO conversations SELECT * FROM range(10)")
+    con.execute("CREATE TABLE dummy_bloat(id INTEGER)")
+    con.execute("INSERT INTO dummy_bloat SELECT * FROM range(10)")
     con.execute("CHECKPOINT")
     con.close()
 
