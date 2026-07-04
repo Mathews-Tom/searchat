@@ -412,12 +412,14 @@ def maybe_auto_compact_on_shutdown() -> None:
         from searchat.services.compaction import run_auto_compact_if_needed
 
         db_path = _config.storage.resolve_duckdb_path(_search_dir)
+        conn = _duckdb_store.connection if _duckdb_store is not None else None
         result = run_auto_compact_if_needed(
             db_path,
             _search_dir,
             auto_trigger_ratio=_config.compaction.auto_trigger_ratio,
             min_interval_days=_config.compaction.min_interval_days,
             timeout_seconds=_config.compaction.max_duration_seconds,
+            conn=conn,
         )
         if result is None:
             return

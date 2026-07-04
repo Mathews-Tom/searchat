@@ -772,6 +772,32 @@ class TestRunAutoCompactIfNeeded:
         assert result is None
         assert _sha256(db_path) == checksum_before
 
+    def test_reuses_live_connection_without_opening_a_conflicting_one(self, tmp_path: Path) -> None:
+        """Regression test: `api/dependencies.py::maybe_auto_compact_on_shutdown`
+        passes the live server's own (`read_only=False`) `UnifiedStorage`
+        connection as `conn`. Before this fix, the bloat-ratio size checks
+        below always opened a second, differently-configured connection to
+        the same file, which DuckDB rejects from within the same process --
+        silently disabling the shutdown auto-trigger on every real deployment.
+        """
+        search_dir = tmp_path
+        db_path = search_dir / "data" / "searchat.duckdb"
+        db_path.parent.mkdir(parents=True)
+        _build_indexed_bloated_db(db_path)
+
+        live_conn = duckdb.connect(str(db_path), read_only=False)
+        try:
+            with patch("searchat.services.storage_health.compute_bloat_ratio", return_value=2.5):
+                result = comp.run_auto_compact_if_needed(
+                    db_path, search_dir, auto_trigger_ratio=3.0, min_interval_days=7, conn=live_conn
+                )
+        finally:
+            live_conn.close()
+
+        # Below threshold: never fires. The point of this test is that the
+        # in-process size checks above did not raise while `live_conn` was open.
+        assert result is None
+
     def test_never_raises_on_internal_error(self, tmp_path: Path) -> None:
         search_dir = tmp_path
         db_path = search_dir / "data" / "searchat.duckdb"
