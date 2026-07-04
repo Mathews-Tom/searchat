@@ -313,38 +313,105 @@ _EMPTY_DATABASE_SIZE_INFO = DatabaseSizeInfo(
 )
 
 
-def inspect_database_size(db_path: Path) -> DatabaseSizeInfo:
+def _read_database_size(con: duckdb.DuckDBPyConnection) -> DatabaseSizeInfo:
+    """Read `PRAGMA database_size` from an already-open connection/cursor."""
+    cursor = con.execute("PRAGMA database_size")
+    row = cursor.fetchone()
+    if row is None:
+        return _EMPTY_DATABASE_SIZE_INFO
+    columns = {desc[0]: value for desc, value in zip(cursor.description, row)}
+    block_size = int(columns.get("block_size", 0) or 0)
+    total_blocks = int(columns.get("total_blocks", 0) or 0)
+    used_blocks = int(columns.get("used_blocks", 0) or 0)
+    free_blocks = int(columns.get("free_blocks", 0) or 0)
+    wal_bytes = _parse_duckdb_size(str(columns.get("wal_size", "0 bytes")))
+    return DatabaseSizeInfo(
+        total_bytes=block_size * total_blocks,
+        block_size=block_size,
+        total_blocks=total_blocks,
+        used_blocks=used_blocks,
+        free_blocks=free_blocks,
+        wal_bytes=wal_bytes,
+    )
+
+
+def inspect_database_size(
+    db_path: Path, *, conn: duckdb.DuckDBPyConnection | None = None
+) -> DatabaseSizeInfo:
     """Read PRAGMA database_size for `db_path` without mutating it.
 
     Returns an all-zero report when `db_path` does not exist yet (fresh install).
+
+    `conn`: an already-open connection to `db_path` to read through (e.g. a
+    live server's own storage connection), via a fresh cursor on it, instead
+    of opening a brand-new `duckdb.connect()` to the same file. DuckDB
+    refuses a second same-process connection to a file with a different
+    configuration (e.g. the server's `read_only=False` vs. this function's
+    own `read_only=True`) — pass `conn` whenever one is already open in this
+    process (see `build_storage_doctor_report`); leave it `None` for a
+    standalone caller, such as the `searchat doctor` CLI, that owns no other
+    connection to `db_path`.
     """
     if not db_path.exists():
         return _EMPTY_DATABASE_SIZE_INFO
+    if conn is not None:
+        cursor = conn.cursor()
+        try:
+            return _read_database_size(cursor)
+        finally:
+            cursor.close()
     con = duckdb.connect(str(db_path), read_only=True)
     try:
-        cursor = con.execute("PRAGMA database_size")
-        row = cursor.fetchone()
-        if row is None:
-            return _EMPTY_DATABASE_SIZE_INFO
-        columns = {desc[0]: value for desc, value in zip(cursor.description, row)}
-        block_size = int(columns.get("block_size", 0) or 0)
-        total_blocks = int(columns.get("total_blocks", 0) or 0)
-        used_blocks = int(columns.get("used_blocks", 0) or 0)
-        free_blocks = int(columns.get("free_blocks", 0) or 0)
-        wal_bytes = _parse_duckdb_size(str(columns.get("wal_size", "0 bytes")))
-        return DatabaseSizeInfo(
-            total_bytes=block_size * total_blocks,
-            block_size=block_size,
-            total_blocks=total_blocks,
-            used_blocks=used_blocks,
-            free_blocks=free_blocks,
-            wal_bytes=wal_bytes,
-        )
+        return _read_database_size(con)
     finally:
         con.close()
 
 
-def estimate_live_data_size(db_path: Path) -> int:
+def _estimate_live_data_size_via(con: duckdb.DuckDBPyConnection) -> int:
+    """Compute the live-data byte estimate from an already-open connection/cursor."""
+    size_row = con.execute("PRAGMA database_size").fetchone()
+    if size_row is None:
+        return 0
+    columns = {desc[0]: value for desc, value in zip(con.description, size_row)}
+    block_size = int(columns.get("block_size", 0) or 0)
+    if block_size <= 0:
+        return 0
+
+    schemas = [
+        row[0]
+        for row in con.execute(
+            "SELECT DISTINCT table_schema FROM information_schema.tables "
+            "WHERE table_schema = 'main' OR table_schema LIKE 'fts_main_%'"
+        ).fetchall()
+    ]
+
+    live_blocks: set[int] = set()
+    for schema in schemas:
+        tables = [
+            row[0]
+            for row in con.execute(
+                "SELECT table_name FROM information_schema.tables WHERE table_schema = ?",
+                [schema],
+            ).fetchall()
+        ]
+        for table in tables:
+            qualified = f'"{schema}"."{table}"'
+            try:
+                block_rows = con.execute(
+                    "SELECT DISTINCT block_id FROM pragma_storage_info(?) "
+                    "WHERE block_id IS NOT NULL AND block_id >= 0",
+                    [qualified],
+                ).fetchall()
+            except duckdb.Error:
+                continue
+            live_blocks.update(int(row[0]) for row in block_rows)
+
+    return len(live_blocks) * block_size
+
+
+def estimate_live_data_size(
+    db_path: Path, *, conn: duckdb.DuckDBPyConnection | None = None
+) -> int:
     """Estimate the bytes actually occupied by live tables in `db_path`.
 
     Sums the distinct storage blocks referenced by `pragma_storage_info` across
@@ -357,49 +424,22 @@ def estimate_live_data_size(db_path: Path) -> int:
     exactly the bloat `searchat compact` (M3) reclaims.
 
     Returns 0 when `db_path` does not exist yet.
+
+    `conn`: see `inspect_database_size` — reuse an already-open connection
+    via a fresh cursor instead of opening a new, differently-configured
+    connection to the same file from within the same process.
     """
     if not db_path.exists():
         return 0
+    if conn is not None:
+        cursor = conn.cursor()
+        try:
+            return _estimate_live_data_size_via(cursor)
+        finally:
+            cursor.close()
     con = duckdb.connect(str(db_path), read_only=True)
     try:
-        size_row = con.execute("PRAGMA database_size").fetchone()
-        if size_row is None:
-            return 0
-        columns = {desc[0]: value for desc, value in zip(con.description, size_row)}
-        block_size = int(columns.get("block_size", 0) or 0)
-        if block_size <= 0:
-            return 0
-
-        schemas = [
-            row[0]
-            for row in con.execute(
-                "SELECT DISTINCT table_schema FROM information_schema.tables "
-                "WHERE table_schema = 'main' OR table_schema LIKE 'fts_main_%'"
-            ).fetchall()
-        ]
-
-        live_blocks: set[int] = set()
-        for schema in schemas:
-            tables = [
-                row[0]
-                for row in con.execute(
-                    "SELECT table_name FROM information_schema.tables WHERE table_schema = ?",
-                    [schema],
-                ).fetchall()
-            ]
-            for table in tables:
-                qualified = f'"{schema}"."{table}"'
-                try:
-                    block_rows = con.execute(
-                        "SELECT DISTINCT block_id FROM pragma_storage_info(?) "
-                        "WHERE block_id IS NOT NULL AND block_id >= 0",
-                        [qualified],
-                    ).fetchall()
-                except duckdb.Error:
-                    continue
-                live_blocks.update(int(row[0]) for row in block_rows)
-
-        return len(live_blocks) * block_size
+        return _estimate_live_data_size_via(con)
     finally:
         con.close()
 
@@ -587,11 +627,20 @@ class StorageDoctorReport:
         }
 
 
-def build_storage_doctor_report(search_dir: Path, config: Config) -> StorageDoctorReport:
-    """Assemble the full read-only storage doctor report for `search_dir`."""
+def build_storage_doctor_report(
+    search_dir: Path, config: Config, *, conn: duckdb.DuckDBPyConnection | None = None
+) -> StorageDoctorReport:
+    """Assemble the full read-only storage doctor report for `search_dir`.
+
+    `conn`: an already-open connection to the store's DuckDB file to reuse
+    for the size checks, e.g. the live server's own connection when this is
+    called in-process from `/api/health` — see `inspect_database_size` for
+    why opening a fresh connection there would fail. Leave `None` for a
+    standalone caller such as the `searchat doctor` CLI.
+    """
     db_path = config.storage.resolve_duckdb_path(search_dir)
-    size_info = inspect_database_size(db_path)
-    live_bytes = estimate_live_data_size(db_path)
+    size_info = inspect_database_size(db_path, conn=conn)
+    live_bytes = estimate_live_data_size(db_path, conn=conn)
     backups = audit_backup_redundancy(search_dir / "backups", search_dir)
     harness_sources = estimate_harness_source_sizes(config)
     last_backup_at, last_backup_age_seconds = estimate_last_backup_age(search_dir)

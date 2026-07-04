@@ -217,6 +217,56 @@ def test_estimate_live_data_size_matches_known_block_count(tmp_path: Path) -> No
     assert estimate_live_data_size(db_path) == len(known_blocks) * block_size
 
 
+def test_inspect_database_size_reuses_open_connection_without_opening_new_one(
+    tmp_path: Path,
+) -> None:
+    """Regression test: a live `searchat web` process holds its own DuckDB
+    connection open `read_only=False` (see `api/dependencies.py`). Opening a
+    second, differently-configured connection to the same file from within
+    the same process raises DuckDB's "different configuration"
+    ConnectionException -- `inspect_database_size` must read through the
+    caller's own connection via `conn=` instead of ever opening a new one
+    when called in-process alongside a live store (see
+    `build_storage_doctor_report` and `/api/health`'s storage section).
+    """
+    db_path = tmp_path / "live.duckdb"
+    live_conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        live_conn.execute("CREATE TABLE conversations(id INTEGER)")
+        live_conn.execute("INSERT INTO conversations SELECT * FROM range(5)")
+        live_conn.execute("CHECKPOINT")
+
+        info = inspect_database_size(db_path, conn=live_conn)
+    finally:
+        live_conn.close()
+
+    assert info.total_bytes > 0
+    assert info.block_size > 0
+    assert info.total_blocks > 0
+
+
+def test_estimate_live_data_size_reuses_open_connection_without_opening_new_one(
+    tmp_path: Path,
+) -> None:
+    """Same regression as `inspect_database_size` above, for the other
+    function `build_storage_doctor_report` calls against the DuckDB file."""
+    db_path = tmp_path / "live.duckdb"
+    live_conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        live_conn.execute("CREATE TABLE conversations(id INTEGER, payload VARCHAR)")
+        live_conn.execute(
+            "INSERT INTO conversations SELECT i, md5(i::VARCHAR) FROM range(2000) t(i)"
+        )
+        live_conn.execute("CHECKPOINT")
+
+        live_bytes = estimate_live_data_size(db_path, conn=live_conn)
+    finally:
+        live_conn.close()
+
+    assert live_bytes > 0
+
+
+
 def test_compute_bloat_ratio_pure_math() -> None:
     assert compute_bloat_ratio(3_000_000, 1_000_000) == pytest.approx(3.0)
     assert compute_bloat_ratio(1_000_000, 1_000_000) == pytest.approx(1.0)
@@ -442,3 +492,42 @@ def test_build_storage_doctor_report_assembles_all_sections(
     assert payload["db_exists"] is True
     assert isinstance(payload["backups"], list)
     assert isinstance(payload["harness_sources"], list)
+
+
+def test_build_storage_doctor_report_reuses_live_server_connection(
+    temp_search_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression test for `/api/health`'s `storage` section failing
+    whenever queried against a running `searchat web` process. The live
+    app's `UnifiedStorage` connection is opened `read_only=False` (see
+    `api/dependencies.py`); before this fix, `build_storage_doctor_report`
+    unconditionally opened its own second, differently-configured
+    `read_only=True` connection to the same file, which DuckDB rejects with
+    "Can't open a connection to same database file with a different
+    configuration than existing connections" whenever called in-process
+    alongside that live connection. It must instead read through the
+    caller-supplied `conn` via a fresh cursor.
+    """
+    data_root = temp_search_dir / "data"
+    (data_root / "conversations").mkdir(parents=True, exist_ok=True)
+    (data_root / "conversations" / "conv.parquet").write_bytes(b"PAR1conv")
+
+    db_path = data_root / "searchat.duckdb"
+    live_conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        live_conn.execute("CREATE TABLE dummy_bloat(id INTEGER)")
+        live_conn.execute("INSERT INTO dummy_bloat SELECT * FROM range(10)")
+        live_conn.execute("CHECKPOINT")
+
+        monkeypatch.setattr("searchat.services.storage_health.get_connectors", lambda: ())
+
+        config = Mock()
+        config.storage.resolve_duckdb_path.return_value = db_path
+
+        report = build_storage_doctor_report(temp_search_dir, config, conn=live_conn)
+    finally:
+        live_conn.close()
+
+    assert report.db_exists is True
+    assert report.total_bytes > 0
+    assert report.live_bytes > 0

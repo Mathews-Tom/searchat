@@ -697,6 +697,7 @@ def run_auto_compact_if_needed(
     auto_trigger_ratio: float,
     min_interval_days: int,
     timeout_seconds: float | None = None,
+    conn: duckdb.DuckDBPyConnection | None = None,
 ) -> CompactionResult | None:
     """Consult M1's bloat ratio and the compaction-state sidecar; compact
     only when both thresholds are exceeded.
@@ -708,6 +709,16 @@ def run_auto_compact_if_needed(
     `timeout_seconds` is forwarded to `compact_database` -- bounding a
     hung child here matters even more than usual, since this function is
     called from the graceful-shutdown path.
+
+    `conn`: the live server's own DuckDB connection (still open at
+    shutdown time -- see `api/dependencies.py::maybe_auto_compact_on_shutdown`),
+    reused for the bloat-ratio size checks below instead of opening a
+    second, differently-configured connection to the same file, which
+    DuckDB rejects from within the same process (see
+    `services/storage_health.py::inspect_database_size`). Not threaded
+    into `compact_database` itself, which always runs the actual
+    compaction in an isolated subprocess -- a separate process, so no
+    such conflict is possible there.
     """
     from searchat.services.storage_health import (
         compute_bloat_ratio,
@@ -720,8 +731,8 @@ def run_auto_compact_if_needed(
         return None
 
     try:
-        size_info = inspect_database_size(db_path)
-        live_bytes = estimate_live_data_size(db_path)
+        size_info = inspect_database_size(db_path, conn=conn)
+        live_bytes = estimate_live_data_size(db_path, conn=conn)
         ratio = compute_bloat_ratio(size_info.total_bytes, live_bytes)
         state = read_compaction_state(search_dir)
         if not should_auto_compact(

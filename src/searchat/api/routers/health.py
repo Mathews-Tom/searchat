@@ -154,7 +154,10 @@ def _build_storage_report() -> dict[str, Any]:
     from searchat.services.storage_health import build_storage_doctor_report
 
     try:
-        report = build_storage_doctor_report(deps.get_search_dir(), deps.get_config())
+        store = deps.get_duckdb_store()
+        report = build_storage_doctor_report(
+            deps.get_search_dir(), deps.get_config(), conn=store.connection
+        )
     except Exception as exc:
         return {"status": "error", "error": str(exc)}
     return report.to_dict()

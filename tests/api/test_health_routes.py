@@ -126,7 +126,9 @@ def test_health_deep_healthy_all_pass(monkeypatch: pytest.MonkeyPatch, tmp_path:
     monkeypatch.setattr(deps, "_search_dir", tmp_path)
     monkeypatch.setattr(deps, "_search_engine", engine)
     monkeypatch.setattr(deps, "_backup_manager", backup_manager)
-    monkeypatch.setattr(deps, "_config", MagicMock())
+    config = MagicMock()
+    config.storage.resolve_duckdb_path.return_value = tmp_path / "data" / "searchat.duckdb"
+    monkeypatch.setattr(deps, "_config", config)
 
     mod = _api_app_module()
     client = TestClient(mod.app, raise_server_exceptions=False)
@@ -163,7 +165,9 @@ def test_health_deep_degraded_on_failure(monkeypatch: pytest.MonkeyPatch, tmp_pa
     monkeypatch.setattr(deps, "_search_dir", tmp_path)
     monkeypatch.setattr(deps, "_search_engine", None)
     monkeypatch.setattr(deps, "_backup_manager", backup_manager)
-    monkeypatch.setattr(deps, "_config", MagicMock())
+    config = MagicMock()
+    config.storage.resolve_duckdb_path.return_value = tmp_path / "data" / "searchat.duckdb"
+    monkeypatch.setattr(deps, "_config", config)
 
     mod = _api_app_module()
     client = TestClient(mod.app, raise_server_exceptions=False)
@@ -197,7 +201,9 @@ def test_health_deep_faiss_not_loaded_when_engine_none(
     monkeypatch.setattr(deps, "_search_dir", tmp_path)
     monkeypatch.setattr(deps, "_search_engine", None)
     monkeypatch.setattr(deps, "_backup_manager", backup_manager)
-    monkeypatch.setattr(deps, "_config", MagicMock())
+    config = MagicMock()
+    config.storage.resolve_duckdb_path.return_value = tmp_path / "data" / "searchat.duckdb"
+    monkeypatch.setattr(deps, "_config", config)
 
     mod = _api_app_module()
     client = TestClient(mod.app, raise_server_exceptions=False)
@@ -236,7 +242,9 @@ def test_health_deep_includes_latency_timings(
     monkeypatch.setattr(deps, "_search_dir", tmp_path)
     monkeypatch.setattr(deps, "_search_engine", engine)
     monkeypatch.setattr(deps, "_backup_manager", backup_manager)
-    monkeypatch.setattr(deps, "_config", MagicMock())
+    config = MagicMock()
+    config.storage.resolve_duckdb_path.return_value = tmp_path / "data" / "searchat.duckdb"
+    monkeypatch.setattr(deps, "_config", config)
 
     mod = _api_app_module()
     client = TestClient(mod.app, raise_server_exceptions=False)
@@ -276,7 +284,9 @@ def test_health_deep_disk_space_warning(
     monkeypatch.setattr(deps, "_search_dir", tmp_path)
     monkeypatch.setattr(deps, "_search_engine", engine)
     monkeypatch.setattr(deps, "_backup_manager", backup_manager)
-    monkeypatch.setattr(deps, "_config", MagicMock())
+    config = MagicMock()
+    config.storage.resolve_duckdb_path.return_value = tmp_path / "data" / "searchat.duckdb"
+    monkeypatch.setattr(deps, "_config", config)
 
     # Simulate low disk space: 500MB free
     low_usage = MagicMock()
@@ -322,9 +332,11 @@ def test_health_deep_includes_storage_section_with_real_data(
         "searchat.services.storage_health.get_connectors", lambda: ()
     )
 
+    live_conn = duckdb.connect(str(db_path), read_only=True)
     store = MagicMock()
     store.validate_parquet_scan.return_value = None
     store.count_conversations.return_value = 42
+    store.connection = live_conn
 
     faiss_index = MagicMock()
     faiss_index.ntotal = 100
@@ -346,17 +358,20 @@ def test_health_deep_includes_storage_section_with_real_data(
 
     mod = _api_app_module()
     client = TestClient(mod.app, raise_server_exceptions=False)
-    resp = client.get("/api/health")
-    assert resp.status_code == 200
-    body = resp.json()
+    try:
+        resp = client.get("/api/health")
+        assert resp.status_code == 200
+        body = resp.json()
 
-    storage = body["storage"]
-    assert storage["db_exists"] is True
-    assert storage["total_bytes"] > 0
-    assert storage["live_bytes"] > 0
-    assert storage["bloat_ratio"] >= 1.0
-    assert storage["harness_sources"] == []
-    assert isinstance(storage["backups"], list)
+        storage = body["storage"]
+        assert storage["db_exists"] is True
+        assert storage["total_bytes"] > 0
+        assert storage["live_bytes"] > 0
+        assert storage["bloat_ratio"] >= 1.0
+        assert storage["harness_sources"] == []
+        assert isinstance(storage["backups"], list)
+    finally:
+        live_conn.close()
 
 
 def test_health_deep_storage_section_degrades_gracefully_on_error(
