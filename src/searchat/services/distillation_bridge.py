@@ -54,7 +54,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from searchat.config.settings import Config
+from searchat.config.settings import Config, RetentionConfig
 from searchat.core.logging_config import get_logger
 from searchat.core.progress import NullProgressAdapter
 from searchat.core.unified_indexer import UnifiedIndexer, _segment_exchanges
@@ -153,27 +153,58 @@ def select_distillation_candidates(
     *,
     age_threshold_days: int,
     now: datetime | None = None,
+    retention: RetentionConfig | None = None,
 ) -> list[str]:
     """Conversation ids eligible for distillation: `updated_at` older than
     `age_threshold_days` AND still present in the hot index (at least one
     `exchanges` row). Already-evicted conversations are structurally
     excluded -- they have zero exchange rows -- making repeated calls
     naturally idempotent without consulting palace state at all.
+
+    `retention` (M12), when passed, is consulted per-conversation BEFORE
+    `age_threshold_days`: a conversation whose project resolves to
+    `never_touch` is excluded outright, and a project's
+    `distill_after_days` override replaces `age_threshold_days` for
+    that conversation's cutoff. `retention=None` (the default)
+    reproduces the exact pre-M12 code path (a single SQL-side cutoff,
+    no per-row project lookup).
     """
     now = now or datetime.now()
-    cutoff = now - timedelta(days=age_threshold_days)
     cur = storage.connection.cursor()
     try:
+        if retention is None:
+            cutoff = now - timedelta(days=age_threshold_days)
+            rows = cur.execute(
+                "SELECT DISTINCT c.conversation_id FROM conversations c "
+                "JOIN exchanges e ON e.conversation_id = c.conversation_id "
+                "WHERE c.updated_at < ? "
+                "ORDER BY c.conversation_id",
+                [cutoff],
+            ).fetchall()
+            return [row[0] for row in rows]
+
         rows = cur.execute(
-            "SELECT DISTINCT c.conversation_id FROM conversations c "
+            "SELECT DISTINCT c.conversation_id, c.project_id, c.updated_at "
+            "FROM conversations c "
             "JOIN exchanges e ON e.conversation_id = c.conversation_id "
-            "WHERE c.updated_at < ? "
             "ORDER BY c.conversation_id",
-            [cutoff],
         ).fetchall()
-        return [row[0] for row in rows]
     finally:
         cur.close()
+
+    candidates: list[str] = []
+    for conversation_id, project_id, updated_at in rows:
+        resolved_project_id = project_id if isinstance(project_id, str) and project_id else None
+        project_policy = retention.resolve(resolved_project_id)
+        threshold_days = age_threshold_days
+        if project_policy is not None:
+            if project_policy.never_touch:
+                continue
+            if project_policy.distill_after_days is not None:
+                threshold_days = project_policy.distill_after_days
+        if updated_at < now - timedelta(days=threshold_days):
+            candidates.append(conversation_id)
+    return candidates
 
 
 # ---------------------------------------------------------------------------
@@ -422,6 +453,7 @@ def run_tiering_cycle(
         storage,
         age_threshold_days=config.distillation.age_threshold_days,
         now=now,
+        retention=config.retention,
     )
     if not candidates:
         return TieringCycleStats(0, 0, 0, 0, 0, palace_unavailable=False)

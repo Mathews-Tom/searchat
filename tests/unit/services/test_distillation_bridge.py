@@ -202,6 +202,81 @@ class TestSelectDistillationCandidates:
         )
         assert candidates == ["a-conv", "b-conv"]
 
+    def test_retention_never_touch_project_excluded_even_when_older_than_global_threshold(
+        self, storage: UnifiedStorage
+    ) -> None:
+        """M12: a conversation whose project resolves to never_touch is
+        excluded outright, even though it is far older than
+        age_threshold_days -- a sibling conversation in a different
+        project is still selected, proving the exclusion is
+        project-specific, not a side effect of passing `retention`."""
+        from searchat.config.settings import RetentionConfig
+
+        now = datetime(2026, 1, 1)
+        never_touch_messages = _make_messages(1)
+        _insert_conversation(
+            storage,
+            conversation_id="never-touch-conv",
+            project_id="proj-never-touch",
+            updated_at=now - timedelta(days=400),
+            messages=never_touch_messages,
+        )
+        _seed_hot_exchanges(storage, "never-touch-conv", "proj-never-touch", never_touch_messages)
+
+        other_messages = _make_messages(1)
+        _insert_conversation(
+            storage,
+            conversation_id="other-conv",
+            project_id="proj-1",
+            updated_at=now - timedelta(days=400),
+            messages=other_messages,
+        )
+        _seed_hot_exchanges(storage, "other-conv", "proj-1", other_messages)
+
+        retention = RetentionConfig.from_dict(
+            {"project": {"proj-never-touch": {"never_touch": True}}}
+        )
+        candidates = distillation_bridge.select_distillation_candidates(
+            storage, age_threshold_days=180, now=now, retention=retention,
+        )
+        assert candidates == ["other-conv"]
+
+    def test_retention_project_distill_after_days_override_used_instead_of_global(
+        self, storage: UnifiedStorage
+    ) -> None:
+        """M12: a project's distill_after_days override replaces
+        age_threshold_days for that project's conversations -- a
+        conversation too young for the (larger) global threshold is
+        still selected once the (smaller) per-project override applies,
+        and is NOT selected without the override present."""
+        from searchat.config.settings import RetentionConfig
+
+        now = datetime(2026, 1, 1)
+        messages = _make_messages(1)
+        # 10 days old: younger than the global threshold (180) but older
+        # than the project's override (5).
+        _insert_conversation(
+            storage,
+            conversation_id="fast-distill-conv",
+            project_id="proj-fast-distill",
+            updated_at=now - timedelta(days=10),
+            messages=messages,
+        )
+        _seed_hot_exchanges(storage, "fast-distill-conv", "proj-fast-distill", messages)
+
+        without_override = distillation_bridge.select_distillation_candidates(
+            storage, age_threshold_days=180, now=now,
+        )
+        assert without_override == []
+
+        retention = RetentionConfig.from_dict(
+            {"project": {"proj-fast-distill": {"distill_after_days": 5}}}
+        )
+        with_override = distillation_bridge.select_distillation_candidates(
+            storage, age_threshold_days=180, now=now, retention=retention,
+        )
+        assert with_override == ["fast-distill-conv"]
+
 
 # ---------------------------------------------------------------------------
 # 2. Distillate generation
