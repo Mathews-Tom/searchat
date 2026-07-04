@@ -1266,6 +1266,228 @@ def test_run_lifecycle_action_returns_one_decision_per_indexed_file_with_correct
     assert disabled[0].eligible is False
     assert disabled[0].agent_enabled is False
 
+
+# ---------------------------------------------------------------------------
+# M12: per-project retention policy resolution, consulted before the
+# lifecycle.age_threshold_days gate (see evaluate_and_act_on_source's
+# `retention` parameter).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_evaluate_and_act_on_source_retention_never_touch_short_circuits_before_age_gate(
+    tmp_path: Path,
+) -> None:
+    """A project resolved as never_touch=True is refused even though the
+    file is old enough to clear the global age threshold, the connector
+    is enabled, and the file would otherwise pass verify_ingested --
+    proving the M12 gate runs (and wins) before the age check, not just
+    alongside it."""
+    from searchat.config.settings import RetentionConfig
+
+    source_file = _write_claude_jsonl(tmp_path / "conv-never-touch.jsonl", num_exchanges=1)
+    connector = ClaudeConnector()
+    real_hash = _sha256(source_file)
+    real_message_count = connector.parse(source_file, embedding_id=0).message_count
+    conversation_id = source_file.stem
+
+    db_path = _new_db(tmp_path)
+    _insert_source_file_state(
+        db_path,
+        file_path=str(source_file),
+        conversation_id=conversation_id,
+        project_id="proj-never-touch",
+        file_hash=real_hash,
+    )
+    _insert_conversation(
+        db_path,
+        conversation_id=conversation_id,
+        file_path=str(source_file),
+        message_count=real_message_count,
+        project_id="proj-never-touch",
+    )
+
+    age_threshold_days = 30
+    old_mtime = (datetime.now() - timedelta(days=age_threshold_days + 100)).timestamp()
+    os.utime(source_file, (old_mtime, old_mtime))
+
+    if registry.get_connector_by_name("claude") is None:
+        registry.register_connector(ClaudeConnector())
+
+    policy = LifecycleConfig(
+        age_threshold_days=age_threshold_days,
+        enabled_agents=frozenset({"claude"}),
+        dry_run=True,
+    )
+    retention = RetentionConfig.from_dict(
+        {"project": {"proj-never-touch": {"never_touch": True}}}
+    )
+
+    decision = evaluate_and_act_on_source(
+        db_path=db_path,
+        connector_name="claude",
+        file_path=source_file,
+        policy=policy,
+        action="archive",
+        dry_run=True,
+        tombstone_dir=tmp_path / "tombstones",
+        retention=retention,
+    )
+
+    assert decision.agent_enabled is True
+    assert decision.age_gated is False
+    assert decision.ingested is None
+    assert decision.eligible is False
+    assert decision.action_taken is None
+    assert decision.skip_reason is not None
+    assert "never_touch" in decision.skip_reason
+
+
+@pytest.mark.unit
+def test_run_lifecycle_action_retention_never_touch_excluded(
+    tmp_path: Path,
+) -> None:
+    """Same proof as above, through the public `run_lifecycle_action`
+    entry point the CLI actually calls, matching M12's acceptance
+    criterion: "never selected ... even when files exceed the global age
+    threshold."."""
+    from searchat.config.settings import RetentionConfig
+
+    connector = ClaudeConnector()
+    db_path = _new_db(tmp_path)
+    age_threshold_days = 30
+    old_mtime = (datetime.now() - timedelta(days=age_threshold_days + 100)).timestamp()
+
+    source_file = _write_claude_jsonl(tmp_path / "conv-run-never-touch.jsonl", num_exchanges=1)
+    real_hash = _sha256(source_file)
+    real_message_count = connector.parse(source_file, embedding_id=0).message_count
+    conversation_id = source_file.stem
+    _insert_source_file_state(
+        db_path,
+        file_path=str(source_file),
+        conversation_id=conversation_id,
+        project_id="proj-never-touch",
+        file_hash=real_hash,
+        connector_name="claude",
+    )
+    _insert_conversation(
+        db_path,
+        conversation_id=conversation_id,
+        file_path=str(source_file),
+        message_count=real_message_count,
+        project_id="proj-never-touch",
+    )
+    os.utime(source_file, (old_mtime, old_mtime))
+
+    if registry.get_connector_by_name("claude") is None:
+        registry.register_connector(ClaudeConnector())
+
+    policy = LifecycleConfig(
+        age_threshold_days=age_threshold_days,
+        enabled_agents=frozenset({"claude"}),
+        dry_run=True,
+    )
+    retention = RetentionConfig.from_dict(
+        {"project": {"proj-never-touch": {"never_touch": True}}}
+    )
+
+    decisions = run_lifecycle_action(
+        db_path=db_path,
+        policy=policy,
+        action="archive",
+        dry_run=True,
+        tombstone_dir=tmp_path / "tombstones",
+        retention=retention,
+    )
+
+    assert len(decisions) == 1
+    assert decisions[0].eligible is False
+    assert decisions[0].skip_reason is not None
+    assert "never_touch" in decisions[0].skip_reason
+
+
+@pytest.mark.unit
+def test_evaluate_and_act_on_source_retention_archive_after_days_override_used_instead_of_global(
+    tmp_path: Path,
+) -> None:
+    """A project's `archive_after_days` override replaces
+    `policy.age_threshold_days` for the age gate: a file too young for
+    the (larger) global threshold still clears the (smaller) per-project
+    override."""
+    from searchat.config.settings import RetentionConfig
+
+    source_file = _write_claude_jsonl(tmp_path / "conv-override.jsonl", num_exchanges=1)
+    connector = ClaudeConnector()
+    real_hash = _sha256(source_file)
+    real_message_count = connector.parse(source_file, embedding_id=0).message_count
+    conversation_id = source_file.stem
+
+    db_path = _new_db(tmp_path)
+    _insert_source_file_state(
+        db_path,
+        file_path=str(source_file),
+        conversation_id=conversation_id,
+        project_id="proj-fast-archive",
+        file_hash=real_hash,
+    )
+    _insert_conversation(
+        db_path,
+        conversation_id=conversation_id,
+        file_path=str(source_file),
+        message_count=real_message_count,
+        project_id="proj-fast-archive",
+    )
+
+    global_age_threshold_days = 60
+    project_override_days = 10
+    # 20 days old: younger than the global threshold (60) but older than
+    # the project's override (10).
+    file_age_days = 20
+    mtime = (datetime.now() - timedelta(days=file_age_days)).timestamp()
+    os.utime(source_file, (mtime, mtime))
+
+    if registry.get_connector_by_name("claude") is None:
+        registry.register_connector(ClaudeConnector())
+
+    policy = LifecycleConfig(
+        age_threshold_days=global_age_threshold_days,
+        enabled_agents=frozenset({"claude"}),
+        dry_run=True,
+    )
+    retention = RetentionConfig.from_dict(
+        {"project": {"proj-fast-archive": {"archive_after_days": project_override_days}}}
+    )
+
+    # Sanity: without the override, this file is refused at the age gate.
+    decision_without_override = evaluate_and_act_on_source(
+        db_path=db_path,
+        connector_name="claude",
+        file_path=source_file,
+        policy=policy,
+        action="archive",
+        dry_run=True,
+        tombstone_dir=tmp_path / "tombstones",
+    )
+    assert decision_without_override.age_gated is False
+
+    decision_with_override = evaluate_and_act_on_source(
+        db_path=db_path,
+        connector_name="claude",
+        file_path=source_file,
+        policy=policy,
+        action="archive",
+        dry_run=True,
+        tombstone_dir=tmp_path / "tombstones",
+        retention=retention,
+    )
+
+    assert decision_with_override.agent_enabled is True
+    assert decision_with_override.age_gated is True
+    assert decision_with_override.ingested is not None
+    assert decision_with_override.ingested.ok is True
+    assert decision_with_override.eligible is True
+
+
 # ---------------------------------------------------------------------------
 # evaluate_and_act_on_source: core M8 safety invariant, exhaustively
 # proven across the full boolean state space (M8, closing PR).
