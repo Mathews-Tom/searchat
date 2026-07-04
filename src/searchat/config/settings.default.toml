@@ -180,3 +180,21 @@ similarity_threshold = 0.92
 # max_ply_length, min_exchange_chars, prompt, perturn_prompt) default in
 # code (config/constants.py) and are not duplicated here.
 age_threshold_days = 180
+
+[retention]
+# Per-project retention/archival/distillation policy overrides (M12).
+# Optional -- omit entirely (the default) to use only the global
+# defaults above (lifecycle.age_threshold_days for M8's archive/prune,
+# distillation.age_threshold_days for M9's distillation) for every
+# project. Define one block per project id to override:
+#
+# [retention.project."my-project-id"]
+# never_touch = true            # exempt from BOTH M8 and M9 entirely
+# archive_after_days = 90       # overrides lifecycle.age_threshold_days
+# distill_after_days = 365      # overrides distillation.age_threshold_days
+#
+# Every key is optional; an omitted key falls back to the global
+# default for that milestone. A malformed block (unrecognized key,
+# non-boolean never_touch, non-integer or negative day count) fails
+# CLOSED -- that project is treated as never_touch = true rather than
+# silently falling back to the global default.

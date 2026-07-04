@@ -894,6 +894,120 @@ class DedupConfig:
         )
 
 
+@dataclass(frozen=True)
+class ProjectRetentionPolicy:
+    """One ``[retention.project."<project_id>"]`` block (M12): per-project
+    overrides for M8's archive/prune age gate and M9's distillation age
+    gate, plus a ``never_touch`` short-circuit that exempts every one of
+    that project's source files/conversations from BOTH milestones'
+    candidate-selection queries regardless of age.
+
+    A ``None`` threshold field means "no override for this milestone" --
+    the caller falls back to its own global default
+    (``lifecycle.age_threshold_days`` for M8,
+    ``distillation.age_threshold_days`` for M9), never to a value
+    hardcoded here.
+    """
+
+    never_touch: bool = False
+    archive_after_days: int | None = None
+    distill_after_days: int | None = None
+
+
+_RETENTION_PROJECT_ALLOWED_KEYS = frozenset(
+    {"never_touch", "archive_after_days", "distill_after_days"}
+)
+
+
+def _parse_project_retention_policy(block: object) -> ProjectRetentionPolicy | None:
+    """Parse one raw ``[retention.project."<id>"]`` TOML table into a
+    `ProjectRetentionPolicy`, or `None` when it is malformed: not a
+    table, an unrecognized key, or a wrong-typed/negative value.
+
+    `None` is a deliberate, distinct outcome from "no override" --
+    `RetentionConfig.from_dict` records it in `invalid_project_ids` so
+    `RetentionConfig.resolve` can fail closed (never_touch) instead of
+    silently falling through to the global default. This is the M12
+    fail-closed contract: any parse ambiguity resolves to "do not
+    touch," never to "use the global default as if unset."
+    """
+    if not isinstance(block, dict):
+        return None
+    if not set(block.keys()) <= _RETENTION_PROJECT_ALLOWED_KEYS:
+        return None
+
+    never_touch = block.get("never_touch", False)
+    if not isinstance(never_touch, bool):
+        return None
+
+    parsed_days: dict[str, int | None] = {}
+    for key in ("archive_after_days", "distill_after_days"):
+        if key not in block:
+            parsed_days[key] = None
+            continue
+        value = block[key]
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            return None
+        parsed_days[key] = value
+
+    return ProjectRetentionPolicy(
+        never_touch=never_touch,
+        archive_after_days=parsed_days["archive_after_days"],
+        distill_after_days=parsed_days["distill_after_days"],
+    )
+
+
+@dataclass(frozen=True)
+class RetentionConfig:
+    """``[retention]`` section (M12): per-project policy overrides
+    consulted by `services/source_lifecycle.py` (M8) and
+    `services/distillation_bridge.py` (M9) before either milestone's own
+    global-default age threshold. Unrelated to `BackupConfig`'s backup
+    retention pruning (M4) -- this is source-conversation lifecycle
+    policy, not backup lifecycle policy.
+
+    A project with no ``[retention.project."<id>"]`` block resolves to
+    `None` via `resolve()`: callers use their own global default. A
+    project whose block failed to parse resolves instead to a
+    ``never_touch=True`` sentinel -- never to `None` -- so a malformed
+    block can only make a milestone do LESS to that project, never fall
+    through to acting on the global default as if nothing were
+    configured.
+    """
+
+    projects: dict[str, ProjectRetentionPolicy]
+    invalid_project_ids: frozenset[str]
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "RetentionConfig":
+        raw_projects = data.get("project", {})
+        if not isinstance(raw_projects, dict):
+            return cls(projects={}, invalid_project_ids=frozenset())
+
+        projects: dict[str, ProjectRetentionPolicy] = {}
+        invalid: set[str] = set()
+        for project_id, block in raw_projects.items():
+            if not isinstance(project_id, str) or not project_id:
+                continue
+            parsed = _parse_project_retention_policy(block)
+            if parsed is None:
+                invalid.add(project_id)
+            else:
+                projects[project_id] = parsed
+        return cls(projects=projects, invalid_project_ids=frozenset(invalid))
+
+    def resolve(self, project_id: str | None) -> ProjectRetentionPolicy | None:
+        """The effective policy for `project_id`, or `None` when the
+        caller should fall back to its own global default. Never `None`
+        for a project with a malformed block -- see the class docstring.
+        """
+        if not project_id:
+            return None
+        if project_id in self.invalid_project_ids:
+            return ProjectRetentionPolicy(never_touch=True)
+        return self.projects.get(project_id)
+
+
 @dataclass
 class ExpertiseConfig:
     enabled: bool
@@ -1136,6 +1250,7 @@ class Config:
     palace: PalaceConfig
     lifecycle: LifecycleConfig
     dedup: DedupConfig
+    retention: RetentionConfig
 
     @classmethod
     def load(cls, config_path: Path | None = None) -> "Config":
@@ -1225,4 +1340,5 @@ class Config:
             palace=PalaceConfig.from_dict(data.get("palace", {})),
             lifecycle=LifecycleConfig.from_dict(data.get("lifecycle", {})),
             dedup=DedupConfig.from_dict(data.get("dedup", {})),
+            retention=RetentionConfig.from_dict(data.get("retention", {})),
         )
