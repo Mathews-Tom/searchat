@@ -324,6 +324,10 @@ def backup_not_found_message(backup_name: str) -> str:
     return f"Backup not found: {backup_name}"
 
 
+def backup_invalid_name_message(backup_name: str) -> str:
+    return f"Invalid backup name: {backup_name}"
+
+
 def backup_summary_unavailable_message() -> str:
     return "Backup summary unavailable"
 

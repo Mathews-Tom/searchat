@@ -42,6 +42,7 @@ def mock_backup_manager():
     """Mock BackupManager."""
     mock = Mock()
     mock.backup_dir = Path("/backups")
+    mock.resolve_backup_path.side_effect = lambda name: mock.backup_dir / name
 
     # Mock BackupMetadata
     mock_metadata = Mock()

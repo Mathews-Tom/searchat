@@ -20,6 +20,7 @@ from searchat.api.dependencies import (
 )
 from searchat.contracts.errors import (
     backup_chain_resolution_unavailable_message,
+    backup_invalid_name_message,
     backup_not_found_message,
     backup_operations_disabled_message,
     backup_summary_unavailable_message,
@@ -51,6 +52,10 @@ async def create_backup(
             message=f"Backup created: {metadata.backup_path.name}",
         )
 
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=backup_invalid_name_message(backup_name or "")) from e
     except Exception as e:
         logger.error(f"Failed to create backup: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=internal_server_error_message()) from e
@@ -75,6 +80,10 @@ async def create_incremental_backup(
             backup=metadata.to_dict(),
             message=f"Incremental backup created: {metadata.backup_path.name}",
         )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=backup_invalid_name_message(parent)) from e
     except Exception as e:
         logger.error(f"Failed to create incremental backup: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=internal_server_error_message()) from e
@@ -176,7 +185,10 @@ async def restore_backup(
     try:
         backup_manager = get_backup_manager()
 
-        backup_path = backup_manager.backup_dir / backup_name
+        try:
+            backup_path = backup_manager.resolve_backup_path(backup_name)
+        except ValueError:
+            raise HTTPException(status_code=404, detail=backup_not_found_message(backup_name))
 
         if not backup_path.exists():
             raise HTTPException(status_code=404, detail=backup_not_found_message(backup_name))
@@ -213,7 +225,10 @@ async def delete_backup(
         raise HTTPException(status_code=403, detail=backup_operations_disabled_message())
     try:
         backup_manager = get_backup_manager()
-        backup_path = backup_manager.backup_dir / backup_name
+        try:
+            backup_path = backup_manager.resolve_backup_path(backup_name)
+        except ValueError:
+            raise HTTPException(status_code=404, detail=backup_not_found_message(backup_name))
 
         if not backup_path.exists():
             raise HTTPException(status_code=404, detail=backup_not_found_message(backup_name))
