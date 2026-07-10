@@ -2,7 +2,48 @@
 
 All notable changes to this project will be documented in this file.
 
-## Unreleased
+## 0.7.0
+### Architecture
+- Migrate default storage/search to a unified DuckDB-native engine (`UnifiedStorage`, `UnifiedIndexer`, `UnifiedSearchEngine` with 6 algorithm types), replacing the legacy Parquet+FAISS path as the default; migration ran via a dual-write ETL to avoid a hard cutover.
+- Extend all 8 connectors (Claude Code, Vibe, OpenCode, Codex, Gemini CLI, Continue, Cursor, Aider) plus the new `omp` connector with a shared `AgentProviderBase` and protocol-based abstraction seams.
+
+### Knowledge & Memory
+- Add Memory Palace (`palace` extra): FAISS-based distillation/promotion pipeline, `search_palace` MCP tool, `searchat distill` CLI, and cross-layer search.
+- Add the L2 Expertise Store: DuckDB-backed extraction pipeline, priority-ranked primer, configurable-decay staleness scoring, contradiction detection with a resolution UI, `searchat expertise`/`contradictions`/`ci-check` CLI commands, and `prime_expertise`/`record_expertise`/`search_expertise` MCP tools.
+- Add the L3 Knowledge Graph engine, API endpoints, `searchat` CLI commands, and primer integration.
+- Add tiered memory: age-based distillation candidate selection, hot-index eviction of distilled conversations (verified to never touch source Parquet), a lossless `rehydrate_verbatim` promotion path, and distillate results surfaced directly in search with a rehydration affordance.
+
+### Storage Hygiene & Maintenance
+- Add `searchat doctor`: DuckDB bloat ratio, backup-redundancy audit, and live-data-size estimation, surfaced via CLI and `/api/health`.
+- Add `searchat rebuild-derived`, which rebuilds FTS/HNSW indexes from already-indexed Parquet data with zero source-file access; `reingest-sources` (the guarded, source-rescanning path) is unchanged and now clearly distinguished in docs and CLI help.
+- Add `searchat compact`: verified copy-compaction that runs as an isolated subprocess with a configurable timeout, auto-triggered on graceful shutdown once the bloat ratio crosses a threshold.
+- Add `searchat disk`: per-connector disk-usage accounting, indexed-vs-unindexed delta, and Searchat's own storage footprint, surfaced in a new disk dashboard UI panel.
+- Add report-only cruft detection (known non-conversation heavyweight artifacts — tool logs, plugin dirs, caches) surfaced in the disk dashboard and CLI; never deletes or modifies matches.
+- Add source lifecycle management (`searchat sources archive`/`prune`): checksum + message-count verification (`verify_ingested`), a reversibility proof (`verify_roundtrip`) before any destructive step, zstd archive-in-place, a prune tombstone log, and per-agent/age policy gates (dry-run by default).
+- Add `export_original` round-trip support to every connector, underpinning the lifecycle verification above.
+
+### Backups
+- Default new backups to source-of-truth-only (exclude the derivable DuckDB/FAISS index); restoring a backup now automatically rebuilds the derived indexes.
+- Add zstd compression (on by default) for plaintext backups; compression and AES-GCM encryption (`secure` extra) remain mutually exclusive.
+- Add a `[backup]` retention policy (`keep_last`, `keep_monthly`, pinning) with restic-style independent-quota-then-union semantics; incremental-chain ancestors of any kept backup are pulled in transitively before pruning.
+- Add a scheduled backup trigger that invokes the existing backup engine and skips no-op runs via change detection.
+- Add selective DuckDB source-table export/import for smaller, source-only backup payloads.
+
+### Deduplication
+- Add cross-connector near-duplicate detection via embedding similarity, surfaced report-only in the disk dashboard; a structural mutation-guard test proves no merge/delete code path exists.
+- Add a per-project retention policy schema (validated, fail-closed on malformed config) wired into the M8/M9 candidate-selection queries so lifecycle and distillation actions respect per-project thresholds and never-touch rules.
+
+### Connectors
+- Add an `omp` connector for oh-my-pi (OMP) sessions: session directory resolution, entry-point registration, and tool filtering/path detection.
+
+### Web / UI
+- Replace cached HTML serving with server-rendered Jinja2 templates, Alpine.js state bindings, and an esbuild + TypeScript toolchain.
+- Add a fragment router with 20+ HTMX partial endpoints powering the new UI.
+- Add a conversation management page with SSE-streamed rebuild progress, an expertise dashboard, a contradiction resolution UI, and the disk dashboard (cruft findings + duplicate suggestions).
+
+### CLI
+- Add root-level command aliases and a `searchat validate` release gate (`contracts`/`compatibility`/`performance smoke`/`packaging` groups) mirroring the CI build gate locally.
+
 ### Security
 - Bind the web server to `127.0.0.1` (localhost only) by default, was `0.0.0.0` (all network interfaces). Set `SEARCHAT_HOST=0.0.0.0` explicitly to restore network-wide access, e.g. for a shared multi-user deployment.
 - Reject any state-changing (non-GET/HEAD/OPTIONS) request whose browser-sent `Origin` header is neither same-origin nor in the configured CORS allowlist, closing a drive-by cross-origin request path against every state-changing endpoint.
