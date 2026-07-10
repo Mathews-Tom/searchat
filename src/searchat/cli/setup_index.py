@@ -4,9 +4,9 @@ import sys
 
 from searchat.config import Config, PathResolver
 from searchat.core.connectors import get_connectors
-from searchat.core.indexer import ConversationIndexer
 from searchat.core.logging_config import setup_logging
 from searchat.core.progress import create_progress
+from searchat.core.unified_indexer import UnifiedIndexer
 
 
 def main(argv: list[str] | None = None, prog_name: str = "searchat-setup-index") -> None:
@@ -18,10 +18,16 @@ def main(argv: list[str] | None = None, prog_name: str = "searchat-setup-index")
         searchat-setup-index [--force]
 
     Behavior:
-        - If no index exists: builds a full index.
+        - If no index exists: builds a full index (DuckDB-native, no optional
+          extras required).
         - If an index exists and --force is not set:
             - In a TTY: prompts for append-only vs full rebuild.
             - Non-interactive: defaults to append-only.
+        - Full rebuild over an *existing* index (interactive option 2, or
+          --force with an existing index) re-ingests from source files via
+          the legacy Parquet+FAISS engine, same guarded engine used by
+          `searchat reingest-sources`, and requires the `palace`/`legacy`
+          extras.
     """
     print("=" * 70)
     print("Searchat - Initial Index Setup")
@@ -42,52 +48,69 @@ def main(argv: list[str] | None = None, prog_name: str = "searchat-setup-index")
         print(f"Data directory: {search_dir}/data")
         print()
 
-        print("Initializing indexer...")
-        indexer = ConversationIndexer(search_dir, config)
+        has_index = config.storage.resolve_duckdb_path(search_dir).exists()
+        force_rebuild_existing = False
 
-        has_index = indexer._has_existing_index()
-        use_append_only = False
+        if has_index and not force and sys.stdin.isatty():
+            print("Existing index detected.")
+            print()
+            print(f"Index location: {search_dir}/data")
+            print()
+            print("Options:")
+            print("  1. Keep existing index and add only new conversations (SAFE)")
+            print("  2. Rebuild entire index from scratch (WARNING: replaces all data)")
+            print("  3. Exit without changes")
+            print()
 
-        if has_index and not force:
-            if sys.stdin.isatty():
-                print("Existing index detected.")
-                print()
-                print(f"Index location: {search_dir}/data")
-                print()
-                print("Options:")
-                print("  1. Keep existing index and add only new conversations (SAFE)")
-                print("  2. Rebuild entire index from scratch (WARNING: replaces all data)")
-                print("  3. Exit without changes")
-                print()
-
-                while True:
-                    choice = input("Enter your choice (1/2/3): ").strip()
-                    if choice == "1":
-                        use_append_only = True
+            while True:
+                choice = input("Enter your choice (1/2/3): ").strip()
+                if choice == "1":
+                    break
+                if choice == "2":
+                    confirm = input(
+                        "Are you sure? This will replace all indexed data. Type 'yes' to confirm: "
+                    ).strip()
+                    if confirm.lower() == "yes":
+                        force_rebuild_existing = True
                         break
-                    if choice == "2":
-                        confirm = input(
-                            "Are you sure? This will replace all indexed data. Type 'yes' to confirm: "
-                        ).strip()
-                        if confirm.lower() == "yes":
-                            force = True
-                            use_append_only = False
-                            break
-                        print("Cancelled.")
-                        return
-                    if choice == "3":
-                        print("Exiting without changes.")
-                        return
-                    print("Invalid choice. Please enter 1, 2, or 3.")
-            else:
-                # Non-interactive safety default.
-                use_append_only = True
+                    print("Cancelled.")
+                    return
+                if choice == "3":
+                    print("Exiting without changes.")
+                    return
+                print("Invalid choice. Please enter 1, 2, or 3.")
+        elif has_index and force:
+            force_rebuild_existing = True
+        # else: no existing index, or non-interactive with an existing index —
+        # safe append-only/full-build path below (non-interactive default).
 
         progress = create_progress()
 
-        if use_append_only:
+        if force_rebuild_existing:
+            print("Rebuilding entire index from scratch...")
+            print("This may take a few minutes depending on the number of conversations.")
+            print()
+
+            from searchat.core.indexer import ConversationIndexer
+
+            legacy_indexer = ConversationIndexer(search_dir, config)
+            stats = legacy_indexer.index_all(force=True, progress=progress)
+
+            print()
+            print("=" * 70)
+            print("Index Build Complete")
+            print("=" * 70)
+            print(f"Total conversations: {stats.total_conversations}")
+            print(f"Total messages: {stats.total_messages}")
+            print(f"Index time: {stats.index_time_seconds:.2f} seconds")
+            print(f"Parquet size: {stats.parquet_size_mb:.2f} MB")
+            print(f"FAISS index size: {stats.faiss_size_mb:.2f} MB")
+            print()
+        else:
             print("Finding new conversations to index...")
             print()
+
+            indexer = UnifiedIndexer(search_dir, config)
 
             all_files: list[str] = []
             for connector in get_connectors():
@@ -113,27 +136,10 @@ def main(argv: list[str] | None = None, prog_name: str = "searchat-setup-index")
 
             print()
             print("=" * 70)
-            print("Index Update Complete")
+            print("Index Update Complete" if has_index else "Index Build Complete")
             print("=" * 70)
             print(f"New conversations indexed: {stats.new_conversations}")
             print(f"Index time: {stats.update_time_seconds:.2f} seconds")
-            print()
-        else:
-            print("Building index from all conversation files...")
-            print("This may take a few minutes depending on the number of conversations.")
-            print()
-
-            stats = indexer.index_all(force=force, progress=progress)
-
-            print()
-            print("=" * 70)
-            print("Index Build Complete")
-            print("=" * 70)
-            print(f"Total conversations: {stats.total_conversations}")
-            print(f"Total messages: {stats.total_messages}")
-            print(f"Index time: {stats.index_time_seconds:.2f} seconds")
-            print(f"Parquet size: {stats.parquet_size_mb:.2f} MB")
-            print(f"FAISS index size: {stats.faiss_size_mb:.2f} MB")
             print()
 
         print("Start the web server with:")
