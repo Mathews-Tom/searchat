@@ -5,6 +5,7 @@ Centralizes magic numbers and strings to improve maintainability.
 """
 from __future__ import annotations
 
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 # ============================================================================
@@ -12,7 +13,10 @@ from pathlib import Path
 # ============================================================================
 
 APP_NAME = "searchat"
-APP_VERSION = "0.7.0"
+try:
+    APP_VERSION = version("searchat")
+except PackageNotFoundError:
+    APP_VERSION = "0.0.0+unknown"
 CONFIG_DIR_NAME = ".searchat"
 
 # ============================================================================
