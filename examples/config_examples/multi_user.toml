@@ -6,7 +6,11 @@
 # Setup:
 # 1. Place this file at: /etc/searchat/settings.toml
 # 2. Set SEARCHAT_DATA_DIR to shared location
-# 3. Users override with personal paths via environment variables
+# 3. Set SEARCHAT_HOST=0.0.0.0 -- the server binds to localhost only by
+#    default, so a shared multi-user deployment must opt in explicitly to
+#    be reachable from other machines (it has no authentication of any
+#    kind, so only do this on a trusted network)
+# 4. Users override with personal paths via environment variables
 
 [paths]
 # Shared data directory (ensure proper permissions)
@@ -56,5 +60,6 @@ enable_profiling = false
 
 # User-specific overrides via environment:
 #
+# export SEARCHAT_HOST=0.0.0.0       # required for a shared/multi-user server
 # export SEARCHAT_WINDOWS_PROJECTS_DIR=/home/alice/.claude
 # export SEARCHAT_PORT=8001  # Different port per user

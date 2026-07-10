@@ -24,6 +24,7 @@ Notes:
 - Snapshot mode is feature-flagged via `[snapshots] enabled`.
 - Write-like operations are blocked in snapshot mode (typically `403`).
 - If semantic components are not warmed up, some endpoints return `503` with a warming payload.
+- Any non-`GET`/`HEAD`/`OPTIONS` request whose `Origin` header is present but neither same-origin nor in the configured `[server] cors_origins` allowlist is rejected with `403` before reaching the route handler. A request with no `Origin` header (curl, scripts, the MCP transport) is unaffected.
 
 ---
 

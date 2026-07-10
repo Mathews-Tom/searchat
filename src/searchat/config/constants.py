@@ -38,7 +38,7 @@ ENV_FILE = ".env"
 # Web Server Defaults
 # ============================================================================
 
-DEFAULT_HOST = "0.0.0.0"
+DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
 PORT_SCAN_RANGE = (8000, 8010)  # Will try ports in this range
 
