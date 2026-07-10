@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 ### Security
 - Bind the web server to `127.0.0.1` (localhost only) by default, was `0.0.0.0` (all network interfaces). Set `SEARCHAT_HOST=0.0.0.0` explicitly to restore network-wide access, e.g. for a shared multi-user deployment.
+- Reject any state-changing (non-GET/HEAD/OPTIONS) request whose browser-sent `Origin` header is neither same-origin nor in the configured CORS allowlist, closing a drive-by cross-origin request path against every state-changing endpoint.
+- Reject a `backup_name` containing a path separator, `.`/`..`, or a colon in `BackupManager` and its API routes, closing a path-traversal issue that could read or write outside the backup directory.
+- `GET /api/conversations/all` now defaults `limit` to 100 instead of returning every matching conversation (including full text) when the parameter is omitted.
+- Escape `bookmark.title`/`bookmark.project_id` before rendering on the bookmarks page, closing a stored-XSS issue.
+- Bump the `python-multipart` dependency floor past several denial-of-service CVEs in its form-parsing code.
 
 ## 0.6.0
 ### Search
