@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.7.1
+### Fixed
+- Fix a clean-install crash where every `searchat` CLI invocation, including `searchat --version`, raised `ModuleNotFoundError: No module named 'faiss'`. `core/unified_search.py` imported the optional `faiss` package (part of the `palace` extra) unconditionally at module level; the import is now deferred to the one call site that actually needs it, which already degrades to `SemanticSearchUnavailable` on failure.
+- Fix `searchat-setup-index` (the first-time-setup entrypoint) requiring the `palace`/`legacy` extras just to build the initial index. It was still using the deprecated Parquet+FAISS `ConversationIndexer`, missed when the rest of the codebase moved to the DuckDB-native `UnifiedIndexer` default. The default/common path (fresh install, or a safe append-only update) now uses `UnifiedIndexer`; only an explicit full rebuild over *existing* data still requires the guarded legacy engine, matching `reingest-sources`.
+
 ## 0.7.0
 ### Architecture
 - Migrate default storage/search to a unified DuckDB-native engine (`UnifiedStorage`, `UnifiedIndexer`, `UnifiedSearchEngine` with 6 algorithm types), replacing the legacy Parquet+FAISS path as the default; migration ran via a dual-write ETL to avoid a hard cutover.
