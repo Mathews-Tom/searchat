@@ -22,7 +22,6 @@ from pathlib import Path
 from threading import Lock
 
 import duckdb
-import faiss
 import numpy as np
 
 from searchat.config import Config
@@ -758,6 +757,7 @@ class UnifiedSearchEngine:
             )
         if self.faiss_index is None:
             try:
+                import faiss
                 if getattr(self.config.performance, "faiss_mmap", False):
                     try:
                         flags = faiss.IO_FLAG_MMAP | faiss.IO_FLAG_READ_ONLY
