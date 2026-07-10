@@ -181,7 +181,7 @@ tool      string  claude|vibe|opencode
 date      string  today|week|month|custom
 date_from  string  Custom date start (YYYY-MM-DD)
 date_to    string  Custom date end (YYYY-MM-DD)
-limit     int     1-5000 (optional)
+limit     int     1-5000 (default: 100)
 offset    int     0+ (default: 0)
 snapshot  string  Optional snapshot dataset (read-only)
 ```

@@ -402,7 +402,7 @@ async def get_all_conversations(
     date_from: str | None = Query(None, description="Custom date from (YYYY-MM-DD)"),
     date_to: str | None = Query(None, description="Custom date to (YYYY-MM-DD)"),
     tool: str | None = Query(None, description="Filter by tool: claude, vibe, opencode, codex, gemini, continue, cursor, aider"),
-    limit: int | None = Query(None, ge=1, le=5000, description="Max results to return"),
+    limit: int = Query(100, ge=1, le=5000, description="Max results to return"),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
     snapshot: str | None = Query(None, description="Backup snapshot name (read-only)"),
 ):

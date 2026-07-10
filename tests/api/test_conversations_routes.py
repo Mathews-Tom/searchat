@@ -410,6 +410,41 @@ class TestGetAllConversationsEndpoint:
             assert data["results"][1]["conversation_id"] == "conv-2"
             assert data["results"][1]["message_count"] == 5
 
+    def test_get_all_conversations_default_limit_is_bounded(self, client, mock_duckdb_store):
+        """Omitting `limit` must not dump the entire conversation corpus.
+
+        `full_text` is included per row, so an unbounded default lets any
+        unauthenticated caller pull the whole indexed corpus (potentially
+        gigabytes of conversation content) in a single request. Both
+        legitimate frontend callers (manage.js, search.js) always send an
+        explicit `limit` for exactly this reason; the endpoint's own
+        default must be bounded too.
+        """
+        now = datetime.now()
+        mock_duckdb_store._data = [
+            {
+                "conversation_id": f"conv-{i}",
+                "project_id": "project-a",
+                "title": f"Conversation {i}",
+                "created_at": now,
+                "updated_at": now,
+                "message_count": 1,
+                "file_path": f"/home/user/.claude/conv-{i}.jsonl",
+                "full_text": "x",
+            }
+            for i in range(150)
+        ]
+
+        with patch('searchat.api.routers.conversations.deps.get_duckdb_store', return_value=mock_duckdb_store):
+            response = client.get("/api/conversations/all")
+
+            assert response.status_code == 200
+            data = response.json()
+
+            assert data["total"] == 150
+            assert len(data["results"]) < 150
+            assert len(data["results"]) <= 100
+
     def test_get_all_conversations_filters_zero_messages(self, client, mock_duckdb_store):
         """Test that conversations with 0 messages are filtered out."""
         with patch('searchat.api.routers.conversations.deps.get_duckdb_store', return_value=mock_duckdb_store):
