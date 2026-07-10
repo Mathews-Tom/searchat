@@ -10,10 +10,11 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from datetime import datetime
+from urllib.parse import urlsplit
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -143,6 +144,72 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ---------------------------------------------------------------------------
+# Reject cross-origin state-changing requests (drive-by CSRF)
+# ---------------------------------------------------------------------------
+class RejectCrossOriginMutationsMiddleware(BaseHTTPMiddleware):
+    """Reject a state-changing request whose browser-sent Origin header
+    is neither same-origin nor in the configured CORS allowlist.
+
+    CORSMiddleware alone does not stop this class of request: it only
+    withholds `Access-Control-Allow-Origin` from the *response*, which
+    blocks a cross-origin script from *reading* the result but does
+    nothing to stop the request from being sent and executed -- a
+    "simple" cross-origin POST (a bare `<form method=POST>`, no custom
+    Content-Type) never triggers a CORS preflight at all. Any website
+    the user's browser visits can silently auto-submit such a form to
+    this locally-bound server and trigger a real state change (e.g.
+    `POST /api/backup/restore`, which overwrites the live index with an
+    old backup, or `POST /api/shutdown`) with no user interaction and no
+    need to read the response.
+
+    A request whose Origin's host:port matches the request's own Host
+    header is always same-origin and is allowed regardless of the
+    static allowlist -- main()'s own port auto-scanner (PORT_SCAN_RANGE,
+    8000-8010) silently picks a non-default port whenever 8000 is
+    already taken, and SEARCHAT_HOST=0.0.0.0 deployments are reached via
+    a LAN IP; a purely static `cors_origins` check would reject the
+    app's own legitimate frontend under either condition. The static
+    `allowed_origins` list remains the fallback for a deliberately
+    configured cross-origin caller.
+
+    A request with no Origin header (curl, Python's requests, the MCP
+    stdio transport, direct socket-level HTTP -- none of them set one)
+    is allowed through unchanged; only a browser-sent Origin that fails
+    both checks is rejected. GET/HEAD/OPTIONS are never state-changing
+    and are always allowed through unchanged.
+    """
+
+    _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+    def __init__(self, app: FastAPI, allowed_origins: list[str]) -> None:
+        super().__init__(app)
+        self._allowed_origins = frozenset(allowed_origins)
+
+    @staticmethod
+    def _is_same_origin(origin: str, host_header: str) -> bool:
+        try:
+            origin_netloc = urlsplit(origin).netloc
+        except ValueError:
+            return False
+        return bool(origin_netloc) and origin_netloc.lower() == host_header.lower()
+
+    async def dispatch(self, request: Request, call_next):  # type: ignore[override]
+        if request.method not in self._SAFE_METHODS:
+            origin = request.headers.get("origin")
+            if origin is not None:
+                host_header = request.headers.get("host", "")
+                same_origin = self._is_same_origin(origin, host_header)
+                if not same_origin and origin not in self._allowed_origins:
+                    return JSONResponse(
+                        status_code=403,
+                        content={"detail": "Cross-origin request rejected"},
+                    )
+        return await call_next(request)
+
+
+app.add_middleware(RejectCrossOriginMutationsMiddleware, allowed_origins=_cors_origins)
 
 # ---------------------------------------------------------------------------
 # No-cache middleware for static assets (prevents stale JS/CSS during dev)
