@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.7.2
+### Fixed
+- `searchat --version` (and `searchat-web --version`, and the FastAPI app's reported OpenAPI `version`) printed a stale, hand-maintained `0.7.0` string after the 0.7.1 release — `searchat.__version__` and `config.constants.APP_VERSION` were separate hardcoded duplicates of the `pyproject.toml` version that were missed during the 0.7.1 bump. Both now resolve dynamically from installed package metadata (`importlib.metadata.version("searchat")`), so they can no longer drift from the published version.
+
 ## 0.7.1
 ### Fixed
 - Fix a clean-install crash where every `searchat` CLI invocation, including `searchat --version`, raised `ModuleNotFoundError: No module named 'faiss'`. `core/unified_search.py` imported the optional `faiss` package (part of the `palace` extra) unconditionally at module level; the import is now deferred to the one call site that actually needs it, which already degrades to `SemanticSearchUnavailable` on failure.
