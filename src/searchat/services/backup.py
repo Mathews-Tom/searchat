@@ -50,6 +50,29 @@ def _sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
+def _validate_backup_name_component(name: str) -> None:
+    """Reject a backup-name component that could escape `backup_dir`.
+
+    Every backup directory this module creates is a plain
+    `<name>_<timestamp>` folder name minted by `create_backup` /
+    `create_incremental_backup` itself; nothing legitimate needs a path
+    separator, a `.`/`..` segment, or a null byte in a caller-supplied
+    `backup_name`. Used both before a READ join (`resolve_backup_path`)
+    and before a WRITE join (the custom-name prefix accepted by
+    `create_backup` / `create_incremental_backup`) -- neither is safe
+    otherwise.
+    """
+    if (
+        not name
+        or name in {".", ".."}
+        or "/" in name
+        or "\\" in name
+        or ":" in name
+        or "\x00" in name
+    ):
+        raise ValueError(f"Invalid backup name: {name!r}")
+
+
 class BackupManager:
     """Manages backups and restores for Searchat data."""
 
@@ -73,6 +96,25 @@ class BackupManager:
 
         # Ensure backup directory exists
         self.backup_dir.mkdir(parents=True, exist_ok=True)
+
+    def resolve_backup_path(self, backup_name: str) -> Path:
+        """Resolve `backup_name` to a path guaranteed to live inside `backup_dir`.
+
+        Raises ValueError for an empty name, `.`/`..`, an embedded path
+        separator or colon, or (belt-and-braces) a resolved path that is
+        not a strict descendant of `backup_dir` -- e.g. `backup_name=".."`
+        would otherwise resolve to `backup_dir`'s parent (the live
+        `~/.searchat` data directory itself), and on Windows a same-drive
+        `backup_name="C:"` would otherwise re-anchor to `backup_dir`
+        itself rather than a child of it; both are rejected by requiring
+        `candidate != backup_root` in addition to containment.
+        """
+        _validate_backup_name_component(backup_name)
+        backup_root = self.backup_dir.resolve()
+        candidate = (self.backup_dir / backup_name).resolve()
+        if candidate == backup_root or backup_root not in candidate.parents:
+            raise ValueError(f"Invalid backup name: {backup_name!r}")
+        return candidate
 
     def _get_directory_size(self, path: Path) -> int:
         """Calculate total size of all files in a directory."""
@@ -144,7 +186,10 @@ class BackupManager:
             if len(chain) > max_chain_length:
                 raise ValueError(f"Backup chain length exceeds max ({max_chain_length})")
 
-            current_path = self.backup_dir / current
+            try:
+                current_path = self.resolve_backup_path(current)
+            except ValueError as exc:
+                raise ValueError(f"Backup not found in chain: {current}") from exc
             if not current_path.exists() or not current_path.is_dir():
                 raise ValueError(f"Backup not found in chain: {current}")
             manifest = self._load_manifest(current_path)
@@ -168,7 +213,14 @@ class BackupManager:
         """
         errors: list[str] = []
 
-        backup_path = self.backup_dir / backup_name
+        try:
+            backup_path = self.resolve_backup_path(backup_name)
+        except ValueError:
+            return {
+                "backup_name": backup_name,
+                "valid": False,
+                "errors": [f"Backup not found: {backup_name}"],
+            }
         if not backup_path.exists() or not backup_path.is_dir():
             return {
                 "backup_name": backup_name,
@@ -210,7 +262,7 @@ class BackupManager:
         chain_manifests: list[tuple[str, BackupManifest]] = []
         for name in chain:
             try:
-                m = self._load_manifest(self.backup_dir / name)
+                m = self._load_manifest(self.resolve_backup_path(name))
             except ValueError as exc:
                 errors.append(str(exc))
                 continue
@@ -232,7 +284,7 @@ class BackupManager:
 
         if verify_hashes:
             for name, m in chain_manifests:
-                bpath = self.backup_dir / name
+                bpath = self.resolve_backup_path(name)
                 for rel_path, meta in m.files.items():
                     stored_rel = meta.get("stored_rel_path") or rel_path
                     if not isinstance(stored_rel, str) or not stored_rel:
@@ -295,7 +347,20 @@ class BackupManager:
         ).to_dict()
 
     def get_backup_summary(self, backup_name: str) -> dict[str, object]:
-        backup_path = self.backup_dir / backup_name
+        try:
+            backup_path = self.resolve_backup_path(backup_name)
+        except ValueError:
+            return {
+                "name": backup_name,
+                "backup_mode": "unknown",
+                "encrypted": False,
+                "parent_name": None,
+                "chain_length": 0,
+                "snapshot_browsable": False,
+                "has_manifest": False,
+                "valid": False,
+                "errors": ["Backup not found: " + repr(backup_name)],
+            }
         manifest_path = backup_path / BACKUP_MANIFEST_FILE
         try:
             manifest = self._load_manifest(backup_path)
@@ -463,7 +528,7 @@ class BackupManager:
 
         state: dict[str, str] = {}
         for idx, name in enumerate(chain):
-            backup_path = self.backup_dir / name
+            backup_path = self.resolve_backup_path(name)
             manifest = self._load_manifest(backup_path)
             if manifest is None:
                 raise ValueError(f"Backup manifest missing: {name}")
@@ -512,7 +577,7 @@ class BackupManager:
             raise ValueError(f"Backup chain length exceeds max ({max_chain_length})")
 
         for name in parent_chain:
-            m = self._load_manifest(self.backup_dir / name)
+            m = self._load_manifest(self.resolve_backup_path(name))
             if m is None:
                 raise ValueError(f"Backup manifest missing: {name}")
             if bool(m.encrypted) != encrypted:
@@ -523,6 +588,7 @@ class BackupManager:
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         if backup_name:
+            _validate_backup_name_component(backup_name)
             folder_name = f"{backup_name}_{timestamp}"
         else:
             folder_name = f"incremental_{timestamp}"
@@ -645,14 +711,14 @@ class BackupManager:
         if not chain:
             raise ValueError("Empty backup chain")
 
-        base_manifest = self._load_manifest(self.backup_dir / chain[0])
+        base_manifest = self._load_manifest(self.resolve_backup_path(chain[0]))
         if base_manifest is None:
             raise ValueError(f"Backup manifest missing: {chain[0]}")
         if base_manifest.backup_mode != "full":
             raise ValueError("Backup chain base must be a full backup")
         manifests: list[tuple[str, BackupManifest]] = []
         for name in chain:
-            backup_path = self.backup_dir / name
+            backup_path = self.resolve_backup_path(name)
             manifest = self._load_manifest(backup_path)
             if manifest is None:
                 raise ValueError(f"Backup manifest missing: {name}")
@@ -671,7 +737,7 @@ class BackupManager:
             key = get_backup_key()
 
         for name, manifest in manifests:
-            backup_path = self.backup_dir / name
+            backup_path = self.resolve_backup_path(name)
 
             # Apply file overlays.
             for rel_path, meta in manifest.files.items():
@@ -772,6 +838,7 @@ class BackupManager:
         # Generate backup name with timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         if backup_name:
+            _validate_backup_name_component(backup_name)
             folder_name = f"{backup_name}_{timestamp}"
         else:
             folder_name = f"backup_{timestamp}"
@@ -1155,7 +1222,10 @@ class BackupManager:
         it has no metadata to update (older backups without a manifest are
         still listable, but nothing to persist pinning onto).
         """
-        backup_path = self.backup_dir / backup_name
+        try:
+            backup_path = self.resolve_backup_path(backup_name)
+        except ValueError as exc:
+            raise FileNotFoundError(f"Backup not found: {backup_name}") from exc
         if not backup_path.exists() or not backup_path.is_dir():
             raise FileNotFoundError(f"Backup not found: {backup_name}")
 
@@ -1231,7 +1301,10 @@ class BackupManager:
         while changed:
             changed = False
             for name in list(keep_names):
-                manifest = self._load_manifest(self.backup_dir / name)
+                try:
+                    manifest = self._load_manifest(self.resolve_backup_path(name))
+                except ValueError:
+                    manifest = None
                 parent = manifest.parent_name if manifest is not None else None
                 if parent and parent not in keep_names:
                     keep_names.add(parent)
