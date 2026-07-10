@@ -2,6 +2,12 @@
 
 let bookmarkedConversations = new Set();
 
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text == null ? '' : String(text);
+    return div.innerHTML;
+}
+
 function bookmarkIconSvg(isBookmarked) {
     const fill = isBookmarked ? 'currentColor' : 'none';
     return `
@@ -197,9 +203,9 @@ export async function showBookmarks() {
             div.innerHTML = `
                 <div style="display: flex; justify-content: space-between; align-items: start;">
                     <div style="flex: 1;">
-                        <div class="result-title">${bookmark.title || 'Untitled'}</div>
+                        <div class="result-title">${escapeHtml(bookmark.title) || 'Untitled'}</div>
                         <div class="result-meta">
-                            <span>Project: ${bookmark.project_id || 'Unknown'}</span> •
+                            <span>Project: ${escapeHtml(bookmark.project_id) || 'Unknown'}</span> •
                             <span>Messages: ${bookmark.message_count || 0}</span> •
                             <span>Bookmarked: ${addedDate}</span>
                         </div>
