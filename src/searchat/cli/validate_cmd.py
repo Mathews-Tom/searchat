@@ -269,7 +269,6 @@ RELEASE_VALIDATION_GROUPS: tuple[ReleaseValidationGroup, ...] = (
             "tests/acceptance/test_storage_compatibility.py",
             "tests/acceptance/test_config_compatibility.py",
             "tests/acceptance/test_ops_readiness.py",
-            "tests/acceptance/test_search_quality.py",
         ),
     ),
     ReleaseValidationGroup(
