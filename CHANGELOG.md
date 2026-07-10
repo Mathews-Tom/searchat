@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+### Security
+- Bind the web server to `127.0.0.1` (localhost only) by default, was `0.0.0.0` (all network interfaces). Set `SEARCHAT_HOST=0.0.0.0` explicitly to restore network-wide access, e.g. for a shared multi-user deployment.
+
 ## 0.6.0
 ### Search
 - Replace BM25 (rank-bm25) keyword search with DuckDB FTS (full-text search with English stemmer)
